@@ -13,6 +13,9 @@ from Command import COMMAND as cmd
 
 class Control:
 
+    MAX_SPEED_LIMIT = 200
+    MIN_SPEED_LIMIT = 20
+
     def __init__(self):
         self.setup_hardware()
         self.setup_state()
@@ -26,15 +29,20 @@ class Control:
         self.pid = Incremental_PID(0.5, 0.0, 0.0025)
 
     def setup_state(self):
-        self.speed = 8
+        self.speed = self.MIN_SPEED_LIMIT
         self.height = 99
+        self.step_height = 10
+        self.step_length = 15
         self.order = ['','','','','']
         self.point = [[0, 99, 10], [0, 99, 10], [0, 99, -10], [0, 99, -10]]
         self.angle = [[90,0,0],[90,0,0],[90,0,0],[90,0,0]]
         self.calibration_angle = [[0,0,0],[0,0,0],[0,0,0],[0,0,0]]
+        self.stop_requested = False
         self.relax_flag = True
         self.balance_flag = False
         self.attitude_flag = False
+        
+
 
     def start_logging(self, filename="empty.csv"):
         self.logfile = open(filename, "w")
@@ -187,7 +195,7 @@ class Control:
     def map(self,value,fromLow,fromHigh,toLow,toHigh):
         return (toHigh-toLow)*(value-fromLow) / (fromHigh-fromLow) + toLow
     
-    def changeCoordinates(self,move_order,X1=0,Y1=96,Z1=0,X2=0,Y2=96,Z2=0,pos=np.mat(np.zeros((3, 4)))):
+    def changeCoordinates(self,move_order,X1=0,Y1=96,Z1=0,X2=0,Y2=96,Z2=0,pos=np.mat(np.zeros((3, 4)))):  
         if move_order == 'turnLeft':  
             for i in range(2):
                 self.point[2*i][0]=((-1)**(1+i))*X1+10
@@ -228,61 +236,88 @@ class Control:
                 self.point[i*2+1][2]=Z2+((-1)**i)*10
         self.run()
     
-    def backWard(self):
-        for i in range(450,89,-self.speed):
-            X1=12*math.cos(i*math.pi/180)
-            Y1=6*math.sin(i*math.pi/180)+self.height
-            X2=12*math.cos((i+180)*math.pi/180)
-            Y2=6*math.sin((i+180)*math.pi/180)+self.height
-            if Y2 > self.height:
-                Y2=self.height
-            if Y1 > self.height:
-                Y1=self.height
-            self.changeCoordinates('backWard',X1,Y1,0,X2,Y2,0)
-            #time.sleep(0.01)
-    
+    def wait_for_next_tick(self, last_tick, tick_time):
+        next_tick = last_tick + tick_time
+        now = time.monotonic()
+        time.sleep(max(0, next_tick - now))
+        return next_tick
+
+    def clamp_speed(self, min_val=MIN_SPEED_LIMIT, max_val=MAX_SPEED_LIMIT):
+        self.speed = max(min_val, min(self.speed, max_val))
+
+    def move_forward_back(self, mode: str):
+        self.clamp_speed()
+        tick_time = 1.0 / self.speed
+        tick = time.monotonic()
+        start = time.monotonic()
+
+        if mode == "forWard":
+            angle = 90
+            end_angle = 450
+            step = 3
+        elif mode == "backWard":
+            angle = 450
+            end_angle = 90
+            step = -3
+
+        while (step > 0 and angle <= end_angle) or (step < 0 and angle >= end_angle):
+            if self.stop_requested:
+                break
+
+            X1 = self.step_length * math.cos(math.radians(angle))
+            Y1 = self.step_height * math.sin(math.radians(angle)) + self.height
+            
+            X2 = self.step_length * math.cos(math.radians(angle + 180))
+            Y2 = self.step_height * math.sin(math.radians(angle + 180)) + self.height
+
+            Y1 = min(Y1, self.height)
+            Y2 = min(Y2, self.height)
+
+            self.changeCoordinates(mode, X1, Y1, 0, X2, Y2, 0)
+
+            angle += step
+            tick = self.wait_for_next_tick(tick, tick_time)
+
+        print(f"Time: {time.monotonic() - start:.2f} s")
+
     def forWard(self):
-        for i in range(90,451,self.speed):
-            X1=12*math.cos(i*math.pi/180)
-            Y1=6*math.sin(i*math.pi/180)+self.height
-            X2=12*math.cos((i+180)*math.pi/180)
-            Y2=6*math.sin((i+180)*math.pi/180)+self.height
-            if Y2 > self.height:
-                Y2=self.height
-            if Y1 > self.height:
-                Y1=self.height
-            self.changeCoordinates('forWard',X1,Y1,0,X2,Y2,0)
-            #time.sleep(0.01)
+        self.move_forward_back("forWard")
+
+    def backWard(self):
+        self.move_forward_back("backWard")
+    
+    def turn(self, mode: str):
+        self.clamp_speed()
+        tick_time = 1.0 / self.speed
+        tick = time.monotonic()
+        angle = 0
+        step = 3  
+
+        while angle <= 360:
+            if self.stop_requested:
+                break
+
+            X1 = self.step_length * math.cos(math.radians(angle))
+            Y1 = self.step_height * math.sin(math.radians(angle)) + self.height
+            Z1 = X1  
+
+            X2 = self.step_length * math.cos(math.radians(angle + 180))
+            Y2 = self.step_height * math.sin(math.radians(angle + 180)) + self.height
+            Z2 = X2
+
+            Y1 = min(Y1, self.height)
+            Y2 = min(Y2, self.height)
+
+            self.changeCoordinates(mode, X1, Y1, Z1, X2, Y2, Z2)
+
+            angle += step
+            tick = self.wait_for_next_tick(tick, tick_time)
     
     def turnLeft(self):
-        for i in range(0,361,self.speed):
-            X1=3*math.cos(i*math.pi/180)
-            Y1=8*math.sin(i*math.pi/180)+self.height
-            X2=3*math.cos((i+180)*math.pi/180)
-            Y2=8*math.sin((i+180)*math.pi/180)+self.height
-            if Y2 > self.height:
-                Y2=self.height
-            if Y1 > self.height:
-                Y1=self.height
-            Z1=X1
-            Z2=X2
-            self.changeCoordinates('turnLeft',X1,Y1,Z1,X2,Y2,Z2)
-            #time.sleep(0.01)
-    
+        self.turn("turnLeft")
+
     def turnRight(self):
-         for i in range(0,361,self.speed):
-            X1=3*math.cos(i*math.pi/180)
-            Y1=8*math.sin(i*math.pi/180)+self.height
-            X2=3*math.cos((i+180)*math.pi/180)
-            Y2=8*math.sin((i+180)*math.pi/180)+self.height
-            if Y2 > self.height:
-                Y2=self.height
-            if Y1 > self.height:
-                Y1=self.height
-            Z1=X1
-            Z2=X2
-            self.changeCoordinates('turnRight',X1,Y1,Z1,X2,Y2,Z2)  
-            #time.sleep(0.01)
+        self.turn("turnRight")
     
     def stop(self):
         p=[[10, self.height, 10], [10, self.height, 10], [10, self.height, -10], [10, self.height, -10]]
@@ -297,31 +332,47 @@ class Control:
                 self.point[i][2]+=p[i][2]
             self.run()
     
-    def setpLeft(self):
-        for i in range(90,451,self.speed):
-            Z1=10*math.cos(i*math.pi/180)
-            Y1=5*math.sin(i*math.pi/180)+self.height
-            Z2=10*math.cos((i+180)*math.pi/180)
-            Y2=5*math.sin((i+180)*math.pi/180)+self.height
-            if Y1 > self.height:
-                Y1=self.height
-            if Y2 > self.height:
-                Y2=self.height
-            self.changeCoordinates('setpLeft',0,Y1,Z1,0,Y2,Z2)
-            #time.sleep(0.01)
+    def step(self, mode: str):
+        self.clamp_speed()
+        tick_time = 1.0 / self.speed
+        tick = time.monotonic()
+        start = time.monotonic()
+
+        if mode == "Left":
+            angle = 90
+            end_angle = 450
+            step_dir = 3
+        elif mode == "Right":
+            angle = 450
+            end_angle = 90
+            step_dir = -3
+        else:
+            print("Invalid step mode:", mode)
+            return
+
+        while (step_dir > 0 and angle <= end_angle) or (step_dir < 0 and angle >= end_angle):
+            if self.stop_requested:
+                break
+
+            Z1 = self.step_length * math.cos(math.radians(angle))
+            Y1 = self.step_height * math.sin(math.radians(angle)) + self.height
+            
+            Z2 = self.step_length * math.cos(math.radians(angle + 180))
+            Y2 = self.step_height * math.sin(math.radians(angle + 180)) + self.height
+
+            Y1 = min(Y1, self.height)
+            Y2 = min(Y2, self.height)
+
+            self.changeCoordinates(f"step{mode}", 0, Y1, Z1, 0, Y2, Z2)
+
+            angle += step_dir
+            tick = self.wait_for_next_tick(tick, tick_time)
+
+    def stepLeft(self):
+        self.step("Left")
     
-    def setpRight(self):
-        for i in range(450,89,-self.speed):
-            Z1=10*math.cos(i*math.pi/180)
-            Y1=5*math.sin(i*math.pi/180)+self.height
-            Z2=10*math.cos((i+180)*math.pi/180)
-            Y2=5*math.sin((i+180)*math.pi/180)+self.height
-            if Y1 > self.height:
-                Y1=self.height
-            if Y2 > self.height:
-                Y2=self.height
-            self.changeCoordinates('setpRight',0,Y1,Z1,0,Y2,Z2)
-            #time.sleep(0.01)
+    def stepRight(self):
+        self.step("Right")
     
     def relax(self,flag=False):
         if flag==True:
