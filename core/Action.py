@@ -5,15 +5,13 @@ import time
 from Control import *
 from Servo import *
 
-
 class Action:
-   
-    max_speed = 6
-    current_speed = 0
 
     def __init__(self):
         self.servo=Servo()
         self.control=Control()
+        self.max_speed = self.control.MAX_SPEED_LIMIT
+        self.current_speed = 0
         self.servo.setServoAngle(15,90)
         self.start_fsm()
 
@@ -26,7 +24,8 @@ class Action:
     def _fsm_loop(self):
         while True:
             if self.state == 'idle':
-                pass  # do nothing
+                #self.control.relax()
+                pass
                 
             elif self.state == 'walking_forward':
                 #self.control.start_logging("walking_frodward_log.csv")
@@ -34,7 +33,6 @@ class Action:
                 self.control.forWard()                             
                 self.state = 'idle'
                 #self.control.stop_logging()
-                self.state = 'idle'
 
             elif self.state == 'walking_backward':
                 #self.control.start_logging("walking_backward_log.csv")
@@ -51,10 +49,28 @@ class Action:
                 self.state = 'idle'
 
             elif self.state == 'turning_left':
-                #self.control.start_logging("turning_right_log.csv")
+                #self.control.start_logging("turning_left_log.csv")
                 self.control.speed = self.current_speed   
                 self.control.turnLeft()                             
                 #self.control.stop_logging()
+                self.state = 'idle'
+
+            elif self.state == 'step_right':
+                #self.control.start_logging("step_right_log.csv")
+                self.control.speed = self.current_speed   
+                self.control.stepRight()                             
+                #self.control.stop_logging()
+                self.state = 'idle'
+
+            elif self.state == 'step_left':
+                #self.control.start_logging("step_left_log.csv")
+                self.control.speed = self.current_speed   
+                self.control.stepLeft()                             
+                #self.control.stop_logging()
+                self.state = 'idle'
+
+            elif self.state == 'relax':
+                self.control.relax(True)
                 self.state = 'idle'
 
             elif self.state == 'greeting':
