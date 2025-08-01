@@ -13,6 +13,8 @@ from Command import COMMAND as cmd
 
 class Control:
 
+    FL, RL, RR, FR = 0, 1, 2, 3
+    X, Y, Z = 0, 1, 2
     MAX_SPEED_LIMIT = 200
     MIN_SPEED_LIMIT = 20
 
@@ -42,8 +44,6 @@ class Control:
         self.balance_flag = False
         self.attitude_flag = False
         
-
-
     def start_logging(self, filename="empty.csv"):
         self.logfile = open(filename, "w")
         header = [
@@ -132,45 +132,62 @@ class Control:
             self.calibration_angle[i][1]=self.calibration_angle[i][1]-self.angle[i][1]
             self.calibration_angle[i][2]=self.calibration_angle[i][2]-self.angle[i][2]
     
+    def update_angles_from_points(self):
+        for i in range(4):
+            self.angle[i][0], self.angle[i][1], self.angle[i][2] = self.coordinateToAngle(
+                self.point[i][self.X], self.point[i][self.Y], self.point[i][self.Z])
+
+    def apply_calibration_to_angles(self):
+        for i in range(2):
+            # Left legs
+            self.angle[i][0] = self.restriction(self.angle[i][0] + self.calibration_angle[i][0], 0, 180)
+            self.angle[i][1] = self.restriction(90 - (self.angle[i][1] + self.calibration_angle[i][1]), 0, 180)
+            self.angle[i][2] = self.restriction(self.angle[i][2] + self.calibration_angle[i][2], 0, 180)
+
+            # Right legs
+            self.angle[i+2][0] = self.restriction(self.angle[i+2][0] + self.calibration_angle[i+2][0], 0, 180)
+            self.angle[i+2][1] = self.restriction(90 + self.angle[i+2][1] + self.calibration_angle[i+2][1], 0, 180)
+            self.angle[i+2][2] = self.restriction(180 - (self.angle[i+2][2] + self.calibration_angle[i+2][2]), 0, 180)
+
+    def send_angles_to_servos(self):
+        for i in range(2):
+            # Left side servos
+            self.servo.setServoAngle(4 + i*3, self.angle[i][0])
+            self.servo.setServoAngle(3 + i*3, self.angle[i][1])
+            self.servo.setServoAngle(2 + i*3, self.angle[i][2])
+
+            # Right side servos
+            self.servo.setServoAngle(8 + i*3, self.angle[i+2][0])
+            self.servo.setServoAngle(9 + i*3, self.angle[i+2][1])
+            self.servo.setServoAngle(10 + i*3, self.angle[i+2][2])
+
+    def log_current_state(self):
+        if hasattr(self, 'log_enabled') and self.log_enabled:
+            timestamp = time.time()
+            roll, pitch, yaw, accel_x, accel_y, accel_z = self.imu.imuUpdate()
+            data = [
+                timestamp,
+                self.log_step,
+                f"{roll:.2f}", f"{pitch:.2f}", f"{yaw:.2f}",
+                f"{accel_x:.4f}", f"{accel_y:.4f}", f"{accel_z:.4f}",
+                *[f"{coord:.2f}" for leg in self.point for coord in leg]
+            ]
+            self.logfile.write(",".join(map(str, data)) + "\n")
+            self.log_step += 1        
+
     def run(self):
+        # Uncomment the next line to measure execution time
+        # start = time.monotonic()
         if self.checkPoint():
             try:
-                for i in range(4):
-                    self.angle[i][0], self.angle[i][1], self.angle[i][2] = self.coordinateToAngle(
-                        self.point[i][0], self.point[i][1], self.point[i][2])
-
-                for i in range(2):
-                    self.angle[i][0] = self.restriction(self.angle[i][0] + self.calibration_angle[i][0], 0, 180)
-                    self.angle[i][1] = self.restriction(90 - (self.angle[i][1] + self.calibration_angle[i][1]), 0, 180)
-                    self.angle[i][2] = self.restriction(self.angle[i][2] + self.calibration_angle[i][2], 0, 180)
-
-                    self.angle[i+2][0] = self.restriction(self.angle[i+2][0] + self.calibration_angle[i+2][0], 0, 180)
-                    self.angle[i+2][1] = self.restriction(90 + self.angle[i+2][1] + self.calibration_angle[i+2][1], 0, 180)
-                    self.angle[i+2][2] = self.restriction(180 - (self.angle[i+2][2] + self.calibration_angle[i+2][2]), 0, 180)
-
-                    self.servo.setServoAngle(4 + i*3, self.angle[i][0])
-                    self.servo.setServoAngle(3 + i*3, self.angle[i][1])
-                    self.servo.setServoAngle(2 + i*3, self.angle[i][2])
-                    self.servo.setServoAngle(8 + i*3, self.angle[i+2][0])
-                    self.servo.setServoAngle(9 + i*3, self.angle[i+2][1])
-                    self.servo.setServoAngle(10 + i*3, self.angle[i+2][2])
-
-                # Log only if enabled
-                if hasattr(self, 'log_enabled') and self.log_enabled:
-                    timestamp = time.time()
-                    roll, pitch, yaw, accel_x, accel_y, accel_z = self.imu.imuUpdate()
-                    data = [
-                        timestamp,
-                        self.log_step,
-                        f"{roll:.2f}", f"{pitch:.2f}", f"{yaw:.2f}",
-                        f"{accel_x:.4f}", f"{accel_y:.4f}", f"{accel_z:.4f}",
-                        *[f"{coord:.2f}" for leg in self.point for coord in leg]
-                    ]
-                    self.logfile.write(",".join(map(str, data)) + "\n")
-                    self.log_step += 1
-
+                self.update_angles_from_points()
+                self.apply_calibration_to_angles()
+                self.send_angles_to_servos()
+                self.log_current_state()
             except Exception as e:
-                print("Exception during run():", e)
+            print("Exception during run():", e)
+        # Uncomment the next line to print execution time
+        # print(f"Time: {time.monotonic() - start:.2f} s")
         else:
             print("This coordinate point is out of the active range")
 
@@ -195,45 +212,68 @@ class Control:
     def map(self,value,fromLow,fromHigh,toLow,toHigh):
         return (toHigh-toLow)*(value-fromLow) / (fromHigh-fromLow) + toLow
     
-    def changeCoordinates(self,move_order,X1=0,Y1=96,Z1=0,X2=0,Y2=96,Z2=0,pos=np.mat(np.zeros((3, 4)))):  
-        if move_order == 'turnLeft':  
+    def set_leg_position(self, leg, x, y, z):
+        self.point[leg][self.X] = x
+        self.point[leg][self.Y] = y
+        self.point[leg][self.Z] = z
+
+    def changeCoordinates(self, move_order, X1=0, Y1=96, Z1=0, X2=0, Y2=96, Z2=0, pos=np.mat(np.zeros((3, 4)))):
+        """
+        Update self.point coordinates depending on movement type.
+        This will modify the leg positions for different movement behaviors.
+        """
+
+        if move_order == 'turnLeft':
             for i in range(2):
-                self.point[2*i][0]=((-1)**(1+i))*X1+10
-                self.point[2*i][1]=Y1
-                self.point[2*i][2]=((-1)**(i))*Z1+((-1)**i)*10
-                self.point[1+2*i][0]=((-1)**(1+i))*X2+10
-                self.point[1+2*i][1]=Y2
-                self.point[1+2*i][2]=((-1)**(1+i))*Z2+((-1)**i)*10
-        elif move_order == 'turnRight': 
+                leg1 = 2 * i
+                leg2 = 1 + 2 * i
+                x1 = ((-1)**(1+i)) * X1 + 10
+                y1 = Y1
+                z1 = ((-1)**i) * Z1 + ((-1)**i) * 10
+
+                x2 = ((-1)**(1+i)) * X2 + 10
+                y2 = Y2
+                z2 = ((-1)**(1+i)) * Z2 + ((-1)**i) * 10
+
+                self.set_leg_position(leg1, x1, y1, z1)
+                self.set_leg_position(leg2, x2, y2, z2)
+
+        elif move_order == 'turnRight':
             for i in range(2):
-                self.point[2*i][0]=((-1)**(i))*X1+10
-                self.point[2*i][1]=Y1
-                self.point[2*i][2]=((-1)**(1+i))*Z1+((-1)**i)*10
-                self.point[1+2*i][0]=((-1)**(i))*X2+10
-                self.point[1+2*i][1]=Y2
-                self.point[1+2*i][2]=((-1)**(i))*Z2+((-1)**i)*10
-        elif (move_order == 'height') or (move_order == 'horizon'):   
+                leg1 = 2 * i
+                leg2 = 1 + 2 * i
+                x1 = ((-1)**i) * X1 + 10
+                y1 = Y1
+                z1 = ((-1)**(1+i)) * Z1 + ((-1)**i) * 10
+
+                x2 = ((-1)**i) * X2 + 10
+                y2 = Y2
+                z2 = ((-1)**i) * Z2 + ((-1)**i) * 10
+
+                self.set_leg_position(leg1, x1, y1, z1)
+                self.set_leg_position(leg2, x2, y2, z2)
+
+        elif move_order in ['height', 'horizon']:
             for i in range(2):
-                self.point[3*i][0]=X1+10
-                self.point[3*i][1]=Y1
-                self.point[1+i][0]=X2+10
-                self.point[1+i][1]=Y2
-        elif move_order == 'Attitude Angle': 
+                self.set_leg_position(3*i, X1 + 10, Y1, self.point[3*i][self.Z])
+                self.set_leg_position(1+i, X2 + 10, Y2, self.point[1+i][self.Z])
+
+        elif move_order == 'Attitude Angle':
             for i in range(2):
-                self.point[3-i][0]=pos[0,1+2*i]+10
-                self.point[3-i][1]=pos[2,1+2*i]
-                self.point[3-i][2]=pos[1,1+2*i]      
-                self.point[i][0]=pos[0,2*i]+10
-                self.point[i][1]=pos[2,2*i]
-                self.point[i][2]=pos[1,2*i]
-        else: #'backWard' 'forWard' 'setpRight' 'setpLeft'
+                self.set_leg_position(3-i,
+                                      pos[0,1+2*i] + 10,
+                                      pos[2,1+2*i],
+                                      pos[1,1+2*i])
+                self.set_leg_position(i,
+                                      pos[0,2*i] + 10,
+                                      pos[2,2*i],
+                                      pos[1,2*i])
+
+        else:
             for i in range(2):
-                self.point[i*2][0]=X1+10
-                self.point[i*2][1]=Y1
-                self.point[i*2+1][0]=X2+10
-                self.point[i*2+1][1]=Y2
-                self.point[i*2][2]=Z1+((-1)**i)*10
-                self.point[i*2+1][2]=Z2+((-1)**i)*10
+                self.set_leg_position(i*2, X1 + 10, Y1, Z1 + ((-1)**i) * 10)
+                self.set_leg_position(i*2+1, X2 + 10, Y2, Z2 + ((-1)**i) * 10)
+
         self.run()
     
     def wait_for_next_tick(self, last_tick, tick_time):
@@ -249,7 +289,6 @@ class Control:
         self.clamp_speed()
         tick_time = 1.0 / self.speed
         tick = time.monotonic()
-        start = time.monotonic()
 
         if mode == "forWard":
             angle = 90
@@ -277,8 +316,6 @@ class Control:
 
             angle += step
             tick = self.wait_for_next_tick(tick, tick_time)
-
-        print(f"Time: {time.monotonic() - start:.2f} s")
 
     def forWard(self):
         self.move_forward_back("forWard")
