@@ -224,34 +224,16 @@ class Control:
         """
 
         if move_order == 'turnLeft':
-            for i in range(2):
-                leg1 = 2 * i
-                leg2 = 1 + 2 * i
-                x1 = ((-1)**(1+i)) * X1 + 10
-                y1 = Y1
-                z1 = ((-1)**i) * Z1 + ((-1)**i) * 10
-
-                x2 = ((-1)**(1+i)) * X2 + 10
-                y2 = Y2
-                z2 = ((-1)**(1+i)) * Z2 + ((-1)**i) * 10
-
-                self.set_leg_position(leg1, x1, y1, z1)
-                self.set_leg_position(leg2, x2, y2, z2)
+            self.set_leg_position(self.FL,  -X1 + 10, Y1,  Z1 + 10)
+            self.set_leg_position(self.RL,  -X2 + 10, Y2, -Z2 + 10)
+            self.set_leg_position(self.RR,   X1 + 10, Y1, -Z1 - 10)
+            self.set_leg_position(self.FR,   X2 + 10, Y2,  Z2 - 10)
 
         elif move_order == 'turnRight':
-            for i in range(2):
-                leg1 = 2 * i
-                leg2 = 1 + 2 * i
-                x1 = ((-1)**i) * X1 + 10
-                y1 = Y1
-                z1 = ((-1)**(1+i)) * Z1 + ((-1)**i) * 10
-
-                x2 = ((-1)**i) * X2 + 10
-                y2 = Y2
-                z2 = ((-1)**i) * Z2 + ((-1)**i) * 10
-
-                self.set_leg_position(leg1, x1, y1, z1)
-                self.set_leg_position(leg2, x2, y2, z2)
+            self.set_leg_position(self.FL,  X1 + 10, Y1, -Z1 + 10)
+            self.set_leg_position(self.RL,  X2 + 10, Y2,  Z2 + 10)
+            self.set_leg_position(self.RR, -X1 + 10, Y1, -Z1 - 10)
+            self.set_leg_position(self.FR, -X2 + 10, Y2, -Z2 - 10)
 
         elif move_order in ['height', 'horizon']:
             for i in range(2):
