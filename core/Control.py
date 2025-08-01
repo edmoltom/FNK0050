@@ -185,7 +185,7 @@ class Control:
                 self.send_angles_to_servos()
                 self.log_current_state()
             except Exception as e:
-            print("Exception during run():", e)
+                print("Exception during run():", e)
         # Uncomment the next line to print execution time
         # print(f"Time: {time.monotonic() - start:.2f} s")
         else:
@@ -285,43 +285,47 @@ class Control:
     def clamp_speed(self, min_val=MIN_SPEED_LIMIT, max_val=MAX_SPEED_LIMIT):
         self.speed = max(min_val, min(self.speed, max_val))
 
-    def move_forward_back(self, mode: str):
+    def step_move(self, axis: str, mode: str, direction: str):
+        # direction: 'positive' or 'negative'
+        # - for axis 'X': 'positive' = forward, 'negative' = backward
+        # - for axis 'Z': 'positive' = left,    'negative' = right
         self.clamp_speed()
         tick_time = 1.0 / self.speed
         tick = time.monotonic()
 
-        if mode == "forWard":
-            angle = 90
-            end_angle = 450
-            step = 3
-        elif mode == "backWard":
-            angle = 450
-            end_angle = 90
-            step = -3
+        angle = 90 if direction == 'positive' else 450
+        end_angle = 450 if direction == 'positive' else 90
+        step = 3 if direction == 'positive' else -3
 
         while (step > 0 and angle <= end_angle) or (step < 0 and angle >= end_angle):
             if self.stop_requested:
                 break
 
-            X1 = self.step_length * math.cos(math.radians(angle))
-            Y1 = self.step_height * math.sin(math.radians(angle)) + self.height
-            
-            X2 = self.step_length * math.cos(math.radians(angle + 180))
-            Y2 = self.step_height * math.sin(math.radians(angle + 180)) + self.height
+            primary_offset = self.step_length * math.cos(math.radians(angle))
+            secondary_offset = self.step_length * math.cos(math.radians(angle + 180))
+            y1 = self.step_height * math.sin(math.radians(angle)) + self.height
+            y2 = self.step_height * math.sin(math.radians(angle + 180)) + self.height
+            y1 = min(y1, self.height)
+            y2 = min(y2, self.height)
 
-            Y1 = min(Y1, self.height)
-            Y2 = min(Y2, self.height)
-
-            self.changeCoordinates(mode, X1, Y1, 0, X2, Y2, 0)
+            if axis == 'X':
+                self.changeCoordinates(mode, primary_offset, y1, 0, secondary_offset, y2, 0)
+            elif axis == 'Z':
+                self.changeCoordinates(mode, 0, y1, primary_offset, 0, y2, secondary_offset)
 
             angle += step
-            tick = self.wait_for_next_tick(tick, tick_time)
-
+    
     def forWard(self):
-        self.move_forward_back("forWard")
+        self.step_move('X', 'forWard', 'positive')
 
     def backWard(self):
-        self.move_forward_back("backWard")
+        self.step_move('X', 'backWard', 'negative')
+
+    def stepLeft(self):
+        self.step_move('Z', 'stepLeft', 'positive')
+
+    def stepRight(self):
+        self.step_move('Z', 'stepRight', 'negative')
     
     def turn(self, mode: str):
         self.clamp_speed()
@@ -368,48 +372,6 @@ class Control:
                 self.point[i][1]+=p[i][1]
                 self.point[i][2]+=p[i][2]
             self.run()
-    
-    def step(self, mode: str):
-        self.clamp_speed()
-        tick_time = 1.0 / self.speed
-        tick = time.monotonic()
-        start = time.monotonic()
-
-        if mode == "Left":
-            angle = 90
-            end_angle = 450
-            step_dir = 3
-        elif mode == "Right":
-            angle = 450
-            end_angle = 90
-            step_dir = -3
-        else:
-            print("Invalid step mode:", mode)
-            return
-
-        while (step_dir > 0 and angle <= end_angle) or (step_dir < 0 and angle >= end_angle):
-            if self.stop_requested:
-                break
-
-            Z1 = self.step_length * math.cos(math.radians(angle))
-            Y1 = self.step_height * math.sin(math.radians(angle)) + self.height
-            
-            Z2 = self.step_length * math.cos(math.radians(angle + 180))
-            Y2 = self.step_height * math.sin(math.radians(angle + 180)) + self.height
-
-            Y1 = min(Y1, self.height)
-            Y2 = min(Y2, self.height)
-
-            self.changeCoordinates(f"step{mode}", 0, Y1, Z1, 0, Y2, Z2)
-
-            angle += step_dir
-            tick = self.wait_for_next_tick(tick, tick_time)
-
-    def stepLeft(self):
-        self.step("Left")
-    
-    def stepRight(self):
-        self.step("Right")
     
     def relax(self,flag=False):
         if flag==True:
