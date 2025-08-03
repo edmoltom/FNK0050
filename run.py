@@ -9,7 +9,8 @@ for folder in ['core', 'lib', 'app']:
         sys.path.insert(0, folder_path)
 
 #from hello_world import main
-from test_gamepad import main  
+#from test_gamepad import main
+from test_camera import main  
 
 if __name__ == '__main__':
     main()
