@@ -10,7 +10,8 @@ for folder in ['core', 'lib', 'app']:
 
 #from hello_world import main
 #from test_gamepad import main
-from test_camera import main  
+#from test_camera import main
+from test_visual_perception import main  
 
 if __name__ == '__main__':
     main()
