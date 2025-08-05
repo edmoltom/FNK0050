@@ -1,5 +1,6 @@
 from picamera2 import Picamera2
 import cv2
+import base64
 
 class Camera:
     def __init__(self):
@@ -17,8 +18,18 @@ class Camera:
     def capture_array(self):
         self.picam2.start()
         frame = self.picam2.capture_array()
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         self.picam2.stop()
         return frame
+
+    def capture_encoded(self):
+        """
+        Captures an image and returns it encoded as a base64 (string) JPEG.
+        """
+        frame = self.capture_array()
+        _, buffer = cv2.imencode('.jpg', frame)
+        img_str = base64.b64encode(buffer).decode("utf-8")
+        return img_str
 
     def capture_structural_view(self, filename=None):
         """
