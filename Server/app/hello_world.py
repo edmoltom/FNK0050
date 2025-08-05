@@ -7,6 +7,5 @@ def main():
 
     action.hello()
 
-# Opcional, para ejecutar también directamente
 if __name__ == "__main__":
     main()

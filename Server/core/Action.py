@@ -42,17 +42,17 @@ class Action:
                 self.state = 'idle'
 
             elif self.state == 'turning_right':
-                #self.control.start_logging("turning_right_log.csv")
+                self.control.start_logging("turning_right_log.csv")
                 self.control.speed = self.current_speed   
                 self.control.turnRight()                             
-                #self.control.stop_logging()
+                self.control.stop_logging()
                 self.state = 'idle'
 
             elif self.state == 'turning_left':
-                #self.control.start_logging("turning_left_log.csv")
+                self.control.start_logging("turning_left_log.csv")
                 self.control.speed = self.current_speed   
                 self.control.turnLeft()                             
-                #self.control.stop_logging()
+                self.control.stop_logging()
                 self.state = 'idle'
 
             elif self.state == 'step_right':
