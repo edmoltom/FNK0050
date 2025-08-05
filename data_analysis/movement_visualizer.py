@@ -5,12 +5,11 @@ from matplotlib.widgets import Slider, Button
 from mpl_toolkits.mplot3d import Axes3D
 import time
 
-# --- Cargar datos ---
+# --- Load data ---
 base_path = os.path.dirname(os.path.abspath(__file__))
 csv_path = os.path.join(base_path, "turning_right_log.csv")
 df = pd.read_csv(csv_path)
 
-# Renombrar columnas
 df = df.rename(columns={
     "fl_x": "paw0_x", "fl_y": "paw0_y", "fl_z": "paw0_z",
     "rl_x": "paw1_x", "rl_y": "paw1_y", "rl_z": "paw1_z",
@@ -37,7 +36,7 @@ ax.set_zlim(-120, -60)
 ax.view_init(elev=20, azim=135)
 ax.set_title("Robot Movement — Stable Timing")
 
-# --- Sliders y botón ---
+# --- Sliders and button ---
 ax_slider = plt.axes([0.2, 0.25, 0.6, 0.03])
 frame_slider = Slider(ax_slider, 'Frame', 0, n_frames - 1, valinit=0, valstep=1)
 
@@ -68,13 +67,13 @@ def on_slider_change(val):
 
 frame_slider.on_changed(on_slider_change)
 
-# --- Reproducción controlada con timing real ---
+# --- Controlled playback ---
 def animate():
     while state["playing"] and state["current_frame"] < n_frames:
         update_plot(state["current_frame"])
         frame_slider.set_val(state["current_frame"])
         state["current_frame"] += 1
-        interval = 0.05 * (21 - speed_slider.val)  # más intuitivo: 1 rápido, 20 lento
+        interval = 0.05 * (21 - speed_slider.val)  
         plt.pause(interval)
 
     if state["current_frame"] >= n_frames:
