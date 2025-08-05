@@ -4,8 +4,8 @@ import websockets
 import json
 import base64
 
-async def main():
-    uri = "ws://192.168.1.135:8765"
+async def start_client():
+    uri = "ws://192.168.1.133:8765"
     async with websockets.connect(uri) as websocket:
         request = {
             "cmd": "capture",
@@ -23,4 +23,5 @@ async def main():
         else:
             print("Respuesta del servidor:", response_data)
 
-asyncio.run(main())
+def start_ws_client():
+    asyncio.run(start_client())
