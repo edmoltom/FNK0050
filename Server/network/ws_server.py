@@ -9,6 +9,7 @@ from PIL import Image
 from core.Camera import Camera
 
 camera = Camera()
+camera.start_periodic_capture(interval=1.0)
 
 async def handler(websocket):
     async for message in websocket:
@@ -16,7 +17,7 @@ async def handler(websocket):
             data = json.loads(message)
             cmd = data.get("cmd")
             if cmd == "capture":
-                img_str = camera.capture_encoded()
+                img_str = camera.get_last_processed_encoded()
                 response = {
                     "status": "ok",
                     "type": "image",
