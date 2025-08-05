@@ -6,17 +6,17 @@ import base64
 from io import BytesIO
 from PIL import Image
 
+from core.Camera import Camera
+
+camera = Camera()
+
 async def handler(websocket):
     async for message in websocket:
         try:
             data = json.loads(message)
             cmd = data.get("cmd")
             if cmd == "capture":
-                # Imagen de prueba en blanco de 100x100 píxeles
-                img = Image.new('RGB', (100, 100), color = (255, 255, 255))
-                buffered = BytesIO()
-                img.save(buffered, format="JPEG")
-                img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                img_str = camera.capture_encoded()
                 response = {
                     "status": "ok",
                     "type": "image",
@@ -37,9 +37,13 @@ async def handler(websocket):
             }))
 
 async def start_ws_server_async():
-    print("Servidor WebSocket escuchando en ws://0.0.0.0:8765 ...")
+
+    print("WebSocket listening in ws://0.0.0.0:8765 ...")
     async with websockets.serve(handler, "0.0.0.0", 8765):
-        await asyncio.Future()  # mantener el servidor corriendo
+        try:
+            await asyncio.Future()  # keep server running
+        except asyncio.CancelledError:
+            print("Server stopped with Ctrl+C.")
 
 def start_ws_server():
     asyncio.run(start_ws_server_async())
