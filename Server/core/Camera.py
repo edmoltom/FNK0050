@@ -12,9 +12,44 @@ class Camera:
                 main={"size": (640, 480)}
             )
         )
+        self._mode = "structural" 
         self._last_encoded_image = None
         self._streaming = False
         self._thread = None
+
+    def _process_mode(self, mode):
+        self.picam2.start()
+        frame = self.picam2.capture_array()
+        self.picam2.stop()
+
+        if mode == "original":
+            return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        elif mode == "blur":
+            blurred = cv2.GaussianBlur(frame, (9, 9), 3)
+            return cv2.cvtColor(blurred, cv2.COLOR_BGR2RGB)
+
+        elif mode == "edges":
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            edges = cv2.Canny(gray, 50, 150)
+            edges_rgb = cv2.cvtColor(edges, cv2.COLOR_GRAY2RGB)
+            return edges_rgb
+
+        elif mode == "contours":
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            blurred = cv2.GaussianBlur(gray, (5, 5), 1.4)
+            edges = cv2.Canny(blurred, 30, 100)
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            output = frame.copy()
+            cv2.drawContours(output, contours, -1, (0, 255, 0), 2)
+            return cv2.cvtColor(output, cv2.COLOR_BGR2RGB)
+
+        else:  # fallback
+            return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    def set_mode(self, mode):
+        self._mode = mode
+        print(f"[Camera] Mode set to: {mode}")
 
     def capture_image(self, filename="image.jpg"):
         self.picam2.start_and_capture_file(filename)
@@ -72,7 +107,7 @@ class Camera:
         def _capture_loop():
             while self._streaming:
                 try:
-                    frame = self.capture_structural_view()
+                    frame = self._process_mode(self._mode)
                     _, buffer = cv2.imencode('.jpg', frame)
                     self._last_encoded_image = base64.b64encode(buffer).decode("utf-8")
                 except Exception as e:

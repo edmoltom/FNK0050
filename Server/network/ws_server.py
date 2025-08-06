@@ -12,6 +12,9 @@ camera = Camera()
 camera.start_periodic_capture(interval=1.0)
 
 async def handler(websocket):
+
+    print("[WS] New client connected")
+    
     async for message in websocket:
         try:
             data = json.loads(message)
@@ -23,12 +26,20 @@ async def handler(websocket):
                     "type": "image",
                     "data": img_str
                 }
+            elif cmd == "set_mode":
+                mode = data.get("mode")
+                if mode:
+                    camera.set_mode(mode)
+                    response = {"status": "ok", "type": "text", "data": f"Mode set to {mode}"}
+                else:
+                    response = {"status": "error", "type": "text", "data": "No mode provided"}            
             else:
                 response = {
                     "status": "error",
                     "type": "text",
                     "data": f"Unknown command: {cmd}"
                 }
+                
             await websocket.send(json.dumps(response))
         except Exception as e:
             await websocket.send(json.dumps({
