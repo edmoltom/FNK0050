@@ -13,8 +13,8 @@ for folder in ['network', 'test_codes']:
   
 #from hello_world_gui import main
 #from test_ws_client import main
-#from test_stream_viewer import main
-from test_command_sender import main
+from test_stream_viewer import main
+#from test_command_sender import main
 
 
 if __name__ == '__main__':

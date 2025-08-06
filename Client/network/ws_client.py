@@ -1,27 +1,50 @@
-
 import asyncio
-import websockets
 import json
-import base64
+import threading
+import websockets
 
-async def start_client():
-    uri = "ws://192.168.1.133:8765"
-    async with websockets.connect(uri) as websocket:
-        request = {
-            "cmd": "capture",
-            "args": {}
-        }
-        await websocket.send(json.dumps(request))
-        response = await websocket.recv()
-        response_data = json.loads(response)
+class WebSocketClient:
+    def __init__(self, uri):
+        self.uri = uri
+        self.websocket = None
+        self.loop = asyncio.new_event_loop()
+        self.thread = threading.Thread(target=self._start_loop, daemon=True)
+        self.connected = False
+        self.lock = threading.Lock()
+        self.thread.start()
 
-        if response_data["status"] == "ok" and response_data["type"] == "image":
-            img_data = base64.b64decode(response_data["data"])
-            with open("output.jpg", "wb") as f:
-                f.write(img_data)
-            print("Imagen recibida y guardada como output.jpg")
-        else:
-            print("Respuesta del servidor:", response_data)
+    def _start_loop(self):
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
 
-def start_ws_client():
-    asyncio.run(start_client())
+    async def _connect(self):
+        try:
+            self.websocket = await websockets.connect(self.uri)
+            self.connected = True
+            print("[WebSocketClient] Connected.")
+        except Exception as e:
+            print(f"[WebSocketClient] Connection failed: {e}")
+            self.connected = False
+
+    async def _send_command(self, command):
+        if not self.connected:
+            await self._connect()
+        if not self.connected:
+            return None
+        try:
+            await self.websocket.send(json.dumps(command))
+            response = await self.websocket.recv()
+            return json.loads(response)
+        except Exception as e:
+            print(f"[WebSocketClient] Error during send/receive: {e}")
+            return None
+
+    def send_command(self, command):
+        future = asyncio.run_coroutine_threadsafe(self._send_command(command), self.loop)
+        return future.result(timeout=5)
+
+    def close(self):
+        if self.websocket:
+            close_future = asyncio.run_coroutine_threadsafe(self.websocket.close(), self.loop)
+            close_future.result(timeout=5)
+        self.loop.call_soon_threadsafe(self.loop.stop)
