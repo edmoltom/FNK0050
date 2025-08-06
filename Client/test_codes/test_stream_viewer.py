@@ -1,9 +1,8 @@
-from gui.stream_viewer import start_stream_viewer
+from gui.main_window import start_gui
 
 def main():
     print("Starting StreamViewer...")
-    start_stream_viewer()
-    
+    start_gui()
 
 if __name__ == "__main__":
     main()
