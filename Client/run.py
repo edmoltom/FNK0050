@@ -12,9 +12,9 @@ for folder in ['network', 'test_codes']:
         sys.path.insert(0, folder_path)
   
 #from hello_world_gui import main
-#from test_ws_client import main
-from test_stream_viewer import main
-#from test_command_sender import main
+from test_ws_ping import main
+#from test_ws_img_stream import main
+#from test_ws_command import main
 
 
 if __name__ == '__main__':

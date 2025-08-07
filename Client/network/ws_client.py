@@ -3,9 +3,11 @@ import json
 import threading
 import websockets
 
+SERVER_URI = "ws://192.168.1.133:8765"
+
 class WebSocketClient:
-    def __init__(self, uri):
-        self.uri = uri
+    def __init__(self):
+        self.uri = SERVER_URI
         self.websocket = None
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self._start_loop, daemon=True)
