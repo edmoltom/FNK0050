@@ -12,91 +12,47 @@ class Camera:
                 main={"size": (640, 480)}
             )
         )
-        self._mode = "structural" 
+        self._config = {} 
         self._last_encoded_image = None
         self._streaming = False
         self._thread = None
 
-    def _process_mode(self, mode):
-        self.picam2.start()
-        frame = self.picam2.capture_array()
-        self.picam2.stop()
-
-        if mode == "original":
-            return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        elif mode == "blur":
-            blurred = cv2.GaussianBlur(frame, (9, 9), 3)
-            return cv2.cvtColor(blurred, cv2.COLOR_BGR2RGB)
-
-        elif mode == "edges":
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            edges = cv2.Canny(gray, 50, 150)
-            edges_rgb = cv2.cvtColor(edges, cv2.COLOR_GRAY2RGB)
-            return edges_rgb
-
-        elif mode == "contours":
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            blurred = cv2.GaussianBlur(gray, (5, 5), 1.4)
-            edges = cv2.Canny(blurred, 30, 100)
-            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            output = frame.copy()
-            cv2.drawContours(output, contours, -1, (0, 255, 0), 2)
-            return cv2.cvtColor(output, cv2.COLOR_BGR2RGB)
-
-        else:  # fallback
-            return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    def set_mode(self, mode):
-        self._mode = mode
-        print(f"[Camera] Mode set to: {mode}")
-
-    def capture_image(self, filename="image.jpg"):
-        self.picam2.start_and_capture_file(filename)
-        print(f"[Camera] Image saved in {filename}")
+    def set_processing_config(self, config):
+        self._config = config
 
     def capture_array(self):
         self.picam2.start()
         frame = self.picam2.capture_array()
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         self.picam2.stop()
         return frame
 
-    def capture_encoded(self):
-        """
-        Captures an image and returns it encoded as a base64 (string) JPEG.
-        """
-        frame = self.capture_array()
-        _, buffer = cv2.imencode('.jpg', frame)
-        img_str = base64.b64encode(buffer).decode("utf-8")
-        return img_str
-
-    def capture_structural_view(self, filename=None):
-        """
-        Captures a structural view of the environment, emphasizing edges and closed contours.
-        Optionally saves the image with contours overlaid.
-        """
-        
+    def _apply_pipeline(self):
         self.picam2.start()
-        frame = self.picam2.capture_array()
+        frame = self.capture_array()
         self.picam2.stop()
-
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.GaussianBlur(gray, (5, 5), 1.4)
-        edges = cv2.Canny(blurred, 30, 100)  # Edge detection
-        dilated = cv2.dilate(edges, None)  # Strengthen edges
-
-        edges_bgr = cv2.cvtColor(dilated, cv2.COLOR_GRAY2BGR)  # Convert edges to 3-channel
-        combined = cv2.addWeighted(frame, 0.8, edges_bgr, 0.8, 0)  # Overlay edges on original
-
-        contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(combined, contours, -1, (0, 0, 255), 2)  # Draw all contours in blue (red before RGB conersion!)
         
-        combined = cv2.cvtColor(combined, cv2.COLOR_BGR2RGB)
-        
-        if filename:
-            cv2.imwrite(filename, combined)
-        return combined
+        if not self._config:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            return frame  
+
+        if self._config.get("blur", False):
+            frame = cv2.GaussianBlur(frame, (5, 5), 0)
+
+        if self._config.get("edges", False):
+            frame = cv2.Canny(frame, 50, 150)
+
+        if self._config.get("contours", False):
+            if len(frame.shape) == 3:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = frame
+            ret, thresh = cv2.threshold(gray, 127, 255, 0)
+            contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            contour_img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            cv2.drawContours(contour_img, contours, -1, (0, 255, 0), 2)
+            frame = contour_img
+
+        return frame
 
     def start_periodic_capture(self, interval=1.0):
         if self._streaming:
@@ -107,7 +63,7 @@ class Camera:
         def _capture_loop():
             while self._streaming:
                 try:
-                    frame = self._process_mode(self._mode)
+                    frame = self._apply_pipeline()
                     _, buffer = cv2.imencode('.jpg', frame)
                     self._last_encoded_image = base64.b64encode(buffer).decode("utf-8")
                 except Exception as e:

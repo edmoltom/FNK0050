@@ -32,13 +32,21 @@ async def handler(websocket):
                     "type": "text",
                     "data": "pong"
                 }
-            elif cmd == "set_mode":
-                mode = data.get("mode")
-                if mode:
-                    camera.set_mode(mode)
-                    response = {"status": "ok", "type": "text", "data": f"Mode set to {mode}"}
-                else:
-                    response = {"status": "error", "type": "text", "data": "No mode provided"}            
+            elif cmd == "capture":
+                img_str = camera.get_last_processed_encoded()
+                response = {
+                    "status": "ok",
+                    "type": "image",
+                    "data": img_str
+                }
+            elif cmd == "process":
+                config = {k: v for k, v in data.items() if k in ["blur", "edges", "contours"]}
+                camera.set_processing_config(config)
+                response = {
+                    "status": "ok",
+                    "type": "text",
+                    "data": "Processing config updated"
+                }            
             else:
                 response = {
                     "status": "error",
