@@ -4,9 +4,8 @@ import sys
 """
     Some examples:
         
-    {"cmd": "set_mode", "mode": "blur"} -> python run.py set_mode mode=blur 
-    {"cmd": "set_mode", "mode": "edges"}
-    {"cmd": "set_mode", "mode": "original"}
+    {"cmd": "procces", "blur": "true/false", "edges": "true/false", "contours": "true/false"   } 
+    e.g. \\ python run.py process blur=true edges=true
 
 """
 def main():
