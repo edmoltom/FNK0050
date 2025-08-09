@@ -48,3 +48,14 @@ Place your test image as `base.png` in the same folder as the script.
 Run:
 ```bash
 python vision_param_tuner.py
+
+Adjust sliders and switch between modes using the hotkeys above.
+Experiment with different combinations to see how parameters affect contour detection.
+
+Example
+Example screenshot with Canny mode enabled and tuned parameters:
+
+(You can add a screenshot here after running the tuner)
+
+Note: This is an educational tool meant for exploration and understanding of image processing concepts.
+It is not optimized for production use.
