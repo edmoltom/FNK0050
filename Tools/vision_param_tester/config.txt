@@ -1,7 +1,0 @@
-Mode: ADAPTIVE
-Threshold1: 50
-Threshold2: 150
-Blur: 4
-Min Area: 100
-Morph Kernel: 10
-Resize %: 66
