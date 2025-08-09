@@ -5,7 +5,7 @@ import sys
     Some examples:
         
     {"cmd": "procces", "blur": "true/false", "edges": "true/false", "contours": "true/false"   } 
-    e.g. \\ python run.py process blur=true edges=true
+    e.g. \\ python run.py process blur=true edges=true contours=true
 
 """
 def main():

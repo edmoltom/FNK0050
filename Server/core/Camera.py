@@ -1,4 +1,6 @@
 from picamera2 import Picamera2
+from core.vision.api import process_frame
+
 import cv2
 import base64
 import threading
@@ -27,30 +29,22 @@ class Camera:
         return frame
 
     def _apply_pipeline(self):
-        self.picam2.start()
-        frame = self.capture_array()
-        self.picam2.stop()
-        
-        if not self._config:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            return frame  
+        frame_rgb = self.capture_array()               # Picam2 -> RGB
+        frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)  # detector usa BGR
 
-        if self._config.get("blur", False):
-            frame = cv2.GaussianBlur(frame, (5, 5), 0)
+        res = process_frame(frame, return_overlay=False)
+        if res.get("ok"):
+            x, y, w, h = res["bbox"]
+            # bbox comes in 160x120 → scale to 640x480
+            sx = frame.shape[1] / 160.0
+            sy = frame.shape[0] / 120.0
+            x2, y2, w2, h2 = int(x*sx), int(y*sy), int(w*sx), int(h*sy)
 
-        if self._config.get("edges", False):
-            frame = cv2.Canny(frame, 50, 150)
-
-        if self._config.get("contours", False):
-            if len(frame.shape) == 3:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            else:
-                gray = frame
-            ret, thresh = cv2.threshold(gray, 127, 255, 0)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            contour_img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-            cv2.drawContours(contour_img, contours, -1, (0, 255, 0), 2)
-            frame = contour_img
+            cv2.rectangle(frame, (x2, y2), (x2+w2, y2+h2), (0,255,0), 2)
+            cx, cy = res["center"]
+            cv2.circle(frame, (int(cx*sx), int(cy*sy)), 4, (0,255,0), -1)
+            cv2.putText(frame, f"sc={res['score']:.2f}", (x2, max(18, y2-6)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
         return frame
 

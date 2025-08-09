@@ -12,8 +12,8 @@ for folder in ['network', 'test_codes']:
         sys.path.insert(0, folder_path)
   
 #from hello_world_gui import main
-from test_ws_ping import main
-#from test_ws_img_stream import main
+#from test_ws_ping import main
+from test_ws_img_stream import main
 #from test_ws_command import main
 
 
