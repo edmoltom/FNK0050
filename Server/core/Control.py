@@ -1,14 +1,10 @@
- # -*- coding: utf-8 -*-
 import time
 import os
 import math
-import smbus
-import copy
-import threading
-from IMU import *
-from PID import *
 import numpy as np
-from Servo import *
+from PID import Incremental_PID
+from movement.servo import Servo
+from sensing.IMU import IMU
 from Command import COMMAND as cmd
 
 class Control:
@@ -164,14 +160,11 @@ class Control:
     def log_current_state(self):
         if hasattr(self, 'log_enabled') and self.log_enabled:
             timestamp = time.time()
-            roll, pitch, yaw, accel_x, accel_y, accel_z = self.imu.imuUpdate()
-            data = [
-                timestamp,
-                self.log_step,
-                f"{roll:.2f}", f"{pitch:.2f}", f"{yaw:.2f}",
-                f"{accel_x:.4f}", f"{accel_y:.4f}", f"{accel_z:.4f}",
-                *[f"{coord:.2f}" for leg in self.point for coord in leg]
-            ]
+            pitch, roll, yaw, accel_x, accel_y, accel_z = self.imu.update_imu()
+            data = [timestamp, self.log_step,
+                    f"{roll:.2f}", f"{pitch:.2f}", f"{yaw:.2f}",
+                    f"{accel_x:.4f}", f"{accel_y:.4f}", f"{accel_z:.4f}",
+                    *[f"{coord:.2f}" for leg in self.point for coord in leg]]
             self.logfile.write(",".join(map(str, data)) + "\n")
             self.log_step += 1        
 
@@ -217,11 +210,16 @@ class Control:
         self.point[leg][self.Y] = y
         self.point[leg][self.Z] = z
 
-    def changeCoordinates(self, move_order, X1=0, Y1=96, Z1=0, X2=0, Y2=96, Z2=0, pos=np.mat(np.zeros((3, 4)))):
+    def changeCoordinates(self, move_order,
+                        X1=0, Y1=96, Z1=0, X2=0, Y2=96, Z2=0,
+                        pos=None):
         """
         Update self.point coordinates depending on movement type.
         This will modify the leg positions for different movement behaviors.
         """
+        if pos is None:
+            # 3x4 zero matrix (x,y,z rows; 4 legs as columns)
+            pos = np.mat(np.zeros((3, 4)))
 
         if move_order == 'turnLeft':
             self.set_leg_position(self.FL,  -X1 + 10, Y1,  Z1 + 10)
@@ -237,26 +235,21 @@ class Control:
 
         elif move_order in ['height', 'horizon']:
             for i in range(2):
-                self.set_leg_position(3*i, X1 + 10, Y1, self.point[3*i][self.Z])
-                self.set_leg_position(1+i, X2 + 10, Y2, self.point[1+i][self.Z])
+                self.set_leg_position(3*i,   X1 + 10, Y1, self.point[3*i][self.Z])
+                self.set_leg_position(1 + i, X2 + 10, Y2, self.point[1 + i][self.Z])
 
         elif move_order == 'Attitude Angle':
             for i in range(2):
-                self.set_leg_position(3-i,
-                                      pos[0,1+2*i] + 10,
-                                      pos[2,1+2*i],
-                                      pos[1,1+2*i])
-                self.set_leg_position(i,
-                                      pos[0,2*i] + 10,
-                                      pos[2,2*i],
-                                      pos[1,2*i])
+                self.set_leg_position(3 - i, pos[0, 1 + 2*i] + 10, pos[2, 1 + 2*i], pos[1, 1 + 2*i])
+                self.set_leg_position(i,     pos[0, 2*i] + 10,     pos[2, 2*i],     pos[1, 2*i])
 
         else:
             for i in range(2):
-                self.set_leg_position(i*2, X1 + 10, Y1, Z1 + ((-1)**i) * 10)
+                self.set_leg_position(i*2,   X1 + 10, Y1, Z1 + ((-1)**i) * 10)
                 self.set_leg_position(i*2+1, X2 + 10, Y2, Z2 + ((-1)**i) * 10)
 
         self.run()
+
     
     def wait_for_next_tick(self, last_tick, tick_time):
         next_tick = last_tick + tick_time
@@ -264,7 +257,9 @@ class Control:
         time.sleep(max(0, next_tick - now))
         return next_tick
 
-    def clamp_speed(self, min_val=MIN_SPEED_LIMIT, max_val=MAX_SPEED_LIMIT):
+    def clamp_speed(self, min_val=None, max_val=None):
+        if min_val is None: min_val = self.MIN_SPEED_LIMIT
+        if max_val is None: max_val = self.MAX_SPEED_LIMIT
         self.speed = max(min_val, min(self.speed, max_val))
 
     def step_move(self, axis: str, mode: str, direction: str):
@@ -283,12 +278,11 @@ class Control:
             if self.stop_requested:
                 break
 
-            primary_offset = self.step_length * math.cos(math.radians(angle))
+            primary_offset   = self.step_length * math.cos(math.radians(angle))
             secondary_offset = self.step_length * math.cos(math.radians(angle + 180))
             y1 = self.step_height * math.sin(math.radians(angle)) + self.height
             y2 = self.step_height * math.sin(math.radians(angle + 180)) + self.height
-            y1 = min(y1, self.height)
-            y2 = min(y2, self.height)
+            y1 = min(y1, self.height); y2 = min(y2, self.height)
 
             if axis == 'X':
                 self.changeCoordinates(mode, primary_offset, y1, 0, secondary_offset, y2, 0)
@@ -296,6 +290,7 @@ class Control:
                 self.changeCoordinates(mode, 0, y1, primary_offset, 0, y2, secondary_offset)
 
             angle += step
+            tick = self.wait_for_next_tick(tick, tick_time)  
     
     def forWard(self):
         self.step_move('X', 'forWard', 'positive')
@@ -386,25 +381,34 @@ class Control:
         self.changeCoordinates('Attitude Angle',pos=pos)
     
     def IMU6050(self):
-        self.balance_flag=True
-        self.order=['','','','','']
-        pos=self.postureBalance(0,0,0)
-        self.changeCoordinates('Attitude Angle',pos=pos)
+        self.balance_flag = True
+        self.order = ['', '', '', '', '']
+
+        pos = self.postureBalance(0, 0, 0)
+        self.changeCoordinates('Attitude Angle', pos=pos)
+
         time.sleep(2)
-        self.imu.Error_value_accel_data,self.imu.Error_value_gyro_data=self.imu.average_filter()
+        self.imu.Error_value_accel_data, self.imu.Error_value_gyro_data = self.imu.average_filter()
         time.sleep(1)
+
         while True:
-            r,p,y=self.imu.imuUpdate()
-            r=self.pid.PID_compute(r)
-            p=self.pid.PID_compute(p)
-            pos=self.postureBalance(r,p,0)
-            self.changeCoordinates('Attitude Angle',pos=pos)
-            if  (self.order[0]==cmd.CMD_BALANCE and self.order[1]=='0')or(self.balance_flag==True and self.order[0]!=''):
-                Thread_conditiona=threading.Thread(target=self.condition)
-                Thread_conditiona.start()
-                self.balance_flag==False
+            if self.stop_requested:
+                self.balance_flag = False
                 break
-    
+
+            # IMU -> PID -> postura
+            p, r, y = self.imu.update_imu()
+            r = self.pid.PID_compute(r)
+            p = self.pid.PID_compute(p)
+            pos = self.postureBalance(r, p, 0)
+            self.changeCoordinates('Attitude Angle', pos=pos)
+
+            # Mismo criterio de salida que el viejo, pero sin hilo a condition()
+            if ((self.order[0] == cmd.CMD_BALANCE and self.order[1] == '0')
+                or (self.balance_flag and self.order[0] != '')):
+                self.balance_flag = False    # ← era '==' en el viejo
+                break
+
     def postureBalance(self,r,p,y,h=1):
         b = 76
         w = 76

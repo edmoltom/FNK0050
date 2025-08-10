@@ -1,9 +1,8 @@
-import math
 import threading
 import time
 
-from Control import *
-from Servo import *
+from Control import Control
+from movement.servo import Servo
 
 class Action:
 
