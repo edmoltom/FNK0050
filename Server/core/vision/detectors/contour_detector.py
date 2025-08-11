@@ -1,4 +1,3 @@
-
 import os, json, time
 from dataclasses import dataclass
 from typing import Optional, Tuple, Dict, Any, Union
@@ -20,13 +19,25 @@ def _adaptive_thresh(gray: NDArray) -> NDArray:
         gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 11, 2
     )
 
+def _despeckle(bin_img: NDArray, min_px: int) -> NDArray:
+    """Remove connected components smaller than min_px (0/255 image)."""
+    if min_px <= 0:
+        return bin_img
+    lab = (bin_img > 0).astype("uint8")
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(lab, 8)
+    keep = np.zeros_like(bin_img)
+    for i in range(1, num):
+        if stats[i, cv2.CC_STAT_AREA] >= min_px:
+            keep[labels == i] = 255
+    return keep
+
 @dataclass
 class MorphConfig:
     close_min: int = 3
-    close_max: int = 15
+    close_max: int = 21   # was 15
     dil_min: int = 3
-    dil_max: int = 11
-    steps: int = 6
+    dil_max: int = 15     # was 11
+    steps: int = 10       # was 6
 
 @dataclass
 class CannyConfig:
@@ -43,16 +54,16 @@ class GeoFilters:
     ar_min: float = 0.40
     ar_max: float = 2.20
     bbox_hard_cap: float = 0.50
-    bbox_min: float = 0.05
+    bbox_min: float = 0.18   # was 0.05 → fuerza cuerpo
     bbox_max: float = 0.35
     fill_min: float = 0.60
     fill_max: float = 0.95
-    min_area_frac: float = 0.01
+    min_area_frac: float = 0.03  # was 0.01
 
 @dataclass
 class Weights:
-    area: float = 0.25
-    fill: float = 0.20
+    area: float = 0.35   # + área
+    fill: float = 0.15   # - fill
     solidity: float = 0.20
     circular: float = 0.10
     rect: float = 0.15
@@ -66,6 +77,12 @@ class ProcConfig:
     proc_h: int = 120
     blur_k: int = 5
     border_margin: int = 6
+
+@dataclass
+class PreMorphPatches:
+    bottom_margin_pct: int = 20  # 0..40 sensato
+    min_blob_px: int = 100       # despeckle previo
+    fill_from_edges: bool = True # rellenar contornos antes de morfología
 
 @dataclass
 class DetectionResult:
@@ -83,8 +100,10 @@ class DetectionResult:
 
 class ContourDetector:
     """
-    Refactor of the stable (160x120) contour-based object selection pipeline.
-    Same defaults/behavior as el script estable, pero en clase modular.
+    Stable 160x120 contour pipeline + minimal pre-morph patches:
+    - bottom crop (floor/cable)
+    - despeckle (remove tiny blobs)
+    - fill-from-edges (turn strokes into solid regions)
     """
     def __init__(
         self,
@@ -93,12 +112,14 @@ class ContourDetector:
         morph: MorphConfig = MorphConfig(),
         geo: GeoFilters = GeoFilters(),
         w: Weights = Weights(),
+        premorph: PreMorphPatches = PreMorphPatches()
     ) -> None:
         self.proc = proc
         self.canny_cfg = canny
         self.morph_cfg = morph
         self.geo = geo
         self.w = w
+        self.premorph = premorph
 
     # ----------------------------- Public API -----------------------------
     def detect(
@@ -138,8 +159,26 @@ class ContourDetector:
             cv2.imwrite(os.path.join(save_dir, f"{stamp}_original.png"), img)
             cv2.imwrite(os.path.join(save_dir, f"{stamp}_proc.png"), proc)
 
+        # ----- Pre-morph patches (NEW) -----
+        H, W = edges.shape[:2]
+        edges2 = edges.copy()
+        crop = int(max(0, min(40, self.premorph.bottom_margin_pct)) * H / 100.0)
+        if crop > 0:
+            edges2[-crop:, :] = 0
+
+        edges2 = _despeckle(edges2, int(self.premorph.min_blob_px))
+
+        if self.premorph.fill_from_edges:
+            filled = np.zeros_like(edges2)
+            cnts, _ = cv2.findContours(edges2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(filled, cnts, -1, 255, thickness=cv2.FILLED)
+            edges2 = filled
+
+        if save_dir is not None:
+            cv2.imwrite(os.path.join(save_dir, f"{stamp}_edges_patched.png"), edges2)
+
         # ----- Main selection -----
-        best, e_used = self._try_with_margins(edges)
+        best, e_used = self._try_with_margins(edges2)
         if save_dir is not None:
             cv2.imwrite(os.path.join(save_dir, f"{stamp}_edges_used.png"), e_used)
 
@@ -177,6 +216,11 @@ class ContourDetector:
             prof = self._make_profile(info, t1, t2, stamp, os.path.basename(str(img_or_path)))
             prof["params"]["morph"]["chosen_ck"] = int(chosen_ck)
             prof["params"]["morph"]["chosen_dk"] = int(chosen_dk)
+            prof["params"]["patched"] = {
+                "bottom_margin_pct": int(self.premorph.bottom_margin_pct),
+                "min_blob_px": int(self.premorph.min_blob_px),
+                "fill_from_edges": bool(self.premorph.fill_from_edges),
+            }
             prof["metrics"]["life_canny_%"] = float(result.life_canny_pct)
             prof["metrics"]["used_rescue"] = bool(result.used_rescue)
             with open(os.path.join(save_dir, f"{stamp}_profile.json"), "w", encoding="utf-8") as f:
@@ -314,7 +358,7 @@ class ContourDetector:
             info = self._select_best(m, min_area_px, W, H, self.geo.bbox_hard_cap)
             if info is None:
                 ck = min(self.morph_cfg.close_max, ck + 2)
-                dk = min(self.morph_cfg.dil_max, dk + 1)
+                dk = min(self.morph_cfg.dil_max, dk + 2)   # un paso más agresivo
                 opening = True
                 continue
 
@@ -323,7 +367,7 @@ class ContourDetector:
                 break
             if (info["fill"] < self.geo.fill_min) or (info["bbox_ratio"] < self.geo.bbox_min):
                 ck = min(self.morph_cfg.close_max, ck + 2)
-                dk = min(self.morph_cfg.dil_max, dk + 1)
+                dk = min(self.morph_cfg.dil_max, dk + 2)
             elif (info["fill"] > self.geo.fill_max) or (info["bbox_ratio"] > self.geo.bbox_max):
                 dk = max(self.morph_cfg.dil_min, dk - 2)
                 ck = max(self.morph_cfg.close_min, ck - 1)
@@ -353,7 +397,7 @@ class ContourDetector:
 
     def _make_profile(self, info: Dict[str, Any], t1: float, t2: int, stamp: str, image_name: str):
         return {
-            "algo": "canny(P)->rescue(thresh OR)->morph+shape_score",
+            "algo": "canny(P)->rescue(thresh OR)->premorph(crop+despeckle+fill)->morph+shape_score",
             "input": {"image": image_name, "proc_size": [self.proc.proc_w, self.proc.proc_h]},
             "params": {
                 "blur_k": self.proc.blur_k,
@@ -364,9 +408,10 @@ class ContourDetector:
                 "morph": {
                     "targets": {"bbox_ratio": [self.geo.bbox_min, self.geo.bbox_max], "fill_ratio": [self.geo.fill_min, self.geo.fill_max]},
                     "border_margin": self.proc.border_margin,
-                    "hard_cap": self.geo.bbox_hard_cap
+                    "hard_cap": self.geo.bbox_hard_cap,
+                    "limits": {"close_max": self.morph_cfg.close_max, "dil_max": self.morph_cfg.dil_max, "steps": self.morph_cfg.steps}
                 },
-                "filters": {"ar_range": [self.geo.ar_min, self.geo.ar_max]},
+                "filters": {"ar_range": [self.geo.ar_min, self.geo.ar_max], "min_area_frac": self.geo.min_area_frac},
                 "weights": {
                     "area": self.w.area, "fill": self.w.fill, "solidity": self.w.solidity,
                     "circular": self.w.circular, "rect": self.w.rect, "ar": self.w.ar, "center_bias": self.w.center_bias
@@ -399,7 +444,7 @@ def run_file(image_path: str, out_dir: Optional[str] = "results"):
 
 if __name__ == "__main__":
     import argparse
-    p = argparse.ArgumentParser(description="Contour-based detector (stable 160x120 pipeline)")
+    p = argparse.ArgumentParser(description="Contour-based detector (stable 160x120 pipeline + premorph patches)")
     p.add_argument("image", help="Path to input image (e.g., base.png)")
     p.add_argument("--out", default="results", help="Output directory for artifacts")
     args = p.parse_args()
