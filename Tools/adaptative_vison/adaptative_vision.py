@@ -1,9 +1,6 @@
 """
-Adaptive Vision (refactor)
 --------------------------
-This script keeps the exact logic and parameters of the original
-`adaptative_vision.py`, but reorganizes the code for readability and
-adds English comments/docstrings. It:
+It:
 - Loads an input image (IMG_PATH)
 - Downscales to PROC_W x PROC_H and blurs
 - Runs auto-tuned Canny (using a simple proportional control on edge density)
@@ -12,8 +9,6 @@ adds English comments/docstrings. It:
 - Selects the best contour using geometric filters and a weighted score
 - Writes debug images and a JSON profile with key metrics
 
-NOTE: Logic is intentionally unchanged; only structure and naming/commenting
-have been improved for clarity.
 """
 
 import os
@@ -24,7 +19,7 @@ import numpy as np
 
 # ---------- Paths ----------
 BASE = os.path.dirname(os.path.abspath(__file__))
-IMG_PATH = os.path.join(BASE, "test.png")   # or your test*.png
+IMG_PATH = os.path.join(BASE, "base2.png")   # or your test*.png
 RES_DIR  = os.path.join(BASE, "results"); os.makedirs(RES_DIR, exist_ok=True)
 stamp = time.strftime("%Y%m%d_%H%M%S")
 
@@ -42,12 +37,12 @@ RESCUE_life_MIN = 3.0                # if below this, rescue with adaptive thres
 Kp, MAX_ITER = 4.0, 25
 
 # Morphology (auto-steps)
-CLOSE_MIN, CLOSE_MAX = 3, 15
-DIL_MIN,   DIL_MAX   = 3, 11
-MORPH_STEPS          = 6
-BBOX_MIN, BBOX_MAX   = 0.05, 0.35
+CLOSE_MIN, CLOSE_MAX = 3, 21
+DIL_MIN,   DIL_MAX   = 3, 15
+MORPH_STEPS          = 10
+BBOX_MIN, BBOX_MAX   = 0.18, 0.35
 FILL_MIN, FILL_MAX   = 0.60, 0.95
-MIN_AREA_FRAC        = 0.01
+MIN_AREA_FRAC        = 0.03
 
 # Geometric filters & scoring
 AR_MIN, AR_MAX       = 0.40, 2.20
@@ -56,13 +51,17 @@ BBOX_GROW_CAP        = 1.60
 CENTER_BIAS          = 0.25   # 0..1 (lower = less bias to center)
 
 # Score weights (sum approx. 1.0)
-W_AREA = 0.25
-W_FILL = 0.20
+W_AREA = 0.35
+W_FILL = 0.15
 W_SOLI = 0.20
 W_CIRC = 0.10
 W_RECT = 0.15
 W_AR   = 0.10
 W_DIST = 0.20 * CENTER_BIAS   # subtracted
+
+# ---------- Minimal new knobs ----------
+BOTTOM_MARGIN_PCT = 20   # % of image height to ignore from bottom 0..40 sensible
+MIN_BLOB_PX       = 100  # remove connected components smaller than this before morphology
 
 # ---------- Small helpers ----------
 def odd(k: int) -> int:
@@ -77,6 +76,17 @@ def adaptive_thresh(gray):
     """Adaptive threshold (mean) with inverted binary output."""
     return cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
                                  cv2.THRESH_BINARY_INV, 11, 2)
+
+def despeckle(bin_img, min_px: int):
+    """Remove connected components smaller than min_px from a binary (0/255) image."""
+    if min_px <= 0:
+        return bin_img
+    num, labels, stats, _ = cv2.connectedComponentsWithStats((bin_img > 0).astype('uint8'), 8)
+    keep = np.zeros_like(bin_img)
+    for i in range(1, num):
+        if stats[i, cv2.CC_STAT_AREA] >= min_px:
+            keep[labels == i] = 255
+    return keep
 
 def run_morph(edges, ck: int, dk: int, opening: bool = False):
     """Apply optional opening, then close, then dilate with given kernel sizes."""
@@ -196,12 +206,25 @@ if pct_on(canny) < RESCUE_life_MIN:
     edges = cv2.bitwise_or(canny, th); used_rescue = True
     cv2.imwrite(os.path.join(RES_DIR, f"{stamp}_thresc.png"), th)
 
+# ---------- NEW: bottom crop + despeckle BEFORE morphology ----------
+H, W = edges.shape[:2]
+crop = int(max(0, min(40, BOTTOM_MARGIN_PCT)) * H / 100.0)
+edges2 = edges.copy()
+if crop > 0:
+    edges2[-crop:, :] = 0
+edges2 = despeckle(edges2, int(MIN_BLOB_PX))
+filled = np.zeros_like(edges2)
+cnts,_ = cv2.findContours(edges2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+cv2.drawContours(filled, cnts, -1, 255, thickness=cv2.FILLED)
+edges2 = filled
+cv2.imwrite(os.path.join(RES_DIR, f"{stamp}_edges_patched.png"), edges2)
+
 def process_with_margin(margin: int):
     """
     Apply a border margin (zero out borders), then run the morphology loop
     and select the best candidate. Returns (best_tuple, edges_used).
     """
-    e = edges.copy()
+    e = edges2.copy()  # use patched edges
     if margin > 0:
         e[:margin, :] = 0; e[-margin:, :] = 0; e[:, :margin] = 0; e[:, -margin:] = 0
     cv2.imwrite(os.path.join(RES_DIR, f"{stamp}_edges_m{margin}.png"), e)
@@ -217,7 +240,7 @@ def process_with_margin(margin: int):
         m = run_morph(e, ck, dk, opening=opening)
         info = select_best(m, min_area_px, W, H, hard_cap=BBOX_HARD_CAP)
         if info is None:
-            ck = min(CLOSE_MAX, ck + 2); dk = min(DIL_MAX, dk + 1); opening = True; continue
+            ck = min(CLOSE_MAX, ck + 2); dk = min(DIL_MAX, dk + 2); opening = True; continue
         print(f"[Morph {step}] ck={ck} dk={dk} bbox={info['bbox_ratio']:.3f} "
               f"fill={info['fill']:.2f} score={info['score']:.3f}")
         best = (m, info, ck, dk)
@@ -226,7 +249,7 @@ def process_with_margin(margin: int):
             break
         # soft rules
         if (info["fill"] < FILL_MIN) or (info["bbox_ratio"] < BBOX_MIN):
-            ck = min(CLOSE_MAX, ck + 2); dk = min(DIL_MAX, dk + 1)
+            ck = min(CLOSE_MAX, ck + 2); dk = min(DIL_MAX, dk + 2)
         elif (info["fill"] > FILL_MAX) or (info["bbox_ratio"] > BBOX_MAX):
             dk = max(DIL_MIN, dk - 2); ck = max(CLOSE_MIN, ck - 1); opening = True
     return best, e
@@ -259,11 +282,12 @@ else:
     cv2.imwrite(os.path.join(RES_DIR, f"{stamp}_overlay.png"), overlay)
 
     profile = {
-      "algo": "canny(P)->rescue(thresh OR)->morph+shape_score",
+      "algo": "canny(P)->rescue(if low)->bottom-crop+despeckle->morph+shape_score",
       "input": {"image": os.path.basename(IMG_PATH), "proc_size": [PROC_W, PROC_H]},
       "params": {
         "blur_k": BLUR_K, "t1": int(t1), "t2": int(np.clip(T2_RATIO * t1, 0, 255)),
         "life_target_range": [life_MIN, life_MAX], "rescue_threshold_min": RESCUE_life_MIN,
+        "patched": {"bottom_margin_pct": BOTTOM_MARGIN_PCT, "min_blob_px": MIN_BLOB_PX},
         "morph": {"chosen_ck": int(chosen_ck), "chosen_dk": int(chosen_dk),
                   "targets": {"bbox_ratio": [BBOX_MIN, BBOX_MAX], "fill_ratio": [FILL_MIN, FILL_MAX]},
                   "border_margin": BORDER_MARGIN, "hard_cap": BBOX_HARD_CAP},
