@@ -1,0 +1,72 @@
+<mxfile host="app.diagrams.net" modified="2025-08-11 20:11:00" agent="python" version="20.6.3" editor="5.0" type="device">
+
+  <diagram id="pipeline" name="1) ContourDetector Pipeline">
+    <mxGraphModel dx="1584" dy="897" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="n_input" value="Input: Frame BGR / Path" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="60" y="80" width="230" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="n_pre" value="Preprocess&#10;• resize to (proc_w, proc_h)&#10;• gray&#10;• Gaussian blur (k odd)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="330" y="80" width="260" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="n_canny" value="Auto Canny (life in [life_min, life_max])&#10;• iterate t1&#10;• t2 = ratio*t1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="630" y="60" width="280" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="n_rescue" value="Rescue if life &lt; rescue_life_min&#10;• Adaptive threshold (MEAN_C)&#10;• edges = canny OR thresh" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="630" y="160" width="280" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="n_color" value="Color Gate (optional)&#10;• mode: hsv | lab_bg&#10;• cover sanity: [min%, max%]&#10;• combine: OR / AND" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="950" y="100" width="300" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="n_premorph" value="Pre‑morph patches&#10;• bottom crop (% H)&#10;• despeckle (min_blob_px)&#10;• fill_from_edges (contour fill)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="1290" y="90" width="300" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="n_morph" value="Morph loop (steps)&#10;• CLOSE(ck) + DILATE(dk) + optional OPEN&#10;• try margins (border_margin &gt; 0 then 0)&#10;• adjust ck/dk based on fill &amp; bbox_ratio" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="60" y="260" width="420" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="n_select" value="Select best contour&#10;• filters: ar in [ar_min, ar_max], min_area_frac, bbox hard cap&#10;• features: area, per, solidity, circularity, rectangularity, ar, fill, bbox_ratio&#10;• score: weighted + center bias" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="520" y="260" width="520" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="n_output" value="Output DetectionResult&#10;• ok, bbox, center, score, fill, bbox_ratio&#10;• life_canny%&#10;• overlay/masks&#10;• profile snapshot (JSON)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="260" width="360" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="n_input" target="n_pre"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="n_pre" target="n_canny"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="n_canny" target="n_rescue"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="n_rescue" target="n_color"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="n_color" target="n_premorph"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="n_premorph" target="n_morph"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="n_morph" target="n_select"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="n_select" target="n_output"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="temporal" name="2) Temporal API (ROI + EMA + Hysteresis)">
+    <mxGraphModel dx="1584" dy="897" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="t_intro" value="process_frame(frame)&#10;• Ensure detectors (BIG/SMALL, profiles)&#10;• State: last_bbox, score_ema, miss_count" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="60" y="60" width="480" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="t_step" value="_step(det, state)&#10;1) No state/stable OFF ⇒ global detect&#10;   EMA(score) → ON if ≥ on_th&#10;2) Latched ⇒ ROI detect (roi_factor)&#10;   keep if EMA ≥ off_th else miss++&#10;3) miss_count ≥ miss_m ⇒ reset → global" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="580" y="40" width="640" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="t_choice" value="BIG ok? ⇒ return&#10;SMALL ok? ⇒ return&#10;else max(score)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="60" width="300" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="t_knobs" value="Knobs&#10;on_th/off_th, miss_m&#10;roi_factor, ema&#10;profiles.big/small" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="60" y="220" width="300" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="t_output" value="Output: ok, bbox, center&#10;score(ema), life, space, overlay" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="400" y="220" width="300" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="t_intro" target="t_step"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="t_step" target="t_choice"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

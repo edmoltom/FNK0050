@@ -1,5 +1,6 @@
+
 import os, json, time
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Optional, Tuple, Dict, Any, Union
 
 import cv2
@@ -7,6 +8,7 @@ import numpy as np
 
 NDArray = np.ndarray
 
+# ----------------------- small helpers -----------------------
 def _odd(k: int) -> int:
     k = int(k)
     return k if (k % 2 == 1) else k + 1
@@ -20,7 +22,7 @@ def _adaptive_thresh(gray: NDArray) -> NDArray:
     )
 
 def _despeckle(bin_img: NDArray, min_px: int) -> NDArray:
-    """Remove connected components smaller than min_px (0/255 image)."""
+    "Remove connected components smaller than min_px (expects 0/255 image)."
     if min_px <= 0:
         return bin_img
     lab = (bin_img > 0).astype("uint8")
@@ -31,13 +33,17 @@ def _despeckle(bin_img: NDArray, min_px: int) -> NDArray:
             keep[labels == i] = 255
     return keep
 
+def _clip01(x: float) -> float:
+    return float(max(0.0, min(1.0, x)))
+
+# ----------------------- configs -----------------------
 @dataclass
 class MorphConfig:
     close_min: int = 3
-    close_max: int = 21   # was 15
+    close_max: int = 21
     dil_min: int = 3
-    dil_max: int = 15     # was 11
-    steps: int = 10       # was 6
+    dil_max: int = 15
+    steps: int = 10
 
 @dataclass
 class CannyConfig:
@@ -54,22 +60,22 @@ class GeoFilters:
     ar_min: float = 0.40
     ar_max: float = 2.20
     bbox_hard_cap: float = 0.50
-    bbox_min: float = 0.18   # was 0.05 → fuerza cuerpo
+    bbox_min: float = 0.18
     bbox_max: float = 0.35
     fill_min: float = 0.60
     fill_max: float = 0.95
-    min_area_frac: float = 0.03  # was 0.01
+    min_area_frac: float = 0.03
 
 @dataclass
 class Weights:
-    area: float = 0.35   # + área
-    fill: float = 0.15   # - fill
+    area: float = 0.35
+    fill: float = 0.15
     solidity: float = 0.20
     circular: float = 0.10
     rect: float = 0.15
     ar: float = 0.10
-    center_bias: float = 0.25
-    dist: float = 0.20
+    center_bias: float = 0.25      # factor applied to dist
+    dist: float = 0.20             # distance weight
 
 @dataclass
 class ProcConfig:
@@ -80,9 +86,20 @@ class ProcConfig:
 
 @dataclass
 class PreMorphPatches:
-    bottom_margin_pct: int = 20  # 0..40 sensato
-    min_blob_px: int = 100       # despeckle previo
-    fill_from_edges: bool = True # rellenar contornos antes de morfología
+    bottom_margin_pct: int = 20  # crop bottom X% before morph
+    min_blob_px: int = 100       # despeckle
+    fill_from_edges: bool = True # fill strokes to regions
+
+@dataclass
+class ColorGateConfig:
+    enabled: bool = False
+    mode: str = "lab_bg"        # 'lab_bg' or 'hsv'
+    ab_thresh: int = 22         # Lab distance from global background (a,b)
+    hsv_lo: Tuple[int,int,int] = (5, 80, 40)   # H,S,V (0..179,0..255,0..255)
+    hsv_hi: Tuple[int,int,int] = (30, 255, 255)
+    combine: str = "OR"         # 'OR' or 'AND' with edges
+    min_cover_pct: float = 0.5  # ignore if mask <0.5% or >60% of frame
+    max_cover_pct: float = 60.0
 
 @dataclass
 class DetectionResult:
@@ -98,13 +115,9 @@ class DetectionResult:
     center: Optional[Tuple[int, int]] = None
     overlay: Optional[NDArray] = None
 
+# ----------------------- detector -----------------------
 class ContourDetector:
-    """
-    Stable 160x120 contour pipeline + minimal pre-morph patches:
-    - bottom crop (floor/cable)
-    - despeckle (remove tiny blobs)
-    - fill-from-edges (turn strokes into solid regions)
-    """
+    "Contour pipeline + pre-morph patches + optional color-gate + JSON profiles."
     def __init__(
         self,
         proc: ProcConfig = ProcConfig(),
@@ -112,7 +125,8 @@ class ContourDetector:
         morph: MorphConfig = MorphConfig(),
         geo: GeoFilters = GeoFilters(),
         w: Weights = Weights(),
-        premorph: PreMorphPatches = PreMorphPatches()
+        premorph: PreMorphPatches = PreMorphPatches(),
+        color: ColorGateConfig = ColorGateConfig(),
     ) -> None:
         self.proc = proc
         self.canny_cfg = canny
@@ -120,6 +134,37 @@ class ContourDetector:
         self.geo = geo
         self.w = w
         self.premorph = premorph
+        self.color = color
+
+    # -------- profile I/O --------
+    @staticmethod
+    def from_profile(path: str) -> "ContourDetector":
+        with open(path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        def merge(datacls, key):
+            d = cfg.get(key, {})
+            return datacls(**{**asdict(datacls()), **d})
+        det = ContourDetector(
+            proc=merge(ProcConfig, "proc"),
+            canny=merge(CannyConfig, "canny"),
+            morph=merge(MorphConfig, "morph"),
+            geo=merge(GeoFilters, "geo"),
+            w=merge(Weights, "weights"),
+            premorph=merge(PreMorphPatches, "premorph"),
+            color=merge(ColorGateConfig, "color_gate"),
+        )
+        return det
+
+    def to_profile_dict(self) -> Dict[str, Any]:
+        return {
+            "proc": asdict(self.proc),
+            "canny": asdict(self.canny_cfg),
+            "morph": asdict(self.morph_cfg),
+            "geo": asdict(self.geo),
+            "weights": asdict(self.w),
+            "premorph": asdict(self.premorph),
+            "color_gate": asdict(self.color),
+        }
 
     # ----------------------------- Public API -----------------------------
     def detect(
@@ -159,7 +204,23 @@ class ContourDetector:
             cv2.imwrite(os.path.join(save_dir, f"{stamp}_original.png"), img)
             cv2.imwrite(os.path.join(save_dir, f"{stamp}_proc.png"), proc)
 
-        # ----- Pre-morph patches (NEW) -----
+        # ----- Color gate (optional) -----
+        color_mask = None
+        color_cover = 0.0
+        color_used = False
+        if self.color.enabled:
+            color_mask = self._color_gate(proc)
+            color_cover = _pct_on(color_mask)
+            # sanity check: ignore if too small/too big
+            if (color_cover < self.color.min_cover_pct) or (color_cover > self.color.max_cover_pct):
+                color_mask = None
+            else:
+                color_used = True
+            if save_dir is not None:
+                cv2.imwrite(os.path.join(save_dir, f"{stamp}_color_mask.png"),
+                            color_mask if color_mask is not None else np.zeros_like(edges))
+
+        # ----- Pre-morph patches -----
         H, W = edges.shape[:2]
         edges2 = edges.copy()
         crop = int(max(0, min(40, self.premorph.bottom_margin_pct)) * H / 100.0)
@@ -173,6 +234,17 @@ class ContourDetector:
             cnts, _ = cv2.findContours(edges2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(filled, cnts, -1, 255, thickness=cv2.FILLED)
             edges2 = filled
+
+        # apply same crop/despeckle to color and combine
+        if color_mask is not None:
+            cm = color_mask.copy()
+            if crop > 0:
+                cm[-crop:, :] = 0
+            cm = _despeckle(cm, int(self.premorph.min_blob_px // 2))
+            if self.color.combine.upper() == "AND":
+                edges2 = cv2.bitwise_and(edges2, cm)
+            else:
+                edges2 = cv2.bitwise_or(edges2, cm)
 
         if save_dir is not None:
             cv2.imwrite(os.path.join(save_dir, f"{stamp}_edges_patched.png"), edges2)
@@ -212,17 +284,22 @@ class ContourDetector:
             overlay=overlay if return_overlay else None,
         )
 
+        # ---- save profile snapshot ----
         if save_dir is not None and save_profile:
-            prof = self._make_profile(info, t1, t2, stamp, os.path.basename(str(img_or_path)))
-            prof["params"]["morph"]["chosen_ck"] = int(chosen_ck)
-            prof["params"]["morph"]["chosen_dk"] = int(chosen_dk)
-            prof["params"]["patched"] = {
-                "bottom_margin_pct": int(self.premorph.bottom_margin_pct),
-                "min_blob_px": int(self.premorph.min_blob_px),
-                "fill_from_edges": bool(self.premorph.fill_from_edges),
+            prof = {
+                "algo": "canny(P)->rescue(thresh OR)->color_gate(OR/AND)->premorph(crop+despeckle+fill)->morph+shape_score",
+                "input": {"image": os.path.basename(str(img_or_path)), "proc_size": [self.proc.proc_w, self.proc.proc_h]},
+                "params": self.to_profile_dict(),
+                "metrics": {
+                    "life_canny_%": float(result.life_canny_pct),
+                    "used_rescue": bool(result.used_rescue),
+                    "bbox_ratio": float(info["bbox_ratio"]),
+                    "fill_ratio": float(info["fill"]),
+                    "score": float(info["score"]),
+                    "color_cover_%": float(color_cover),
+                    "color_used": bool(color_used),
+                }
             }
-            prof["metrics"]["life_canny_%"] = float(result.life_canny_pct)
-            prof["metrics"]["used_rescue"] = bool(result.used_rescue)
             with open(os.path.join(save_dir, f"{stamp}_profile.json"), "w", encoding="utf-8") as f:
                 json.dump(prof, f, ensure_ascii=False, indent=2)
 
@@ -239,9 +316,7 @@ class ContourDetector:
         return None
 
     def _preprocess(self, img: NDArray):
-        proc = cv2.resize(
-            img, (self.proc.proc_w, self.proc.proc_h), interpolation=cv2.INTER_AREA
-        )
+        proc = cv2.resize(img, (self.proc.proc_w, self.proc.proc_h), interpolation=cv2.INTER_AREA)
         gray = cv2.cvtColor(proc, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (_odd(self.proc.blur_k), _odd(self.proc.blur_k)), 0)
         return proc, gray
@@ -358,7 +433,7 @@ class ContourDetector:
             info = self._select_best(m, min_area_px, W, H, self.geo.bbox_hard_cap)
             if info is None:
                 ck = min(self.morph_cfg.close_max, ck + 2)
-                dk = min(self.morph_cfg.dil_max, dk + 2)   # un paso más agresivo
+                dk = min(self.morph_cfg.dil_max, dk + 2)
                 opening = True
                 continue
 
@@ -391,65 +466,45 @@ class ContourDetector:
         if M["m00"] != 0:
             c = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
         cv2.circle(overlay, c, 4, (0, 255, 0), -1)
-        txt = f"fill={info['fill']:.2f} bbox={info['bbox_ratio']:.2f} sc={info['score']:.2f}"
+        tag = "color_gate" if self.color.enabled else "canny"
+        txt = f"{tag}  fill={info['fill']:.2f}  bbox={info['bbox_ratio']:.2f}  sc={info['score']:.2f}"
         cv2.putText(overlay, txt, (x, max(18, y - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         return overlay, c
 
-    def _make_profile(self, info: Dict[str, Any], t1: float, t2: int, stamp: str, image_name: str):
-        return {
-            "algo": "canny(P)->rescue(thresh OR)->premorph(crop+despeckle+fill)->morph+shape_score",
-            "input": {"image": image_name, "proc_size": [self.proc.proc_w, self.proc.proc_h]},
-            "params": {
-                "blur_k": self.proc.blur_k,
-                "t1": int(t1),
-                "t2": int(t2),
-                "life_target_range": [self.canny_cfg.life_min, self.canny_cfg.life_max],
-                "rescue_threshold_min": self.canny_cfg.rescue_life_min,
-                "morph": {
-                    "targets": {"bbox_ratio": [self.geo.bbox_min, self.geo.bbox_max], "fill_ratio": [self.geo.fill_min, self.geo.fill_max]},
-                    "border_margin": self.proc.border_margin,
-                    "hard_cap": self.geo.bbox_hard_cap,
-                    "limits": {"close_max": self.morph_cfg.close_max, "dil_max": self.morph_cfg.dil_max, "steps": self.morph_cfg.steps}
-                },
-                "filters": {"ar_range": [self.geo.ar_min, self.geo.ar_max], "min_area_frac": self.geo.min_area_frac},
-                "weights": {
-                    "area": self.w.area, "fill": self.w.fill, "solidity": self.w.solidity,
-                    "circular": self.w.circular, "rect": self.w.rect, "ar": self.w.ar, "center_bias": self.w.center_bias
-                }
-            },
-            "metrics": {
-                "life_canny_%": None,
-                "used_rescue": None,
-                "bbox_ratio": float(info["bbox_ratio"]),
-                "fill_ratio": float(info["fill"]),
-                "score": float(info["score"]),
-            }
-        }
+    # -------------- color gate --------------
+    def _color_gate(self, bgr: NDArray) -> NDArray:
+        if self.color.mode == "hsv":
+            hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+            lo = np.array(self.color.hsv_lo, dtype=np.uint8)
+            hi = np.array(self.color.hsv_hi, dtype=np.uint8)
+            mask = cv2.inRange(hsv, lo, hi)
+            return mask
+        # default: lab_bg
+        lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
+        a = lab[:,:,1].astype(np.float32)
+        b = lab[:,:,2].astype(np.float32)
+        a0 = float(np.median(a))
+        b0 = float(np.median(b))
+        dist = np.sqrt((a - a0)**2 + (b - b0)**2)
+        mask = (dist > float(self.color.ab_thresh)).astype(np.uint8) * 255
+        return mask
 
-# CLI helper
-def run_file(image_path: str, out_dir: Optional[str] = "results"):
-    det = ContourDetector()
+# ----------------------- CLI helper -----------------------
+def run_file(image_path: str, profile: Optional[str] = None, out_dir: Optional[str] = "results"):
+    det = ContourDetector.from_profile(profile) if profile else ContourDetector()
     stamp = time.strftime("%Y%m%d_%H%M%S")
     res = det.detect(image_path, save_dir=out_dir, stamp=stamp)
-    if res.ok and out_dir:
-        prof_path = os.path.join(out_dir, f"{stamp}_profile.json")
-        if os.path.exists(prof_path):
-            with open(prof_path, "r", encoding="utf-8") as f:
-                prof = json.load(f)
-            prof["metrics"]["life_canny_%"] = float(res.life_canny_pct)
-            prof["metrics"]["used_rescue"] = bool(res.used_rescue)
-            with open(prof_path, "w", encoding="utf-8") as f:
-                json.dump(prof, f, ensure_ascii=False, indent=2)
     return res
 
 if __name__ == "__main__":
     import argparse
-    p = argparse.ArgumentParser(description="Contour-based detector (stable 160x120 pipeline + premorph patches)")
-    p.add_argument("image", help="Path to input image (e.g., base.png)")
+    p = argparse.ArgumentParser(description="Contour detector with optional color-gate + JSON profiles")
+    p.add_argument("image", help="Path to input image")
+    p.add_argument("--profile", default=None, help="Path to JSON profile with params")
     p.add_argument("--out", default="results", help="Output directory for artifacts")
     args = p.parse_args()
     os.makedirs(args.out, exist_ok=True)
-    r = run_file(args.image, args.out)
+    r = run_file(args.image, args.profile, args.out)
     if r.ok:
         print(f"✅ bbox={r.bbox}, score={r.score:.3f}, fill={r.fill:.2f}, ratio={r.bbox_ratio:.3f}")
     else:
