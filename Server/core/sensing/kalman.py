@@ -49,7 +49,7 @@ class KalmanFilter:
         self.Kg = self.P_predicted / (self.P_predicted + self.R)
 
         # Update step
-        filtered_value = self.x_predicted + self.Kg * (self.Z_k - self.prev_filtered)
+        filtered_value = self.x_predicted + self.Kg * (self.Z_k - self.x_predicted)
         self.P_updated = (1 - self.Kg) * self.P_predicted
 
         # Store results for next iteration
