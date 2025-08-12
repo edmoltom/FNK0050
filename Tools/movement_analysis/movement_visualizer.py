@@ -7,7 +7,7 @@ import time
 
 # --- Load data ---
 base_path = os.path.dirname(os.path.abspath(__file__))
-csv_path = os.path.join(base_path, "turning_right_log.csv")
+csv_path = os.path.join(base_path, "walking_forward_log.csv")
 df = pd.read_csv(csv_path)
 
 df = df.rename(columns={
