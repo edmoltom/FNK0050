@@ -46,8 +46,8 @@ def _knobs(config: Optional[Dict[str, Any]]):
     cfg = dict(config or {})
     p = cfg.get("profiles", {})
     return dict(
-        big_profile   = p.get("big",  "profile_big_solid.json"),
-        small_profile = p.get("small","profile_small_round_color.json"),
+        big_profile   = p.get("big",  "profile_big.json"),
+        small_profile = p.get("small","profile_small.json"),
         stable   = bool(cfg.get("stable", True)),
         on_th    = float(cfg.get("on_th", 0.55)),
         off_th   = float(cfg.get("off_th", 0.45)),

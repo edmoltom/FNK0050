@@ -114,6 +114,10 @@ class DetectionResult:
     chosen_dk: Optional[int] = None
     center: Optional[Tuple[int, int]] = None
     overlay: Optional[NDArray] = None
+    t1: Optional[float] = None
+    t2: Optional[int] = None
+    color_cover_pct: Optional[float] = None
+    color_used: Optional[bool] = None
 
 # ----------------------- detector -----------------------
 class ContourDetector:
@@ -189,7 +193,7 @@ class ContourDetector:
 
         # ----- Auto Canny -----
         canny, t1, t2, life = self._auto_canny(gray)
-
+        
         used_rescue = False
         edges = canny.copy()
         if _pct_on(canny) < self.canny_cfg.rescue_life_min:
@@ -261,6 +265,9 @@ class ContourDetector:
                 ok=False,
                 used_rescue=used_rescue,
                 life_canny_pct=float(_pct_on(canny)),
+                t1=float(t1), t2=int(t2),
+                color_cover_pct=float(color_cover),
+                color_used=bool(color_used),
             )
 
         mask_final, info, chosen_ck, chosen_dk = best
@@ -282,6 +289,9 @@ class ContourDetector:
             chosen_dk=int(chosen_dk),
             center=center,
             overlay=overlay if return_overlay else None,
+            t1=float(t1), t2=int(t2),
+            color_cover_pct=float(color_cover),
+            color_used=bool(color_used),
         )
 
         # ---- save profile snapshot ----

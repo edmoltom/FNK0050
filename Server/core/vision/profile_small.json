@@ -1,0 +1,47 @@
+{
+  "name": "small_round_color",
+  "desc": "Objetos peque\u00f1os y naranjas/amarillos; usa color + contornos",
+  "PROC_W": 160,
+  "PROC_H": 120,
+  "BLUR_K": 5,
+  "life_MIN": 5.0,
+  "life_MAX": 12.0,
+  "RESCUE_life_MIN": 6.0,
+  "CLOSE_MIN": 3,
+  "CLOSE_MAX": 21,
+  "DIL_MIN": 3,
+  "DIL_MAX": 15,
+  "MORPH_STEPS": 12,
+  "BBOX_MIN": 0.05,
+  "BBOX_MAX": 0.4,
+  "FILL_MIN": 0.55,
+  "FILL_MAX": 0.98,
+  "MIN_AREA_FRAC": 0.01,
+  "AR_MIN": 0.4,
+  "AR_MAX": 2.2,
+  "BBOX_HARD_CAP": 0.6,
+  "CENTER_BIAS": 0.2,
+  "W_AREA": 0.25,
+  "W_FILL": 0.15,
+  "W_SOLI": 0.2,
+  "W_CIRC": 0.25,
+  "W_RECT": 0.1,
+  "W_AR": 0.05,
+  "BOTTOM_MARGIN_PCT": 8,
+  "MIN_BLOB_PX": 60,
+  "COLOR_GATE": {
+    "enable": true,
+    "mode": "lab_bg",
+    "combine": "OR",
+    "lab": {
+      "border_px": 12,
+      "ab_thresh": 18
+    },
+    "hsv": {
+      "h_low": 10,
+      "h_high": 30,
+      "s_min": 60,
+      "v_min": 40
+    }
+  }
+}

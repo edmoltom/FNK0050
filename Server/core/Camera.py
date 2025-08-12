@@ -1,10 +1,12 @@
 from picamera2 import Picamera2
 from core.vision.api import process_frame
+from core.vision.viz_logger import VisionLogger  
 
 import cv2
 import base64
 import threading
 import time
+import os
 
 
 class Camera:
@@ -32,6 +34,11 @@ class Camera:
         self._thread = None
         self._lock = threading.Lock()
         self._camera_started = False
+        
+        self._logger = None
+        if os.getenv("VISION_LOG", "0") == "1":
+            stride = int(os.getenv("VISION_LOG_STRIDE", "5"))
+            self._logger = VisionLogger(stride=stride, api_config={"stable": True})
 
     def set_processing_config(self, config: dict):
         """
@@ -95,6 +102,9 @@ class Camera:
             res = process_frame(frame, return_overlay=False, config=self._config)
         except TypeError:
             res = process_frame(frame, return_overlay=False)
+
+        if self._logger:
+            self._logger.log_only(frame, out=res)
 
         if res and res.get("ok"):
             # Compute scaling from the pipeline's coordinate space to current frame
@@ -173,6 +183,8 @@ class Camera:
             self._thread.join()
             self._thread = None
         self._ensure_camera_stopped()
+        if self._logger:
+            self._logger.close()
         print("[Camera] Stopped periodic capture.")
 
     def get_last_processed_encoded(self):
