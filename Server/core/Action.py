@@ -23,49 +23,62 @@ class Action:
     def _fsm_loop(self):
         while True:
             if self.state == 'idle':
+                self.control.stop_requested = True
                 #self.control.relax()
                 pass
                 
             elif self.state == 'walking_forward':
-                #self.control.start_logging("walking_frodward_log.csv")
-                self.control.speed = self.current_speed   
-                self.control.forWard()                             
+                self.control.start_logging("walking_forward_log.csv")
+                try:
+                    self.control.speed = self.current_speed
+                    self.control.forWard()
+                finally:
+                    self.control.stop_logging()
                 self.state = 'idle'
-                #self.control.stop_logging()
 
             elif self.state == 'walking_backward':
-                #self.control.start_logging("walking_backward_log.csv")
-                self.control.speed = self.current_speed   
-                self.control.backWard()                             
-                #self.control.stop_logging()
+                self.control.start_logging("walking_backward_log.csv")
+                try:
+                    self.control.speed = self.current_speed
+                    self.control.backWard()
+                finally:
+                    self.control.stop_logging()
                 self.state = 'idle'
 
             elif self.state == 'turning_right':
                 self.control.start_logging("turning_right_log.csv")
-                self.control.speed = self.current_speed   
-                self.control.turnRight()                             
-                self.control.stop_logging()
+                try:
+                    self.control.speed = self.current_speed
+                    self.control.turnRight()
+                finally:
+                    self.control.stop_logging()
                 self.state = 'idle'
 
             elif self.state == 'turning_left':
                 self.control.start_logging("turning_left_log.csv")
-                self.control.speed = self.current_speed   
-                self.control.turnLeft()                             
-                self.control.stop_logging()
+                try:
+                    self.control.speed = self.current_speed
+                    self.control.turnLeft()
+                finally:
+                    self.control.stop_logging()
                 self.state = 'idle'
 
             elif self.state == 'step_right':
-                #self.control.start_logging("step_right_log.csv")
-                self.control.speed = self.current_speed   
-                self.control.stepRight()                             
-                #self.control.stop_logging()
+                self.control.start_logging("step_right_log.csv")
+                try:
+                    self.control.speed = self.current_speed
+                    self.control.stepRight()
+                finally:
+                    self.control.stop_logging()
                 self.state = 'idle'
 
             elif self.state == 'step_left':
-                #self.control.start_logging("step_left_log.csv")
-                self.control.speed = self.current_speed   
-                self.control.stepLeft()                             
-                #self.control.stop_logging()
+                self.control.start_logging("step_left_log.csv")
+                try:
+                    self.control.speed = self.current_speed
+                    self.control.stepLeft()
+                finally:
+                    self.control.stop_logging()
                 self.state = 'idle'
 
             elif self.state == 'relax':

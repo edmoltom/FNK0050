@@ -4,7 +4,9 @@ import math
 import numpy as np
 from PID import Incremental_PID
 from movement.servo import Servo
+from movement.gait_cpg import CPG
 from sensing.IMU import IMU
+from sensing.odometry import Odometry
 from Command import COMMAND as cmd
 
 class Control:
@@ -25,6 +27,8 @@ class Control:
         self.imu = IMU()
         self.servo = Servo()
         self.pid = Incremental_PID(0.5, 0.0, 0.0025)
+        self.odom = Odometry(stride_gain=0.55)
+        self.cpg = CPG("walk")
 
     def setup_state(self):
         self.speed = self.MIN_SPEED_LIMIT
@@ -35,6 +39,12 @@ class Control:
         self.point = [[0, 99, 10], [0, 99, 10], [0, 99, -10], [0, 99, -10]]
         self.angle = [[90,0,0],[90,0,0],[90,0,0],[90,0,0]]
         self.calibration_angle = [[0,0,0],[0,0,0],[0,0,0],[0,0,0]]
+        self._prev_yaw = None
+        self._prev_t = None
+        self._gait_angle = 0.0
+        self._yr = 0.0
+        self._stride_dir_x = 1  # +1 = adelante, -1 = atrás, 0 = sin avance X
+        self._stride_dir_z = 0  # +1 izquierda, -1 derecha
         self.stop_requested = False
         self.relax_flag = True
         self.balance_flag = False
@@ -43,13 +53,9 @@ class Control:
     def start_logging(self, filename="empty.csv"):
         self.logfile = open(filename, "w")
         header = [
-            "timestamp", "step", "roll", "pitch", "yaw",
-            "accel_x", "accel_y", "accel_z",
-            "fl_x", "fl_y", "fl_z",
-            "rl_x", "rl_y", "rl_z",
-            "rr_x", "rr_y", "rr_z",
-            "fr_x", "fr_y", "fr_z"
-
+            "timestamp","step","roll","pitch","yaw","accel_x","accel_y","accel_z",
+            "fl_x","fl_y","fl_z","rl_x","rl_y","rl_z","rr_x","rr_y","rr_z","fr_x","fr_y","fr_z",
+            "yaw_rate_dps","is_stance","odom_x","odom_y","odom_theta_deg"
         ]
         self.logfile.write(",".join(header) + "\n")
         self.log_enabled = True
@@ -160,13 +166,49 @@ class Control:
     def log_current_state(self):
         if hasattr(self, 'log_enabled') and self.log_enabled:
             timestamp = time.time()
+
+            # IMU read
             pitch, roll, yaw, accel_x, accel_y, accel_z = self.imu.update_imu()
-            data = [timestamp, self.log_step,
-                    f"{roll:.2f}", f"{pitch:.2f}", f"{yaw:.2f}",
-                    f"{accel_x:.4f}", f"{accel_y:.4f}", f"{accel_z:.4f}",
-                    *[f"{coord:.2f}" for leg in self.point for coord in leg]]
+
+            # Compute angular velocity (yaw_rate) in deg/s
+            if self._prev_yaw is None:
+                yaw_rate = 0.0
+            else:
+                dt = max(1e-3, timestamp - self._prev_t)  # avoid division by zero
+                dyaw = (yaw - self._prev_yaw + 180) % 360 - 180  # wrap to [-180, 180]
+                yaw_rate = dyaw / dt
+
+            # Store current values as "previous" for the next iteration
+            self._prev_yaw, self._prev_t = yaw, timestamp
+
+            # Low-pass filter yaw_rate to reduce noise and avoid false ZUPT
+            self._yr = 0.8 * self._yr + 0.2 * yaw_rate
+
+            # Update heading for odometry
+            self.odom.set_heading_deg(yaw)
+
+            # Determine stance based on gait phase and low rotation
+            is_stance = (70.0 <= (self._gait_angle % 180.0) <= 110.0) and (abs(self._yr) < 3.0)
+
+            # Odometry: if no ZUPT, accumulate stride-based advance
+            if not self.odom.zupt(is_stance, self._yr):
+                self.odom.tick_gait(self._gait_angle, self.step_length)
+
+            # Write row to CSV
+            data = [
+                timestamp, self.log_step,
+                f"{roll:.2f}", f"{pitch:.2f}", f"{yaw:.2f}",
+                f"{accel_x:.4f}", f"{accel_y:.4f}", f"{accel_z:.4f}",
+                *[f"{coord:.2f}" for leg in self.point for coord in leg],
+                f"{self._yr:.2f}",          # smoothed yaw rate
+                int(is_stance),             # 1 = in stance, 0 = in swing
+                f"{self.odom.x:.2f}",
+                f"{self.odom.y:.2f}",
+                f"{math.degrees(self.odom.theta):.2f}"
+            ]
             self.logfile.write(",".join(map(str, data)) + "\n")
-            self.log_step += 1        
+            self.log_step += 1
+        
 
     def run(self):
         # Uncomment the next line to measure execution time
@@ -249,7 +291,6 @@ class Control:
                 self.set_leg_position(i*2+1, X2 + 10, Y2, Z2 + ((-1)**i) * 10)
 
         self.run()
-
     
     def wait_for_next_tick(self, last_tick, tick_time):
         next_tick = last_tick + tick_time
@@ -262,35 +303,96 @@ class Control:
         if max_val is None: max_val = self.MAX_SPEED_LIMIT
         self.speed = max(min_val, min(self.speed, max_val))
 
-    def step_move(self, axis: str, mode: str, direction: str):
-        # direction: 'positive' or 'negative'
-        # - for axis 'X': 'positive' = forward, 'negative' = backward
-        # - for axis 'Z': 'positive' = left,    'negative' = right
+    def update_legs_from_cpg(self, dt):
+        phases = self.cpg.update(dt)
+
+        stride_len  = 20  # mm
+        lift_height = 10  # mm
+
+        base_y = self.height
+        sx = getattr(self, "_stride_dir_x", 0)
+        sz = getattr(self, "_stride_dir_z", 0)
+
+        # Elegimos eje: prioridad X; si no, Z; si ninguno, quieto
+        if sx != 0:
+            stride_signed = stride_len * sx
+            for i, ph in enumerate(phases):
+                s_m, lift_m = self.cpg.foot_position(ph, self.cpg.duty,
+                                                    stride_len=stride_signed/1000.0,
+                                                    lift_height=lift_height/1000.0)
+                s_mm, lift_mm = s_m*1000.0, lift_m*1000.0
+                X = s_mm + 10
+                Y = base_y - lift_mm          # lift = altura
+                Z = ((-1)**i) * 10            # lateral base
+                self.set_leg_position(i, X, Y, Z)
+
+        elif sz != 0:
+            stride_signed = stride_len * sz
+            for i, ph in enumerate(phases):
+                s_m, lift_m = self.cpg.foot_position(ph, self.cpg.duty,
+                                                    stride_len=stride_signed/1000.0,
+                                                    lift_height=lift_height/1000.0)
+                s_mm, lift_mm = s_m*1000.0, lift_m*1000.0
+                X = 10                        # sin avance longitudinal
+                Y = base_y - lift_mm
+                Z = ((-1)**i) * 10 + s_mm     # zancada lateral
+                self.set_leg_position(i, X, Y, Z)
+        else:
+            # Neutro (por si acaso)
+            for i in range(4):
+                self.set_leg_position(i, 10, base_y, ((-1)**i)*10)
+
+
+    def step_move(self, axis: str, mode: str, direction: str, cycles: int = 1):
         self.clamp_speed()
         tick_time = 1.0 / self.speed
         tick = time.monotonic()
 
-        angle = 90 if direction == 'positive' else 450
-        end_angle = 450 if direction == 'positive' else 90
-        step = 3 if direction == 'positive' else -3
+        if axis == 'X':  # adelante/atrás
+            vx = 1.0 if direction == 'positive' else -1.0
+            vy = 0.0; wz = 0.0
+            self._stride_dir_x = 1 if direction == 'positive' else -1
+            self._stride_dir_z = 0
+        elif axis == 'Z':  # strafe izq/der
+            vx = 0.0
+            vy = 1.0 if direction == 'positive' else -1.0
+            wz = 0.0
+            self._stride_dir_x = 0
+            self._stride_dir_z = 1 if direction == 'positive' else -1
+        else:  # giro en sitio u otros
+            vx = 0.0; vy = 0.0
+            wz = 1.0 if direction == 'positive' else -1.0
+            self._stride_dir_x = 0
+            self._stride_dir_z = 0
 
-        while (step > 0 and angle <= end_angle) or (step < 0 and angle >= end_angle):
-            if self.stop_requested:
-                break
+        self.cpg.set_velocity(vx, vy, wz)
 
-            primary_offset   = self.step_length * math.cos(math.radians(angle))
-            secondary_offset = self.step_length * math.cos(math.radians(angle + 180))
-            y1 = self.step_height * math.sin(math.radians(angle)) + self.height
-            y2 = self.step_height * math.sin(math.radians(angle + 180)) + self.height
-            y1 = min(y1, self.height); y2 = min(y2, self.height)
+        # Bucle limitado por nº de ciclos del CPG
+        self.stop_requested = False
+        self._prev_t = time.monotonic()
+        prev_phase = self.cpg.phi[0]    # fase base del oscilador (sin offset)
+        done = 0
 
-            if axis == 'X':
-                self.changeCoordinates(mode, primary_offset, y1, 0, secondary_offset, y2, 0)
-            elif axis == 'Z':
-                self.changeCoordinates(mode, 0, y1, primary_offset, 0, y2, secondary_offset)
+        while not self.stop_requested and done < cycles:
+            now = time.monotonic()
+            dt = now - self._prev_t
+            self._prev_t = now
 
-            angle += step
-            tick = self.wait_for_next_tick(tick, tick_time)  
+            self.update_legs_from_cpg(dt)
+
+            if self.checkPoint():
+                self.update_angles_from_points()
+                self.apply_calibration_to_angles()
+                self.send_angles_to_servos()
+
+            # Contar ciclo cuando la fase “envuelve”
+            phase0 = self.cpg.phi[0]
+            if phase0 < prev_phase:
+                done += 1
+            prev_phase = phase0
+
+            tick = self.wait_for_next_tick(tick, tick_time)
+  
     
     def forWard(self):
         self.step_move('X', 'forWard', 'positive')
@@ -310,6 +412,8 @@ class Control:
         tick = time.monotonic()
         angle = 0
         step = 3  
+
+        self.stop_requested = False
 
         while angle <= 360:
             if self.stop_requested:
@@ -338,6 +442,9 @@ class Control:
         self.turn("turnRight")
     
     def stop(self):
+
+        self.stop_requested = True
+
         p=[[10, self.height, 10], [10, self.height, 10], [10, self.height, -10], [10, self.height, -10]]
         for i in range(4):
             p[i][0]=(p[i][0]-self.point[i][0])/50
@@ -351,6 +458,9 @@ class Control:
             self.run()
     
     def relax(self,flag=False):
+        
+        self.stop_requested = True
+
         if flag==True:
             p=[[55, 78, 0], [55, 78, 0], [55, 78, 0], [55, 78, 0]]
             for i in range(4):
@@ -396,17 +506,17 @@ class Control:
                 self.balance_flag = False
                 break
 
-            # IMU -> PID -> postura
+            # IMU -> PID -> posture
             p, r, y = self.imu.update_imu()
             r = self.pid.PID_compute(r)
             p = self.pid.PID_compute(p)
             pos = self.postureBalance(r, p, 0)
             self.changeCoordinates('Attitude Angle', pos=pos)
 
-            # Mismo criterio de salida que el viejo, pero sin hilo a condition()
+            # Exit condition mirrors the old logic (no background thread)
             if ((self.order[0] == cmd.CMD_BALANCE and self.order[1] == '0')
                 or (self.balance_flag and self.order[0] != '')):
-                self.balance_flag = False    # ← era '==' en el viejo
+                self.balance_flag = False
                 break
 
     def postureBalance(self,r,p,y,h=1):
