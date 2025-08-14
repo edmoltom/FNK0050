@@ -44,14 +44,15 @@ from ..config_defaults import (
     COLORGATE_MAX_COVER_PCT,
     BOTTOM_MARGIN_MAX,
 )
-from ..vision_utils import pct_on, despeckle
-from ..dynamic_adjuster import CannyConfig
-from .imgproc import (
+from ..vision_utils import (
+    pct_on,
+    despeckle,
     _preprocess,
     _color_gate,
     _try_with_margins,
     _draw_overlay,
 )
+from ..dynamic_adjuster import CannyConfig
 
 NDArray = np.ndarray
 
