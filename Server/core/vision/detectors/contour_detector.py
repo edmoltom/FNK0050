@@ -6,6 +6,47 @@ from typing import Optional, Tuple, Dict, Any, Union
 import cv2
 import numpy as np
 
+from ..config_defaults import (
+    MORPH_CLOSE_MIN,
+    MORPH_CLOSE_MAX,
+    MORPH_DIL_MIN,
+    MORPH_DIL_MAX,
+    MORPH_STEPS,
+    GEO_AR_MIN,
+    GEO_AR_MAX,
+    GEO_BBOX_HARD_CAP,
+    GEO_BBOX_MIN,
+    GEO_BBOX_MAX,
+    GEO_FILL_MIN,
+    GEO_FILL_MAX,
+    GEO_MIN_AREA_FRAC,
+    WEIGHT_AREA,
+    WEIGHT_FILL,
+    WEIGHT_SOLIDITY,
+    WEIGHT_CIRCULAR,
+    WEIGHT_RECT,
+    WEIGHT_AR,
+    WEIGHT_CENTER_BIAS,
+    WEIGHT_DIST,
+    REF_SIZE,
+    BLUR_KERNEL,
+    BORDER_MARGIN,
+    PREMORPH_BOTTOM_MARGIN_PCT,
+    PREMORPH_MIN_BLOB_PX,
+    PREMORPH_FILL_FROM_EDGES,
+    COLORGATE_ENABLED,
+    COLORGATE_MODE,
+    COLORGATE_AB_THRESH,
+    COLORGATE_HSV_LO,
+    COLORGATE_HSV_HI,
+    COLORGATE_COMBINE,
+    COLORGATE_MIN_COVER_PCT,
+    COLORGATE_MAX_COVER_PCT,
+    BOTTOM_MARGIN_MAX,
+)
+from ..vision_utils import pct_on, despeckle
+from ..dynamic_adjuster import CannyConfig
+
 NDArray = np.ndarray
 
 # ----------------------- small helpers -----------------------
@@ -13,78 +54,143 @@ def _odd(k: int) -> int:
     k = int(k)
     return k if (k % 2 == 1) else k + 1
 
-def _pct_on(mask: NDArray) -> float:
-    return 100.0 * float((mask > 0).sum()) / float(mask.size)
-
-def _despeckle(bin_img: NDArray, min_px: int) -> NDArray:
-    "Remove connected components smaller than min_px (expects 0/255 image)."
-    if min_px <= 0:
-        return bin_img
-    lab = (bin_img > 0).astype("uint8")
-    num, labels, stats, _ = cv2.connectedComponentsWithStats(lab, 8)
-    keep = np.zeros_like(bin_img)
-    for i in range(1, num):
-        if stats[i, cv2.CC_STAT_AREA] >= min_px:
-            keep[labels == i] = 255
-    return keep
-
 def _clip01(x: float) -> float:
     return float(max(0.0, min(1.0, x)))
 
 # ----------------------- configs -----------------------
 @dataclass
 class MorphConfig:
-    close_min: int = 3
-    close_max: int = 21
-    dil_min: int = 3
-    dil_max: int = 15
-    steps: int = 10
+    close_min: int = MORPH_CLOSE_MIN
+    close_max: int = MORPH_CLOSE_MAX
+    dil_min: int = MORPH_DIL_MIN
+    dil_max: int = MORPH_DIL_MAX
+    steps: int = MORPH_STEPS
 
 @dataclass
 class GeoFilters:
-    ar_min: float = 0.40
-    ar_max: float = 2.20
-    bbox_hard_cap: float = 0.50
-    bbox_min: float = 0.18
-    bbox_max: float = 0.35
-    fill_min: float = 0.60
-    fill_max: float = 0.95
-    min_area_frac: float = 0.03
+    ar_min: float = GEO_AR_MIN
+    ar_max: float = GEO_AR_MAX
+    bbox_hard_cap: float = GEO_BBOX_HARD_CAP
+    bbox_min: float = GEO_BBOX_MIN
+    bbox_max: float = GEO_BBOX_MAX
+    fill_min: float = GEO_FILL_MIN
+    fill_max: float = GEO_FILL_MAX
+    min_area_frac: float = GEO_MIN_AREA_FRAC
 
 @dataclass
 class Weights:
-    area: float = 0.35
-    fill: float = 0.15
-    solidity: float = 0.20
-    circular: float = 0.10
-    rect: float = 0.15
-    ar: float = 0.10
-    center_bias: float = 0.25      # factor applied to dist
-    dist: float = 0.20             # distance weight
+    area: float = WEIGHT_AREA
+    fill: float = WEIGHT_FILL
+    solidity: float = WEIGHT_SOLIDITY
+    circular: float = WEIGHT_CIRCULAR
+    rect: float = WEIGHT_RECT
+    ar: float = WEIGHT_AR
+    center_bias: float = WEIGHT_CENTER_BIAS      # factor applied to dist
+    dist: float = WEIGHT_DIST             # distance weight
 
 @dataclass
 class ProcConfig:
-    proc_w: int = 160
-    proc_h: int = 120
-    blur_k: int = 5
-    border_margin: int = 6
+    proc_w: int = REF_SIZE[0]
+    proc_h: int = REF_SIZE[1]
+    blur_k: int = BLUR_KERNEL
+    border_margin: int = BORDER_MARGIN
 
 @dataclass
 class PreMorphPatches:
-    bottom_margin_pct: int = 20  # crop bottom X% before morph
-    min_blob_px: int = 100       # despeckle
-    fill_from_edges: bool = True # fill strokes to regions
+    bottom_margin_pct: int = PREMORPH_BOTTOM_MARGIN_PCT  # crop bottom X% before morph
+    min_blob_px: int = PREMORPH_MIN_BLOB_PX       # despeckle
+    fill_from_edges: bool = PREMORPH_FILL_FROM_EDGES # fill strokes to regions
 
 @dataclass
 class ColorGateConfig:
-    enabled: bool = False
-    mode: str = "lab_bg"        # 'lab_bg' or 'hsv'
-    ab_thresh: int = 22         # Lab distance from global background (a,b)
-    hsv_lo: Tuple[int,int,int] = (5, 80, 40)   # H,S,V (0..179,0..255,0..255)
-    hsv_hi: Tuple[int,int,int] = (30, 255, 255)
-    combine: str = "OR"         # 'OR' or 'AND' with edges
-    min_cover_pct: float = 0.5  # ignore if mask <0.5% or >60% of frame
-    max_cover_pct: float = 60.0
+    enabled: bool = COLORGATE_ENABLED
+    mode: str = COLORGATE_MODE        # 'lab_bg' or 'hsv'
+    ab_thresh: int = COLORGATE_AB_THRESH         # Lab distance from global background (a,b)
+    hsv_lo: Tuple[int,int,int] = COLORGATE_HSV_LO   # H,S,V (0..179,0..255,0..255)
+    hsv_hi: Tuple[int,int,int] = COLORGATE_HSV_HI
+    combine: str = COLORGATE_COMBINE         # 'OR' or 'AND' with edges
+    min_cover_pct: float = COLORGATE_MIN_COVER_PCT  # ignore if mask <0.5% or >60% of frame
+    max_cover_pct: float = COLORGATE_MAX_COVER_PCT
+
+
+def configs_from_profile(data: Dict[str, Any]) -> Tuple[Dict[str, Any], CannyConfig]:
+    """Translate raw profile dict into detector kwargs and CannyConfig."""
+    proc = ProcConfig(
+        proc_w=int(data.get("PROC_W", ProcConfig().proc_w)),
+        proc_h=int(data.get("PROC_H", ProcConfig().proc_h)),
+        blur_k=int(data.get("BLUR_K", ProcConfig().blur_k)),
+        border_margin=int(data.get("BORDER_MARGIN", ProcConfig().border_margin)),
+    )
+    canny = CannyConfig(
+        t1_init=float(data.get("T1_INIT", CannyConfig().t1_init)),
+        t2_ratio=float(data.get("T2_RATIO", CannyConfig().t2_ratio)),
+        life_min=float(data.get("life_MIN", CannyConfig().life_min)),
+        life_max=float(data.get("life_MAX", CannyConfig().life_max)),
+        rescue_life_min=float(data.get("RESCUE_life_MIN", CannyConfig().rescue_life_min)),
+        kp=float(data.get("Kp", CannyConfig().kp)),
+        max_iter=int(data.get("MAX_ITER", CannyConfig().max_iter)),
+    )
+    morph = MorphConfig(
+        close_min=int(data.get("CLOSE_MIN", MorphConfig().close_min)),
+        close_max=int(data.get("CLOSE_MAX", MorphConfig().close_max)),
+        dil_min=int(data.get("DIL_MIN", MorphConfig().dil_min)),
+        dil_max=int(data.get("DIL_MAX", MorphConfig().dil_max)),
+        steps=int(data.get("MORPH_STEPS", MorphConfig().steps)),
+    )
+    geo = GeoFilters(
+        ar_min=float(data.get("AR_MIN", GeoFilters().ar_min)),
+        ar_max=float(data.get("AR_MAX", GeoFilters().ar_max)),
+        bbox_hard_cap=float(data.get("BBOX_HARD_CAP", GeoFilters().bbox_hard_cap)),
+        bbox_min=float(data.get("BBOX_MIN", GeoFilters().bbox_min)),
+        bbox_max=float(data.get("BBOX_MAX", GeoFilters().bbox_max)),
+        fill_min=float(data.get("FILL_MIN", GeoFilters().fill_min)),
+        fill_max=float(data.get("FILL_MAX", GeoFilters().fill_max)),
+        min_area_frac=float(data.get("MIN_AREA_FRAC", GeoFilters().min_area_frac)),
+    )
+    w = Weights(
+        area=float(data.get("W_AREA", Weights().area)),
+        fill=float(data.get("W_FILL", Weights().fill)),
+        solidity=float(data.get("W_SOLI", Weights().solidity)),
+        circular=float(data.get("W_CIRC", Weights().circular)),
+        rect=float(data.get("W_RECT", Weights().rect)),
+        ar=float(data.get("W_AR", Weights().ar)),
+        center_bias=float(data.get("CENTER_BIAS", Weights().center_bias)),
+        dist=float(data.get("W_DIST", Weights().dist)),
+    )
+    premorph = PreMorphPatches(
+        bottom_margin_pct=int(data.get("BOTTOM_MARGIN_PCT", PreMorphPatches().bottom_margin_pct)),
+        min_blob_px=int(data.get("MIN_BLOB_PX", PreMorphPatches().min_blob_px)),
+        fill_from_edges=bool(data.get("FILL_FROM_EDGES", PreMorphPatches().fill_from_edges)),
+    )
+    cg = data.get("COLOR_GATE", {}) or {}
+    hsv = cg.get("hsv", {})
+    color = ColorGateConfig(
+        enabled=bool(cg.get("enable", ColorGateConfig().enabled)),
+        mode=str(cg.get("mode", ColorGateConfig().mode)),
+        ab_thresh=int(cg.get("lab", {}).get("ab_thresh", ColorGateConfig().ab_thresh)),
+        hsv_lo=(
+            int(hsv.get("h_low", ColorGateConfig().hsv_lo[0])),
+            int(hsv.get("s_min", ColorGateConfig().hsv_lo[1])),
+            int(hsv.get("v_min", ColorGateConfig().hsv_lo[2])),
+        ),
+        hsv_hi=(
+            int(hsv.get("h_high", ColorGateConfig().hsv_hi[0])),
+            ColorGateConfig().hsv_hi[1],
+            ColorGateConfig().hsv_hi[2],
+        ),
+        combine=str(cg.get("combine", ColorGateConfig().combine)),
+        min_cover_pct=float(cg.get("min_cover_pct", ColorGateConfig().min_cover_pct)),
+        max_cover_pct=float(cg.get("max_cover_pct", ColorGateConfig().max_cover_pct)),
+    )
+    det_cfg = dict(
+        proc=proc,
+        morph=morph,
+        geo=geo,
+        w=w,
+        premorph=premorph,
+        color=color,
+    )
+    return det_cfg, canny
 
 @dataclass
 class DetectionResult:
@@ -178,7 +284,7 @@ class ContourDetector:
         color_used = False
         if self.color.enabled:
             color_mask = self._color_gate(proc)
-            color_cover = _pct_on(color_mask)
+            color_cover = pct_on(color_mask)
             # sanity check: ignore if too small/too big
             if (color_cover < self.color.min_cover_pct) or (color_cover > self.color.max_cover_pct):
                 color_mask = None
@@ -191,11 +297,11 @@ class ContourDetector:
         # ----- Pre-morph patches -----
         H, W = edges.shape[:2]
         edges2 = edges.copy()
-        crop = int(max(0, min(40, self.premorph.bottom_margin_pct)) * H / 100.0)
+        crop = int(max(0, min(BOTTOM_MARGIN_MAX, self.premorph.bottom_margin_pct)) * H / 100.0)
         if crop > 0:
             edges2[-crop:, :] = 0
 
-        edges2 = _despeckle(edges2, int(self.premorph.min_blob_px))
+        edges2 = despeckle(edges2, int(self.premorph.min_blob_px))
 
         if self.premorph.fill_from_edges:
             filled = np.zeros_like(edges2)
@@ -208,7 +314,7 @@ class ContourDetector:
             cm = color_mask.copy()
             if crop > 0:
                 cm[-crop:, :] = 0
-            cm = _despeckle(cm, int(self.premorph.min_blob_px // 2))
+            cm = despeckle(cm, int(self.premorph.min_blob_px // 2))
             if self.color.combine.upper() == "AND":
                 edges2 = cv2.bitwise_and(edges2, cm)
             else:
@@ -450,13 +556,13 @@ class ContourDetector:
 # ----------------------- CLI helper -----------------------
 def run_file(image_path: str, profile: Optional[str] = None, out_dir: Optional[str] = "results"):
     if profile:
-        from ..profile_manager import ProfileManager
+        from ..profile_manager import load_profile, get_config
         from ..dynamic_adjuster import DynamicAdjuster
-        pm = ProfileManager(profile)
-        det = ContourDetector(
-            adjuster=DynamicAdjuster(pm.get_canny_config()),
-            **pm.get_detector_config(),
-        )
+
+        load_profile("cli", profile)
+        cfg_dict = get_config("cli")
+        det_cfg, canny_cfg = configs_from_profile(cfg_dict)
+        det = ContourDetector(adjuster=DynamicAdjuster(canny_cfg), **det_cfg)
     else:
         det = ContourDetector()
     stamp = time.strftime("%Y%m%d_%H%M%S")

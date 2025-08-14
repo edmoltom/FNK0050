@@ -1,6 +1,7 @@
 from picamera2 import Picamera2
 from core.vision.api import process_frame
-from core.vision.viz_logger import VisionLogger  
+from core.vision.viz_logger import VisionLogger
+from core.vision.config_defaults import CAMERA_RESOLUTION, REF_SIZE
 
 import cv2
 import base64
@@ -13,7 +14,7 @@ class Camera:
     """
     @brief Camera wrapper using Picamera2 with a periodic vision pipeline.
     @details
-    Captures frames at 640x480, runs a detection pipeline, draws overlays,
+    Captures frames at resolution defined in ``CAMERA_RESOLUTION``, runs a detection pipeline, draws overlays,
     and exposes the last processed frame as a base64-encoded JPEG string.
     The camera is started once on start_periodic_capture() and stopped on stop.
     """
@@ -25,7 +26,7 @@ class Camera:
         self.picam2 = Picamera2()
         self.picam2.configure(
             self.picam2.create_still_configuration(
-                main={"size": (640, 480)}
+                main={"size": CAMERA_RESOLUTION}
             )
         )
         self._config = {}              # Optional processing config (set via set_processing_config)
@@ -71,7 +72,7 @@ class Camera:
     def _get_reference_resolution(self, res: dict, frame_shape):
         """
         Try to infer the coordinate space used by the pipeline results.
-        Fallbacks: config['ref_size'] or (160, 120).
+        Fallbacks: config['ref_size'] or REF_SIZE.
         """
         # Try common keys
         if isinstance(res.get("space"), (tuple, list)) and len(res["space"]) == 2:
@@ -81,11 +82,11 @@ class Camera:
         elif isinstance(res.get("input_size"), (tuple, list)) and len(res["input_size"]) == 2:
             ref_w, ref_h = res["input_size"]
         else:
-            ref_w, ref_h = self._config.get("ref_size", (160, 120))
+            ref_w, ref_h = self._config.get("ref_size", REF_SIZE)
 
         # Guard rails
         if not (isinstance(ref_w, (int, float)) and isinstance(ref_h, (int, float)) and ref_w > 0 and ref_h > 0):
-            ref_w, ref_h = 160, 120
+            ref_w, ref_h = REF_SIZE
 
         return float(ref_w), float(ref_h)
 
