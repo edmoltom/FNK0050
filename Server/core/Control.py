@@ -41,8 +41,11 @@ class Control:
         self.calibration_angle = [[0,0,0],[0,0,0],[0,0,0],[0,0,0]]
         self._prev_yaw = None
         self._prev_t = None
+        self._prev_t_gait = None
         self._gait_angle = 0.0
         self._yr = 0.0
+        self._is_turning = False
+        self._turn_dir = 0  # +1 izquierda, -1 derecha
         self._stride_dir_x = 1  # +1 = adelante, -1 = atrás, 0 = sin avance X
         self._stride_dir_z = 0  # +1 izquierda, -1 derecha
         self.stop_requested = False
@@ -187,8 +190,12 @@ class Control:
             # Update heading for odometry
             self.odom.set_heading_deg(yaw)
 
+            # Fase de la pata 0 y duty actual (fallbacks por si faltan)
+            phase0 = getattr(self, "_last_phases", [0.0])[0]
+            duty   = getattr(self, "_last_duty", 0.75)
+
             # Determine stance based on gait phase and low rotation
-            is_stance = (70.0 <= (self._gait_angle % 180.0) <= 110.0) and (abs(self._yr) < 3.0)
+            is_stance = (phase0 <= duty) and (abs(self._yr) < 3.0)
 
             # Odometry: if no ZUPT, accumulate stride-based advance
             if not self.odom.zupt(is_stance, self._yr):
@@ -303,87 +310,116 @@ class Control:
         if max_val is None: max_val = self.MAX_SPEED_LIMIT
         self.speed = max(min_val, min(self.speed, max_val))
 
+    def speed_scale(self):
+        rng = max(1, self.MAX_SPEED_LIMIT - self.MIN_SPEED_LIMIT)
+        return max(0.0, min(1.0, (self.speed - self.MIN_SPEED_LIMIT) / rng))
+
     def update_legs_from_cpg(self, dt):
+        
+        Z_BASE = [10, 10, -10, -10]  # FL, RL, RR, FR
+
         phases = self.cpg.update(dt)
+        self._last_phases = phases              # fases [0..1) por pata
+        self._last_duty   = getattr(self.cpg, "duty_cur", self.cpg.duty)
+        self._gait_angle = phases[0] * 360.0  # proxy para ZUPT/odometría
 
-        stride_len  = 20  # mm
-        lift_height = 10  # mm
-
+        # stride/lift con rampa (mm)
+        stride_len  = int(22 * min(1.0, self.cpg.amp_xy_cur))  # antes 25/40
+        lift_height = int(10 * min(1.0, self.cpg.amp_z_cur))   # antes 12/20 
+        
         base_y = self.height
         sx = getattr(self, "_stride_dir_x", 0)
         sz = getattr(self, "_stride_dir_z", 0)
 
-        # Elegimos eje: prioridad X; si no, Z; si ninguno, quieto
-        if sx != 0:
-            stride_signed = stride_len * sx
+        if getattr(self, "_is_turning", False) and getattr(self, "_turn_dir", 0) != 0:
+            tdir = 1 if getattr(self, "_turn_dir", 0) >= 0 else -1  # +1 izq, -1 der
             for i, ph in enumerate(phases):
-                s_m, lift_m = self.cpg.foot_position(ph, self.cpg.duty,
-                                                    stride_len=stride_signed/1000.0,
+                s_m, lift_m = self.cpg.foot_position(ph, self.cpg.duty_cur,
+                                                    stride_len=stride_len/1000.0,
                                                     lift_height=lift_height/1000.0)
                 s_mm, lift_mm = s_m*1000.0, lift_m*1000.0
+                # signos por pata para rotar (patrón tipo tu antiguo turn*)
+                x_mult = [-1, -1, +1, +1][i] * tdir
+                z_mult = [+1, -1, -1, +1][i] * tdir
+
+                X = 10 + x_mult * s_mm
+                Y = base_y - 0.45 * lift_mm
+                Z = Z_BASE[i] + z_mult * s_mm 
+                self.set_leg_position(i, X, Y, Z)
+            return  # salimos: no seguimos a ramas X/Z
+
+        # Elegimos eje: prioridad X; si no, Z; si ninguno, quieto
+        if sx != 0:
+            
+            stride_signed = stride_len * sx
+            for i, ph in enumerate(phases):
+                s_m, lift_m = self.cpg.foot_position(
+                    ph, self.cpg.duty_cur,
+                    stride_len=stride_signed/1000.0,
+                    lift_height=lift_height/1000.0
+                )
+                s_mm, lift_mm = s_m*1000.0, lift_m*1000.0
                 X = s_mm + 10
-                Y = base_y - lift_mm          # lift = altura
-                Z = ((-1)**i) * 10            # lateral base
+                Y = base_y - 0.45 * lift_mm
+                Z = Z_BASE[i]         # lateral base
                 self.set_leg_position(i, X, Y, Z)
 
         elif sz != 0:
             stride_signed = stride_len * sz
             for i, ph in enumerate(phases):
-                s_m, lift_m = self.cpg.foot_position(ph, self.cpg.duty,
+                s_m, lift_m = self.cpg.foot_position(ph, self.cpg.duty_cur,
                                                     stride_len=stride_signed/1000.0,
                                                     lift_height=lift_height/1000.0)
                 s_mm, lift_mm = s_m*1000.0, lift_m*1000.0
                 X = 10                        # sin avance longitudinal
-                Y = base_y - lift_mm
-                Z = ((-1)**i) * 10 + s_mm     # zancada lateral
+                Y = base_y - 0.45 * lift_mm
+                Z = Z_BASE[i] + s_mm   # zancada lateral
                 self.set_leg_position(i, X, Y, Z)
         else:
             # Neutro (por si acaso)
             for i in range(4):
-                self.set_leg_position(i, 10, base_y, ((-1)**i)*10)
+                self.set_leg_position(i, 10, base_y, Z_BASE[i])
 
 
     def step_move(self, axis: str, mode: str, direction: str, cycles: int = 1):
+
         self.clamp_speed()
         tick_time = 1.0 / self.speed
         tick = time.monotonic()
+        scale = self.speed_scale()
 
-        if axis == 'X':  # adelante/atrás
-            vx = 1.0 if direction == 'positive' else -1.0
-            vy = 0.0; wz = 0.0
-            self._stride_dir_x = 1 if direction == 'positive' else -1
-            self._stride_dir_z = 0
-        elif axis == 'Z':  # strafe izq/der
-            vx = 0.0
-            vy = 1.0 if direction == 'positive' else -1.0
-            wz = 0.0
-            self._stride_dir_x = 0
-            self._stride_dir_z = 1 if direction == 'positive' else -1
-        else:  # giro en sitio u otros
-            vx = 0.0; vy = 0.0
-            wz = 1.0 if direction == 'positive' else -1.0
+        self._is_turning = False
+        self._turn_dir = 0
+        
+        if axis == 'X':
+            vx, vy, wz = (1.0 if direction=='positive' else -1.0)*scale, 0.0, 0.0
+            self._stride_dir_x, self._stride_dir_z = (1 if direction=='positive' else -1), 0
+        elif axis == 'Z':
+            vx, vy, wz = 0.0, (1.0 if direction=='positive' else -1.0)*scale, 0.0
+            self._stride_dir_x, self._stride_dir_z = 0, (1 if direction=='positive' else -1)
+        else:  
+            vx, vy, wz = 0.0, 0.0, (1.0 if direction=='positive' else -1.0)*scale
             self._stride_dir_x = 0
             self._stride_dir_z = 0
+            self._is_turning = True
+            self._turn_dir = 1 if direction=='positive' else -1
 
         self.cpg.set_velocity(vx, vy, wz)
 
         # Bucle limitado por nº de ciclos del CPG
         self.stop_requested = False
-        self._prev_t = time.monotonic()
+        self._prev_t_gait = time.monotonic()
         prev_phase = self.cpg.phi[0]    # fase base del oscilador (sin offset)
         done = 0
 
         while not self.stop_requested and done < cycles:
             now = time.monotonic()
-            dt = now - self._prev_t
-            self._prev_t = now
+            dt = now - self._prev_t_gait
+            self._prev_t_gait = now
 
             self.update_legs_from_cpg(dt)
 
-            if self.checkPoint():
-                self.update_angles_from_points()
-                self.apply_calibration_to_angles()
-                self.send_angles_to_servos()
+            self.run()
 
             # Contar ciclo cuando la fase “envuelve”
             phase0 = self.cpg.phi[0]
@@ -392,7 +428,6 @@ class Control:
             prev_phase = phase0
 
             tick = self.wait_for_next_tick(tick, tick_time)
-  
     
     def forWard(self):
         self.step_move('X', 'forWard', 'positive')
@@ -405,44 +440,19 @@ class Control:
 
     def stepRight(self):
         self.step_move('Z', 'stepRight', 'negative')
+       
+    def turnLeft(self):  
+        self.step_move('W', 'turnLeft',  'positive')
     
-    def turn(self, mode: str):
-        self.clamp_speed()
-        tick_time = 1.0 / self.speed
-        tick = time.monotonic()
-        angle = 0
-        step = 3  
-
-        self.stop_requested = False
-
-        while angle <= 360:
-            if self.stop_requested:
-                break
-
-            X1 = self.step_length * math.cos(math.radians(angle))
-            Y1 = self.step_height * math.sin(math.radians(angle)) + self.height
-            Z1 = X1  
-
-            X2 = self.step_length * math.cos(math.radians(angle + 180))
-            Y2 = self.step_height * math.sin(math.radians(angle + 180)) + self.height
-            Z2 = X2
-
-            Y1 = min(Y1, self.height)
-            Y2 = min(Y2, self.height)
-
-            self.changeCoordinates(mode, X1, Y1, Z1, X2, Y2, Z2)
-
-            angle += step
-            tick = self.wait_for_next_tick(tick, tick_time)
-    
-    def turnLeft(self):
-        self.turn("turnLeft")
-
-    def turnRight(self):
-        self.turn("turnRight")
+    def turnRight(self): 
+        self.step_move('W', 'turnRight', 'negative')
     
     def stop(self):
-
+        
+        self._is_turning = False
+        self._turn_dir = 0
+        self._stride_dir_x = 0
+        self._stride_dir_z = 0
         self.stop_requested = True
 
         p=[[10, self.height, 10], [10, self.height, 10], [10, self.height, -10], [10, self.height, -10]]
@@ -459,6 +469,10 @@ class Control:
     
     def relax(self,flag=False):
         
+        self._is_turning = False
+        self._turn_dir = 0
+        self._stride_dir_x = 0
+        self._stride_dir_z = 0
         self.stop_requested = True
 
         if flag==True:
