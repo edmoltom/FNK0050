@@ -71,7 +71,9 @@ def _knobs(config: Optional[Dict[str, Any]]):
     )
 
 def _resolve_profile(p: str) -> str:
-    return p if os.path.isabs(p) else os.path.join(BASE, p)
+    if os.path.isabs(p):
+        return p
+    return os.path.join(BASE, "profiles", p)
 
 def _ensure_detectors(k):
     global _det_big, _det_small, _adj_big, _adj_small
