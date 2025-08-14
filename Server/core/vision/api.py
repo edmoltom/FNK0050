@@ -25,6 +25,8 @@ import cv2
 import os
 
 from .detectors.contour_detector import ContourDetector, DetectionResult
+from .profile_manager import ProfileManager
+from .dynamic_adjuster import DynamicAdjuster
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 
@@ -38,6 +40,10 @@ class _StableState:
 # dos detectores (big primero, small fallback)
 _det_big: Optional[ContourDetector] = None
 _det_small: Optional[ContourDetector] = None
+_prof_big: Optional[ProfileManager] = None
+_prof_small: Optional[ProfileManager] = None
+_adj_big: Optional[DynamicAdjuster] = None
+_adj_small: Optional[DynamicAdjuster] = None
 _st_big = _StableState()
 _st_small = _StableState()
 
@@ -61,13 +67,17 @@ def _resolve_profile(p: str) -> str:
     return p if os.path.isabs(p) else os.path.join(BASE, p)
 
 def _ensure_detectors(k):
-    global _det_big, _det_small
+    global _det_big, _det_small, _prof_big, _prof_small, _adj_big, _adj_small
     if _det_big is None:
         big = _resolve_profile(k["big_profile"])
-        _det_big = ContourDetector.from_profile(big)
+        _prof_big = ProfileManager(big)
+        _adj_big = DynamicAdjuster(_prof_big.get_canny_config())
+        _det_big = ContourDetector(adjuster=_adj_big, **_prof_big.get_detector_config())
     if _det_small is None:
         small = _resolve_profile(k["small_profile"])
-        _det_small = ContourDetector.from_profile(small)
+        _prof_small = ProfileManager(small)
+        _adj_small = DynamicAdjuster(_prof_small.get_canny_config())
+        _det_small = ContourDetector(adjuster=_adj_small, **_prof_small.get_detector_config())
 
 def _ref_size(det: ContourDetector) -> Tuple[int,int]:
     return det.proc.proc_w, det.proc.proc_h
@@ -77,6 +87,29 @@ def reset_state() -> None:
         st.last_bbox = None
         st.score_ema = None
         st.miss_count = 0
+
+def load_profile(which: str, path: Optional[str] = None) -> None:
+    """Reload a profile ('big' or 'small') and reset state."""
+    global _det_big, _det_small, _prof_big, _prof_small, _adj_big, _adj_small
+    if which == "big":
+        p = _resolve_profile(path or "profile_big.json")
+        _prof_big = ProfileManager(p)
+        _adj_big = DynamicAdjuster(_prof_big.get_canny_config())
+        _det_big = ContourDetector(adjuster=_adj_big, **_prof_big.get_detector_config())
+        _st_big.__init__()
+    elif which == "small":
+        p = _resolve_profile(path or "profile_small.json")
+        _prof_small = ProfileManager(p)
+        _adj_small = DynamicAdjuster(_prof_small.get_canny_config())
+        _det_small = ContourDetector(adjuster=_adj_small, **_prof_small.get_detector_config())
+        _st_small.__init__()
+
+def update_dynamic(which: str, params: Dict[str, Any]) -> None:
+    """Update dynamic adjuster parameters at runtime."""
+    if which == "big" and _adj_big is not None:
+        _adj_big.update(**params)
+    elif which == "small" and _adj_small is not None:
+        _adj_small.update(**params)
 
 def _mask_to_roi(frame_bgr: np.ndarray, det: ContourDetector, bbox: Tuple[int,int,int,int], factor: float) -> np.ndarray:
     ref_w, ref_h = _ref_size(det)
