@@ -21,12 +21,21 @@ The output dict is compatible and adds 'space': (w,h) of detector reference.
 
 from typing import Optional, Dict, Any, Tuple
 import numpy as np
-import cv2
 import os
 
-from .detectors.contour_detector import ContourDetector, DetectionResult
-from .profile_manager import ProfileManager
+from .detectors.contour_detector import ContourDetector, DetectionResult, configs_from_profile
+from .profile_manager import load_profile as pm_load_profile, get_config
 from .dynamic_adjuster import DynamicAdjuster
+from .vision_utils import mask_to_roi
+from .config_defaults import (
+    DEFAULT_STABLE,
+    DEFAULT_ON_THRESHOLD,
+    DEFAULT_OFF_THRESHOLD,
+    DEFAULT_STICK_K,
+    DEFAULT_MISS_M,
+    DEFAULT_ROI_FACTOR,
+    DEFAULT_EMA_ALPHA,
+)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 
@@ -40,8 +49,6 @@ class _StableState:
 # dos detectores (big primero, small fallback)
 _det_big: Optional[ContourDetector] = None
 _det_small: Optional[ContourDetector] = None
-_prof_big: Optional[ProfileManager] = None
-_prof_small: Optional[ProfileManager] = None
 _adj_big: Optional[DynamicAdjuster] = None
 _adj_small: Optional[DynamicAdjuster] = None
 _st_big = _StableState()
@@ -54,30 +61,32 @@ def _knobs(config: Optional[Dict[str, Any]]):
     return dict(
         big_profile   = p.get("big",  "profile_big.json"),
         small_profile = p.get("small","profile_small.json"),
-        stable   = bool(cfg.get("stable", True)),
-        on_th    = float(cfg.get("on_th", 0.55)),
-        off_th   = float(cfg.get("off_th", 0.45)),
-        stick_k  = int(cfg.get("stick_k", 5)),
-        miss_m   = int(cfg.get("miss_m", 8)),
-        roi_fact = float(cfg.get("roi_factor", 1.8)),
-        ema_a    = float(cfg.get("ema", 0.7)),
+        stable   = bool(cfg.get("stable", DEFAULT_STABLE)),
+        on_th    = float(cfg.get("on_th", DEFAULT_ON_THRESHOLD)),
+        off_th   = float(cfg.get("off_th", DEFAULT_OFF_THRESHOLD)),
+        stick_k  = int(cfg.get("stick_k", DEFAULT_STICK_K)),
+        miss_m   = int(cfg.get("miss_m", DEFAULT_MISS_M)),
+        roi_fact = float(cfg.get("roi_factor", DEFAULT_ROI_FACTOR)),
+        ema_a    = float(cfg.get("ema", DEFAULT_EMA_ALPHA)),
     )
 
 def _resolve_profile(p: str) -> str:
     return p if os.path.isabs(p) else os.path.join(BASE, p)
 
 def _ensure_detectors(k):
-    global _det_big, _det_small, _prof_big, _prof_small, _adj_big, _adj_small
+    global _det_big, _det_small, _adj_big, _adj_small
     if _det_big is None:
         big = _resolve_profile(k["big_profile"])
-        _prof_big = ProfileManager(big)
-        _adj_big = DynamicAdjuster(_prof_big.get_canny_config())
-        _det_big = ContourDetector(adjuster=_adj_big, **_prof_big.get_detector_config())
+        pm_load_profile("big", big)
+        cfg, canny = configs_from_profile(get_config("big"))
+        _adj_big = DynamicAdjuster(canny)
+        _det_big = ContourDetector(adjuster=_adj_big, **cfg)
     if _det_small is None:
         small = _resolve_profile(k["small_profile"])
-        _prof_small = ProfileManager(small)
-        _adj_small = DynamicAdjuster(_prof_small.get_canny_config())
-        _det_small = ContourDetector(adjuster=_adj_small, **_prof_small.get_detector_config())
+        pm_load_profile("small", small)
+        cfg, canny = configs_from_profile(get_config("small"))
+        _adj_small = DynamicAdjuster(canny)
+        _det_small = ContourDetector(adjuster=_adj_small, **cfg)
 
 def _ref_size(det: ContourDetector) -> Tuple[int,int]:
     return det.proc.proc_w, det.proc.proc_h
@@ -90,18 +99,20 @@ def reset_state() -> None:
 
 def load_profile(which: str, path: Optional[str] = None) -> None:
     """Reload a profile ('big' or 'small') and reset state."""
-    global _det_big, _det_small, _prof_big, _prof_small, _adj_big, _adj_small
+    global _det_big, _det_small, _adj_big, _adj_small
     if which == "big":
         p = _resolve_profile(path or "profile_big.json")
-        _prof_big = ProfileManager(p)
-        _adj_big = DynamicAdjuster(_prof_big.get_canny_config())
-        _det_big = ContourDetector(adjuster=_adj_big, **_prof_big.get_detector_config())
+        pm_load_profile("big", p)
+        cfg, canny = configs_from_profile(get_config("big"))
+        _adj_big = DynamicAdjuster(canny)
+        _det_big = ContourDetector(adjuster=_adj_big, **cfg)
         _st_big.__init__()
     elif which == "small":
         p = _resolve_profile(path or "profile_small.json")
-        _prof_small = ProfileManager(p)
-        _adj_small = DynamicAdjuster(_prof_small.get_canny_config())
-        _det_small = ContourDetector(adjuster=_adj_small, **_prof_small.get_detector_config())
+        pm_load_profile("small", p)
+        cfg, canny = configs_from_profile(get_config("small"))
+        _adj_small = DynamicAdjuster(canny)
+        _det_small = ContourDetector(adjuster=_adj_small, **cfg)
         _st_small.__init__()
 
 def update_dynamic(which: str, params: Dict[str, Any]) -> None:
@@ -111,18 +122,6 @@ def update_dynamic(which: str, params: Dict[str, Any]) -> None:
     elif which == "small" and _adj_small is not None:
         _adj_small.update(**params)
 
-def _mask_to_roi(frame_bgr: np.ndarray, det: ContourDetector, bbox: Tuple[int,int,int,int], factor: float) -> np.ndarray:
-    ref_w, ref_h = _ref_size(det)
-    small = cv2.resize(frame_bgr, (ref_w, ref_h), interpolation=cv2.INTER_AREA)
-    x, y, w, h = bbox
-    pad_w = int(max(0.0, (factor - 1.0)) * w / 2.0)
-    pad_h = int(max(0.0, (factor - 1.0)) * h / 2.0)
-    rx = max(0, x - pad_w); ry = max(0, y - pad_h)
-    rw = min(ref_w - rx, w + 2 * pad_w)
-    rh = min(ref_h - ry, h + 2 * pad_h)
-    masked = np.zeros_like(small)
-    masked[ry:ry+rh, rx:rx+rw] = small[ry:ry+rh, rx:rx+rw]
-    return masked
 
 def _export(res: DetectionResult, det: ContourDetector, score_override: Optional[float]=None):
     ref = _ref_size(det)
@@ -162,7 +161,7 @@ def _step(det: ContourDetector, st: _StableState, frame: np.ndarray, k, return_o
             return False, out
 
     # ROI
-    roi_frame = _mask_to_roi(frame, det, st.last_bbox, k["roi_fact"])
+    roi_frame = mask_to_roi(frame, st.last_bbox, k["roi_fact"], _ref_size(det))
     res_roi: DetectionResult = det.detect(roi_frame, save_dir=None, return_overlay=return_overlay)
     if res_roi.ok:
         st.score_ema = res_roi.score if st.score_ema is None else (k["ema_a"]*st.score_ema + (1.0-k["ema_a"])*res_roi.score)
