@@ -16,11 +16,6 @@ def _odd(k: int) -> int:
 def _pct_on(mask: NDArray) -> float:
     return 100.0 * float((mask > 0).sum()) / float(mask.size)
 
-def _adaptive_thresh(gray: NDArray) -> NDArray:
-    return cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 11, 2
-    )
-
 def _despeckle(bin_img: NDArray, min_px: int) -> NDArray:
     "Remove connected components smaller than min_px (expects 0/255 image)."
     if min_px <= 0:
@@ -44,16 +39,6 @@ class MorphConfig:
     dil_min: int = 3
     dil_max: int = 15
     steps: int = 10
-
-@dataclass
-class CannyConfig:
-    t1_init: float = 50.0
-    t2_ratio: float = 2.5
-    life_min: float = 5.0
-    life_max: float = 10.0
-    rescue_life_min: float = 3.0
-    kp: float = 4.0
-    max_iter: int = 25
 
 @dataclass
 class GeoFilters:
@@ -125,44 +110,29 @@ class ContourDetector:
     def __init__(
         self,
         proc: ProcConfig = ProcConfig(),
-        canny: CannyConfig = CannyConfig(),
         morph: MorphConfig = MorphConfig(),
         geo: GeoFilters = GeoFilters(),
         w: Weights = Weights(),
         premorph: PreMorphPatches = PreMorphPatches(),
         color: ColorGateConfig = ColorGateConfig(),
+        adjuster: Optional["DynamicAdjuster"] = None,
     ) -> None:
         self.proc = proc
-        self.canny_cfg = canny
         self.morph_cfg = morph
         self.geo = geo
         self.w = w
         self.premorph = premorph
         self.color = color
-
-    # -------- profile I/O --------
-    @staticmethod
-    def from_profile(path: str) -> "ContourDetector":
-        with open(path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        def merge(datacls, key):
-            d = cfg.get(key, {})
-            return datacls(**{**asdict(datacls()), **d})
-        det = ContourDetector(
-            proc=merge(ProcConfig, "proc"),
-            canny=merge(CannyConfig, "canny"),
-            morph=merge(MorphConfig, "morph"),
-            geo=merge(GeoFilters, "geo"),
-            w=merge(Weights, "weights"),
-            premorph=merge(PreMorphPatches, "premorph"),
-            color=merge(ColorGateConfig, "color_gate"),
-        )
-        return det
+        # DynamicAdjuster injected; if None, use default
+        if adjuster is None:
+            from ..dynamic_adjuster import DynamicAdjuster, CannyConfig
+            adjuster = DynamicAdjuster(CannyConfig())
+        self.adjuster = adjuster
 
     def to_profile_dict(self) -> Dict[str, Any]:
         return {
             "proc": asdict(self.proc),
-            "canny": asdict(self.canny_cfg),
+            "canny": asdict(self.adjuster.cfg),
             "morph": asdict(self.morph_cfg),
             "geo": asdict(self.geo),
             "weights": asdict(self.w),
@@ -191,17 +161,11 @@ class ContourDetector:
         # ----- Preprocess -----
         proc, gray = self._preprocess(img)
 
-        # ----- Auto Canny -----
-        canny, t1, t2, life = self._auto_canny(gray)
-        
-        used_rescue = False
-        edges = canny.copy()
-        if _pct_on(canny) < self.canny_cfg.rescue_life_min:
-            th = _adaptive_thresh(gray)
-            edges = cv2.bitwise_or(canny, th)
-            used_rescue = True
-            if save_dir is not None:
-                cv2.imwrite(os.path.join(save_dir, f"{stamp}_thresc.png"), th)
+        # ----- Dynamic adjuster (auto canny + rescue) -----
+        edges, canny, t1, t2, life, used_rescue = self.adjuster.apply(gray)
+        if save_dir is not None and used_rescue:
+            th = cv2.bitwise_xor(edges, canny)
+            cv2.imwrite(os.path.join(save_dir, f"{stamp}_thresc.png"), th)
 
         if save_dir is not None:
             cv2.imwrite(os.path.join(save_dir, f"{stamp}_canny.png"), canny)
@@ -264,7 +228,7 @@ class ContourDetector:
             return DetectionResult(
                 ok=False,
                 used_rescue=used_rescue,
-                life_canny_pct=float(_pct_on(canny)),
+                life_canny_pct=float(life),
                 t1=float(t1), t2=int(t2),
                 color_cover_pct=float(color_cover),
                 color_used=bool(color_used),
@@ -280,7 +244,7 @@ class ContourDetector:
         result = DetectionResult(
             ok=True,
             used_rescue=used_rescue,
-            life_canny_pct=float(_pct_on(canny)),
+            life_canny_pct=float(life),
             bbox=tuple(int(v) for v in info["bbox"]),
             score=float(info["score"]),
             fill=float(info["fill"]),
@@ -330,22 +294,6 @@ class ContourDetector:
         gray = cv2.cvtColor(proc, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (_odd(self.proc.blur_k), _odd(self.proc.blur_k)), 0)
         return proc, gray
-
-    def _auto_canny(self, gray: NDArray):
-        cfg = self.canny_cfg
-        t1 = float(cfg.t1_init)
-        life = 0.0
-        for _ in range(1, cfg.max_iter + 1):
-            t2 = int(np.clip(cfg.t2_ratio * t1, 0, 255))
-            canny = cv2.Canny(gray, int(max(0, t1)), int(t2))
-            life = _pct_on(canny)
-            if cfg.life_min <= life <= cfg.life_max:
-                break
-            if life < cfg.life_min:
-                t1 = max(1.0, t1 - cfg.kp * (cfg.life_min - life))
-            else:
-                t1 = min(220.0, t1 + cfg.kp * (life - cfg.life_max))
-        return canny, t1, int(np.clip(cfg.t2_ratio * t1, 0, 255)), life
 
     def _run_morph(self, edges: NDArray, ck: int, dk: int, opening: bool = False) -> NDArray:
         m = edges.copy()
@@ -501,7 +449,16 @@ class ContourDetector:
 
 # ----------------------- CLI helper -----------------------
 def run_file(image_path: str, profile: Optional[str] = None, out_dir: Optional[str] = "results"):
-    det = ContourDetector.from_profile(profile) if profile else ContourDetector()
+    if profile:
+        from ..profile_manager import ProfileManager
+        from ..dynamic_adjuster import DynamicAdjuster
+        pm = ProfileManager(profile)
+        det = ContourDetector(
+            adjuster=DynamicAdjuster(pm.get_canny_config()),
+            **pm.get_detector_config(),
+        )
+    else:
+        det = ContourDetector()
     stamp = time.strftime("%Y%m%d_%H%M%S")
     res = det.detect(image_path, save_dir=out_dir, stamp=stamp)
     return res

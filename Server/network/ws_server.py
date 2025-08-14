@@ -1,10 +1,11 @@
 import asyncio
-import websockets
 import socket
 import json
 import time
+import websockets
 
 from core.Camera import Camera
+from core.vision import api as vision_api
 
 camera = Camera()
 camera.start_periodic_capture(interval=1.0)  # sigue autoarrancando; si prefieres lazy, quita esta línea
@@ -64,6 +65,18 @@ async def handler(websocket):
                 camera.set_processing_config(config)
                 response = {"status": "ok", "type": "text", "data": "processing config updated"}
 
+            elif cmd == "load_profile":
+                which = data.get("which", "big")
+                path = data.get("path")
+                vision_api.load_profile(which, path)
+                response = {"status": "ok", "type": "text", "data": f"profile {which} loaded"}
+
+            elif cmd == "dynamic":
+                which = data.get("which", "big")
+                params = data.get("params", {})
+                vision_api.update_dynamic(which, params)
+                response = {"status": "ok", "type": "text", "data": "dynamic params updated"}
+
             else:
                 response = {"status": "error", "type": "text", "data": f"unknown command: {cmd}"}
 
@@ -88,3 +101,4 @@ async def start_ws_server_async():
 
 def start_ws_server():
     asyncio.run(start_ws_server_async())
+
