@@ -324,8 +324,8 @@ class Control:
         self._gait_angle = phases[0] * 360.0  # proxy para ZUPT/odometría
 
         # stride/lift con rampa (mm)
-        stride_len  = int(22 * min(1.0, self.cpg.amp_xy_cur))  # antes 25/40
-        lift_height = int(10 * min(1.0, self.cpg.amp_z_cur))   # antes 12/20 
+        stride_len  = int(30 * min(1.0, self.cpg.amp_xy_cur))   
+        lift_height = int(12 * min(1.0, self.cpg.amp_z_cur))    
         
         base_y = self.height
         sx = getattr(self, "_stride_dir_x", 0)

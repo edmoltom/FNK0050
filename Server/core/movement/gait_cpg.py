@@ -30,14 +30,14 @@ class CPG:
             self.freq_tgt = 0.0
             self.amp_xy_tgt = 0.0
             self.amp_z_tgt = 0.0
-            self.duty_tgt = max(0.75, min(0.80, 0.80 - 0.25*sn))
+            self.duty_tgt = 0.80
             return    
 
         # Normaliza s a [0..1] para el duty adaptativo
         sn = max(0.0, min(1.0, s / 1.5))
 
         # Objetivos con límites seguros
-        self.freq_tgt   = max(0.2, min(2.0, 0.6 + 1.4 * s))
+        self.freq_tgt = max(0.2, min(3.0, 0.8 + 1.8 * s))
         self.amp_xy_tgt = max(0.0, min(1.5, 0.6 + 1.2 * s))
         self.amp_z_tgt  = max(0.0, min(1.2, 0.5 + 0.7 * s))
         # MÁS APOYO: duty mínimo 0.75
