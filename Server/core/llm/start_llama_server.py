@@ -1,46 +1,37 @@
 """
-Start script for llama-server.
+Start llama-server (Qwen 0.5B) with sane defaults for Raspberry Pi.
 
-This wraps your compiled llama.cpp `llama-server` binary with the same
-parameters you normally use with `llama-cli`, and exposes it as an HTTP server
-for other modules (e.g. TTS or stimulus injection) to connect to.
+Note: persona and sampling are controlled in the client (llm_to_tts.py),
+not here.
 """
-
 import subprocess
 from pathlib import Path
+import sys
 
-# --- PATHS (adapt to your own environment) --------------------
 HOME   = Path.home()
 SERVER = HOME / "llama.cpp/build/bin/llama-server"
 MODEL  = HOME / "llama.cpp/models/qwen2.5-0.5b-instruct-q3_k_m.gguf"
 
-# --- PARAMETERS (same as your llama-cli run) ------------------
 ARGS = [
     str(SERVER),
     "-m", str(MODEL),
-    "--mlock",
-    "-t", "2",              # threads
-    "-c", "512",            # context length
-    "--temp", "1.2",        # temperature
-    "--top_p", "0.95",
-    "--top_k", "80",
-    "--mirostat", "2", 
-    "--repeat-penalty", "1.07",
-    "--port", "8080",       # HTTP server port
+    "--mlock",            # if enough RAM is available, prevents paging
+    "-t", "3",            # CPU threads; raise to 3 if the Pi can handle it
+    "-c", "160",          # short context for lighter usage
+    "--port", "8080",     # HTTP port
 ]
 
 def main():
     if not SERVER.exists():
-        raise SystemExit(f"[ERROR] llama-server not found: {SERVER}")
+        sys.exit(f"[ERROR] llama-server not found: {SERVER}")
     if not MODEL.exists():
-        raise SystemExit(f"[ERROR] Model not found: {MODEL}")
+        sys.exit(f"[ERROR] Model not found: {MODEL}")
 
     print("[INFO] Launching llama-server…")
     try:
-        # Inherit stdout/stderr so you can see server logs in the terminal
         subprocess.run(ARGS, check=False)
     except KeyboardInterrupt:
-        print("\n[INFO] Execution interrupted by user (Ctrl+C). Shutting down server...")
+        print("\n[INFO] Interrupted by user (Ctrl+C). Shutting down…")
 
 if __name__ == "__main__":
     main()
