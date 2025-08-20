@@ -16,9 +16,9 @@ TTS_CMD = [sys.executable, str(TTS_PY), "--text"]
 
 MAX_REPLY_CHARS = 280  # avoid overly long replies
 SYSTEM_STYLE = (
-    "You are the voice of a robot. "
-    "Respond briefly in Spanish, suitable for Text-to-Speech. "
-    "Avoid long paragraphs, be concise."
+    "Eres la voz de un robot gato"
+    "Responde brevemente en castellano, de forma adecuada para un sistema ligero de texto a voz. "
+    "Evita parrafos largos, y se conciso"
 )
 # ------------------------------------------------------------------------------
 
@@ -65,11 +65,6 @@ def speak_text(text: str):
         print(f"[ERROR] TTS failed: {e}")
 
 
-def chunk_sentences(text: str):
-    """Split text into smaller sentences for lower latency TTS playback."""
-    return re.findall(r'([^.!?]+[.!?])', text)
-
-
 def main():
     parser = argparse.ArgumentParser(description="Query LLM and speak the response with TTS.")
     parser.add_argument("--prompt", required=True, help="Prompt to send to the LLM")
@@ -82,10 +77,7 @@ def main():
 
     reply = reply[:MAX_REPLY_CHARS]
     print(f"[LLM] {reply}")
-
-    # Split into sentences to reduce perceived latency
-    for sentence in chunk_sentences(reply):
-        speak_text(sentence.strip())
+    speak_text(reply)
 
 
 if __name__ == "__main__":
