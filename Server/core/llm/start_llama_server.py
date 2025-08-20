@@ -18,10 +18,14 @@ MODEL  = HOME / "llama.cpp/models/qwen2.5-0.5b-instruct-q3_k_m.gguf"
 ARGS = [
     str(SERVER),
     "-m", str(MODEL),
+    "--mlock",
     "-t", "2",              # threads
-    "-c", "256",            # context length
-    "--temp", "0.9",        # temperature
-    "--repeat-penalty", "1.05",
+    "-c", "512",            # context length
+    "--temp", "1.2",        # temperature
+    "--top_p", "0.95",
+    "--top_k", "80",
+    "--mirostat", "2", 
+    "--repeat-penalty", "1.07",
     "--port", "8080",       # HTTP server port
 ]
 

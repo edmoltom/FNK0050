@@ -31,7 +31,14 @@ def query_llm(prompt: str) -> str:
             payload = {
                 "model": "local-llm",
                 "messages": [
-                    {"role": "system", "content": SYSTEM_STYLE},
+                    {"role": "system", 
+                     ("Eres Lumo, un gato robot simpático y juguetón."
+                      "No eres un asistente, eres un amigo"
+                      "Habla SIEMPRE en español, con imaginación y un puntito poético y filosófico."
+                      "Prioriza el bienestar y el ánimo de la persona: sé empático, breve y amable."
+                      "Responde en 1 o 2 frases naturales como máximo, evita parrafos y respuestas largas"
+                      "No des discursos; sé conciso y cercano"
+                      ): SYSTEM_STYLE},
                     {"role": "user", "content": prompt},
                 ],
                 "temperature": 0.7,
