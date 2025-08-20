@@ -17,7 +17,8 @@ for folder in ['core', 'lib', 'test_codes', 'network']:
 #from test_visual_perception import main  
 #from test_ws_server import main
 #from test_llm_tts import main
-from test_voice_loop import main
+#from test_voice_loop import main
+from test_voice_interface import main
 
 if __name__ == '__main__':
     main()
