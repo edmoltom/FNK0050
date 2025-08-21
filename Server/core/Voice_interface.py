@@ -1,18 +1,17 @@
-import os
 import sys
 import time
 import subprocess
 import threading
 import queue
-import requests
 import asyncio, threading
 from LedController import LedController
 from pathlib import Path
 
+sys.path.append(str(Path(__file__).resolve().parent / "llm"))
+from llm_client import query_llm
+
 BASE = Path(__file__).resolve().parent
-LLAMA_BASE = os.getenv("LLAMA_BASE", "http://127.0.0.1:8080")
 WAKE_WORDS = ["humo", "lo humo", "alumno", "lune"]
-#WAKE_WORDS = []
 MAX_REPLY_CHARS = 220
 THINK_TIMEOUT_SEC = 30
 SPEAK_COOLDOWN_SEC = 1.5
@@ -37,14 +36,14 @@ async def _led_state(state: str):
         await _ctrl.set_all([0, 128, 0])    
     elif state == "listen":
         await _ctrl.stop_animation()
-        await _ctrl.start_pulsed_wipe([0, 256, 0], 20)            
+        await _ctrl.start_pulsed_wipe([0, 255, 0], 20)            
     elif state == "processing":
         await _ctrl.stop_animation()
         await _ctrl.set_all([0, 0, 0])
         await _ctrl.start_pulsed_wipe([0, 0, 128], 20)
     elif state == "speaking":
         await _ctrl.stop_animation()
-        await _ctrl.set_all([0, 0, 256])
+        await _ctrl.set_all([0, 0, 255])
     else:
         await _ctrl.stop_animation()
         await _ctrl.set_all([0, 0, 0])
@@ -119,52 +118,9 @@ def stt_stream():
         except queue.Empty:
             yield None
 
-LLM_ENDPOINT = None
-
 def llm_ask(text: str) -> str:
-    """Query the LLM server and return the reply (v1 compat → fallback)."""
-    global LLM_ENDPOINT
-    payload = {
-        "model": "local-llm",
-        "messages": [
-            {"role": "system", "content": "Responde en español, breve."},
-            {"role": "user", "content": text},
-        ]
-    }
-    # Try OpenAI-compatible endpoint
-    try:
-        if LLM_ENDPOINT in (None, "/v1/chat/completions"):
-            url = f"{LLAMA_BASE}/v1/chat/completions"
-            print(f"[LLM →] POST {url}")
-            r = requests.post(url, json=payload, timeout=THINK_TIMEOUT_SEC)
-            r.raise_for_status()
-            data = r.json()
-            if LLM_ENDPOINT is None:
-                LLM_ENDPOINT = "/v1/chat/completions"
-                print("[LLM] using /v1/chat/completions")
-            reply = data["choices"][0]["message"]["content"]
-            return reply[:MAX_REPLY_CHARS]
-    except Exception as e:
-        print(f"[LLM v1 ERROR] {e} -> fallback /completion")
-        LLM_ENDPOINT = "/completion"
-
-    try:
-        url = f"{LLAMA_BASE}/completion"
-        fb = {"prompt": text, "n_predict": 200, "temperature": 1.2,
-            "top_p": 0.95, "top_k": 80, "repeat_penalty": 1.07,
-            "mirostat": 2, "mirostat_tau": 8.0, "mirostat_eta": 0.1}
-        print(f"[LLM →] POST {url}")
-        r = requests.post(url, json=fb, timeout=THINK_TIMEOUT_SEC)
-        r.raise_for_status()
-        data = r.json()
-        if LLM_ENDPOINT != "/completion":
-            LLM_ENDPOINT = "/completion"
-            print("[LLM] using /completion")
-        reply = data.get("completion") or data.get("content") or ""
-        return reply[:MAX_REPLY_CHARS]
-    except Exception as e:
-        print(f"[LLM legacy ERROR] {e}")
-        raise
+    """Query the shared LLM client and return a brief Spanish reply."""
+    return query_llm(text, max_reply_chars=MAX_REPLY_CHARS)
 
 def tts_say(text: str) -> int:
     p = subprocess.run([sys.executable, str(TTS_PATH), "--text", text], check=False)
@@ -174,9 +130,6 @@ def tts_say(text: str) -> int:
 def contains_wake_word(text: str) -> bool:
     t = text.lower()
     return any(w in t for w in WAKE_WORDS)
-
-#def contains_wake_word(text: str) -> bool:
-#    return True
 
 class ConversationManager:
     def __init__(self) -> None:
@@ -230,7 +183,9 @@ class ConversationManager:
                     elif utter:
                         print(f"[CMD] {utter}")
                         self.pending = utter
-                        self.attentive_until = now + ATTENTION_TTL_SEC   # RENEW ATTENTION
+                        self.attentive_until = (
+                            now + ATTENTION_TTL_SEC
+                        )  # renew attention
                         stt_pause()
                         self.set_state("THINK")
 
@@ -248,8 +203,12 @@ class ConversationManager:
                         print(f"[SAY] {self.reply}")
                         tts_say(self.reply)
                         self.reply = None
-                        self.last_speak_end = time.monotonic() 
-                        self.attentive_until = self.last_speak_end + ATTENTION_TTL_SEC + ATTN_BONUS_AFTER_SPEAK
+                        self.last_speak_end = time.monotonic()
+                        self.attentive_until = (
+                            self.last_speak_end
+                            + ATTENTION_TTL_SEC
+                            + ATTN_BONUS_AFTER_SPEAK
+                        )
 
                     if time.monotonic() - self.last_speak_end >= SPEAK_COOLDOWN_SEC:
                         stt_resume()
