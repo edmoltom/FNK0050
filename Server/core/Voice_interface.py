@@ -5,6 +5,8 @@ import subprocess
 import threading
 import queue
 import requests
+import asyncio, threading
+from LedController import LedController
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
@@ -24,8 +26,38 @@ STT_PAUSED = False
 STT_PROC = None
 
 
+_loop = asyncio.new_event_loop()
+threading.Thread(target=_loop.run_forever, daemon=True).start()
+_ctrl = LedController(brightness=10, loop=_loop)
+
+
+async def _led_state(state: str):
+    if state == "wake":
+        await _ctrl.stop_animation()
+        await _ctrl.set_all([0, 128, 0])    
+    elif state == "listen":
+        await _ctrl.stop_animation()
+        await _ctrl.start_pulsed_wipe([0, 256, 0], 20)            
+    elif state == "processing":
+        await _ctrl.stop_animation()
+        await _ctrl.set_all([0, 0, 0])
+        await _ctrl.start_pulsed_wipe([0, 0, 128], 20)
+    elif state == "speaking":
+        await _ctrl.stop_animation()
+        await _ctrl.set_all([0, 0, 256])
+    else:
+        await _ctrl.stop_animation()
+        await _ctrl.set_all([0, 0, 0])
+
+def _submit(coro):
+    try:
+        asyncio.run_coroutine_threadsafe(coro, _loop)
+    except RuntimeError:
+        pass  # loop cerrado al apagar
+
 def leds_set(state: str) -> None:
     print(f"[LEDS] {state}")  # TODO: integrate real LEDs
+    _submit(_led_state(state))
 
 
 def stt_pause() -> None:
@@ -148,7 +180,7 @@ def contains_wake_word(text: str) -> bool:
 
 class ConversationManager:
     def __init__(self) -> None:
-        self.state = "WAKE"
+        self.state = "NONE"
         self.stt_iter = stt_stream()
         self.pending = ""
         self.reply = None
@@ -161,8 +193,8 @@ class ConversationManager:
             print(f"[STATE] -> {new_state}")
             if new_state == "WAKE":
                 leds_set("wake")
-            elif new_state == "LISTEN":
-                leds_set("idle")
+            elif new_state == "ATTENTIVE_LISTEN":
+                leds_set("listen")
             elif new_state == "THINK":
                 leds_set("processing")
             elif new_state == "SPEAK":
@@ -229,7 +261,10 @@ class ConversationManager:
             pass
         finally:
             stt_stop()
-
+            try:
+                _submit(_ctrl.close())
+            finally:
+                _loop.call_soon_threadsafe(_loop.stop)
 
 if __name__ == "__main__":
     ConversationManager().run()
