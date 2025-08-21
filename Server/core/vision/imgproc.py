@@ -1,20 +1,33 @@
-"""Common image processing utilities for detectors."""
+"""
+@file imgproc.py
+@brief Reusable vision utilities.
+Reusable image processing helpers shared across detectors.
+"""
 from __future__ import annotations
 
-from typing import Tuple, Optional, Dict, Any
 import cv2
 import numpy as np
+from typing import Any, Dict, Optional, Tuple
 
 NDArray = np.ndarray
 
 
 def pct_on(mask: NDArray) -> float:
-    """Return percentage of non-zero pixels in mask."""
+    """
+    @brief Return percentage of non-zero pixels in mask.
+    @param mask NDArray Binary mask to analyze.
+    @return float Percentage of active pixels.
+    """
     return 100.0 * float((mask > 0).sum()) / float(mask.size)
 
 
 def despeckle(bin_img: NDArray, min_px: int) -> NDArray:
-    """Remove connected components smaller than ``min_px``."""
+    """
+    @brief Remove connected components smaller than a threshold.
+    @param bin_img NDArray Binary image containing components.
+    @param min_px int Minimum pixel area to retain.
+    @return NDArray Image with small components removed.
+    """
     if min_px <= 0:
         return bin_img
     lab = (bin_img > 0).astype("uint8")
@@ -27,7 +40,14 @@ def despeckle(bin_img: NDArray, min_px: int) -> NDArray:
 
 
 def mask_to_roi(frame_bgr: NDArray, bbox: Tuple[int, int, int, int], factor: float, ref_size: Tuple[int, int]) -> NDArray:
-    """Return ROI of ``frame_bgr`` around ``bbox`` scaled by ``factor`` in reference size."""
+    """
+    @brief Return ROI of ``frame_bgr`` around ``bbox`` scaled by ``factor``.
+    @param frame_bgr NDArray Source frame in BGR format.
+    @param bbox Tuple[int,int,int,int] Bounding box (x,y,w,h) in reference coordinates.
+    @param factor float Scale factor relative to the bounding box size.
+    @param ref_size Tuple[int,int] Reference size (width, height) to resize the frame.
+    @return NDArray Masked ROI image in reference size.
+    """
     ref_w, ref_h = ref_size
     small = cv2.resize(frame_bgr, (ref_w, ref_h), interpolation=cv2.INTER_AREA)
     x, y, w, h = bbox
@@ -44,20 +64,35 @@ def mask_to_roi(frame_bgr: NDArray, bbox: Tuple[int, int, int, int], factor: flo
 
 # ----------------------- utilities -----------------------
 
-
 def _odd(k: int) -> int:
+    """
+    @brief Ensure a kernel size is odd.
+    @param k int Original kernel size.
+    @return int Odd kernel size (k or k+1).
+    @note Returns ``k+1`` when ``k`` is even.
+    """
     k = int(k)
     return k if (k % 2 == 1) else k + 1
 
 
 def _clip01(x: float) -> float:
+    """
+    @brief Clamp value to the ``[0,1]`` range.
+    @param x float Value to clamp.
+    @return float Clamped value.
+    """
     return float(max(0.0, min(1.0, x)))
 
 
 # ----------------------- core imgproc helpers -----------------------
 
-
 def _preprocess(img: NDArray, proc_cfg: "ProcConfig") -> Tuple[NDArray, NDArray]:
+    """
+    @brief Resize and blur an image according to processing config.
+    @param img NDArray Source BGR image.
+    @param proc_cfg ProcConfig Processing configuration.
+    @return Tuple[NDArray,NDArray] Tuple ``(proc_bgr, gray_blurred)``.
+    """
     proc = cv2.resize(img, (proc_cfg.proc_w, proc_cfg.proc_h), interpolation=cv2.INTER_AREA)
     gray = cv2.cvtColor(proc, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (_odd(proc_cfg.blur_k), _odd(proc_cfg.blur_k)), 0)
@@ -65,6 +100,14 @@ def _preprocess(img: NDArray, proc_cfg: "ProcConfig") -> Tuple[NDArray, NDArray]
 
 
 def _run_morph(edges: NDArray, ck: int, dk: int, opening: bool = False) -> NDArray:
+    """
+    @brief Apply closing and dilation to edge image.
+    @param edges NDArray Binary edge image.
+    @param ck int Closing kernel size.
+    @param dk int Dilation kernel size.
+    @param opening bool Whether to apply an opening first.
+    @return NDArray Morphologically processed image.
+    """
     m = edges.copy()
     if opening:
         k0 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
@@ -77,6 +120,12 @@ def _run_morph(edges: NDArray, ck: int, dk: int, opening: bool = False) -> NDArr
 
 
 def _ar_score(ar: float, geo_cfg: "GeoFilters") -> float:
+    """
+    @brief Score aspect ratio based on geometric filters.
+    @param ar float Aspect ratio ``w/h``.
+    @param geo_cfg GeoFilters Geometric filter configuration.
+    @return float Normalized score for the aspect ratio.
+    """
     lo, hi = geo_cfg.ar_min, geo_cfg.ar_max
     mid = 1.0
     span = max(mid - lo, hi - mid)
@@ -84,6 +133,14 @@ def _ar_score(ar: float, geo_cfg: "GeoFilters") -> float:
 
 
 def _shape_features(cnt: NDArray, W: int, H: int, geo_cfg: "GeoFilters") -> Dict[str, Any]:
+    """
+    @brief Compute shape features for a contour.
+    @param cnt NDArray Contour points.
+    @param W int Image width.
+    @param H int Image height.
+    @param geo_cfg GeoFilters Geometric filter configuration.
+    @return Dict[str,Any] Dictionary with contour features.
+    """
     area = cv2.contourArea(cnt)
     per = max(1e-6, cv2.arcLength(cnt, True))
     x, y, w, h = cv2.boundingRect(cnt)
@@ -111,6 +168,16 @@ def _shape_features(cnt: NDArray, W: int, H: int, geo_cfg: "GeoFilters") -> Dict
 
 
 def _score_contour(feat: Dict[str, Any], cx_img: float, cy_img: float, W: int, H: int, weights: "Weights") -> Tuple[float, float]:
+    """
+    @brief Compute weighted score for a contour's features.
+    @param feat Dict[str,Any] Contour feature dictionary.
+    @param cx_img float Image center X.
+    @param cy_img float Image center Y.
+    @param W int Image width.
+    @param H int Image height.
+    @param weights Weights Weight configuration.
+    @return Tuple[float,float] Tuple ``(score, dist_norm)``.
+    """
     x, y, w, h = feat["bbox"]
     area_norm = feat["area"] / (W * H)
     cx = x + w / 2.0
@@ -129,6 +196,16 @@ def _score_contour(feat: Dict[str, Any], cx_img: float, cy_img: float, W: int, H
 
 
 def _select_best(mask: NDArray, min_area_px: int, W: int, H: int, geo_cfg: "GeoFilters", weights: "Weights") -> Optional[Dict[str, Any]]:
+    """
+    @brief Choose the best contour according to geometric and weight criteria.
+    @param mask NDArray Binary mask with candidate contours.
+    @param min_area_px int Minimum contour area in pixels.
+    @param W int Image width.
+    @param H int Image height.
+    @param geo_cfg GeoFilters Geometric filter configuration.
+    @param weights Weights Weight configuration.
+    @return Optional[Dict[str,Any]] Best contour information or ``None`` if not found.
+    """
     cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not cnts:
         return None
@@ -154,6 +231,15 @@ def _select_best(mask: NDArray, min_area_px: int, W: int, H: int, geo_cfg: "GeoF
 
 
 def _process_with_margin(edges: NDArray, margin: int, morph_cfg: "MorphConfig", geo_cfg: "GeoFilters", weights: "Weights") -> Tuple[Optional[Tuple[NDArray, Dict[str, Any], int, int]], NDArray]:
+    """
+    @brief Run morphology and contour selection with a border margin.
+    @param edges NDArray Edge image.
+    @param margin int Border margin in pixels to ignore.
+    @param morph_cfg MorphConfig Morphological configuration.
+    @param geo_cfg GeoFilters Geometric filter configuration.
+    @param weights Weights Weight configuration.
+    @return Tuple[Optional[Tuple[NDArray,Dict[str,Any],int,int]], NDArray] Best contour info and processed edges.
+    """
     e = edges.copy()
     if margin > 0:
         e[:margin, :] = 0
@@ -191,6 +277,15 @@ def _process_with_margin(edges: NDArray, margin: int, morph_cfg: "MorphConfig", 
 
 
 def _try_with_margins(edges: NDArray, proc_cfg: "ProcConfig", morph_cfg: "MorphConfig", geo_cfg: "GeoFilters", weights: "Weights") -> Tuple[Optional[Tuple[NDArray, Dict[str, Any], int, int]], NDArray]:
+    """
+    @brief Attempt contour selection with and without border margin.
+    @param edges NDArray Edge image.
+    @param proc_cfg ProcConfig Processing configuration (for margin).
+    @param morph_cfg MorphConfig Morphological configuration.
+    @param geo_cfg GeoFilters Geometric filter configuration.
+    @param weights Weights Weight configuration.
+    @return Tuple[Optional[Tuple[NDArray,Dict[str,Any],int,int]], NDArray] Best contour info and processed edges.
+    """
     best, e_used = _process_with_margin(edges, proc_cfg.border_margin, morph_cfg, geo_cfg, weights)
     if best is None:
         best, e_used = _process_with_margin(edges, 0, morph_cfg, geo_cfg, weights)
@@ -198,6 +293,14 @@ def _try_with_margins(edges: NDArray, proc_cfg: "ProcConfig", morph_cfg: "MorphC
 
 
 def _draw_overlay(proc_bgr: NDArray, info: Dict[str, Any], mask_final: NDArray, color_enabled: bool) -> Tuple[NDArray, Tuple[int, int]]:
+    """
+    @brief Draw detection overlay on processed image.
+    @param proc_bgr NDArray Processed BGR image.
+    @param info Dict[str,Any] Selected contour information.
+    @param mask_final NDArray Mask image where contour will be drawn.
+    @param color_enabled bool Whether color gate is enabled.
+    @return Tuple[NDArray,Tuple[int,int]] Overlay image and contour center.
+    """
     overlay = proc_bgr.copy()
     x, y, w, h = info["bbox"]
     cv2.drawContours(mask_final, [info["cnt"]], -1, 255, thickness=cv2.FILLED)
@@ -214,6 +317,12 @@ def _draw_overlay(proc_bgr: NDArray, info: Dict[str, Any], mask_final: NDArray, 
 
 
 def _color_gate(bgr: NDArray, color_cfg: "ColorGateConfig") -> NDArray:
+    """
+    @brief Generate mask by filtering colors.
+    @param bgr NDArray Source BGR image.
+    @param color_cfg ColorGateConfig Color gate configuration.
+    @return NDArray Binary mask of selected colors.
+    """
     if color_cfg.mode == "hsv":
         hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
         lo = np.array(color_cfg.hsv_lo, dtype=np.uint8)
