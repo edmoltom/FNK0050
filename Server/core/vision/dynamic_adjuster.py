@@ -14,7 +14,7 @@ from .config_defaults import (
     ADAPTIVE_BLOCK_SIZE,
     ADAPTIVE_C,
 )
-from .vision_utils import pct_on
+from .imgproc import pct_on
 
 NDArray = np.ndarray
 

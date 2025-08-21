@@ -44,7 +44,7 @@ from ..config_defaults import (
     COLORGATE_MAX_COVER_PCT,
     BOTTOM_MARGIN_MAX,
 )
-from ..vision_utils import (
+from ..imgproc import (
     pct_on,
     despeckle,
     _preprocess,

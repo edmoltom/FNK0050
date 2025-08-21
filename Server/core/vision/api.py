@@ -26,7 +26,7 @@ import os
 from .detectors.contour_detector import ContourDetector, DetectionResult, configs_from_profile
 from .profile_manager import load_profile as pm_load_profile, get_config
 from .dynamic_adjuster import DynamicAdjuster
-from .vision_utils import mask_to_roi
+from .imgproc import mask_to_roi
 from .config_defaults import (
     DEFAULT_STABLE,
     DEFAULT_ON_THRESHOLD,
