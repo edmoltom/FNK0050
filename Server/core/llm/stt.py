@@ -51,8 +51,18 @@ def main():
                 if rec.AcceptWaveform(data):
                     res = json.loads(rec.Result())
                     txt = (res.get("text") or "").strip()
-                    if txt:
+
+                    # confidence-based gating
+                    words = res.get("result") or []
+                    if words:
+                        avg_conf = sum(w.get("conf", 0.0) for w in words) / max(1, len(words))
+                    else:
+                        avg_conf = 0.0
+
+                    # confianza >= 0.60 y al menos 8 caracteres
+                    if txt and avg_conf >= 0.60 and len(txt) >= 8:
                         print(f"> {txt}")
+
                 else:
                     # If you need partial hypotheses in real time:
                     # partial = json.loads(rec.PartialResult()).get("partial", "")
