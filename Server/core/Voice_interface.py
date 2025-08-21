@@ -12,7 +12,6 @@ from llm_client import query_llm
 
 BASE = Path(__file__).resolve().parent
 WAKE_WORDS = ["humo", "lo humo", "alumno", "lune"]
-#WAKE_WORDS = []
 MAX_REPLY_CHARS = 220
 THINK_TIMEOUT_SEC = 30
 SPEAK_COOLDOWN_SEC = 1.5
@@ -37,14 +36,14 @@ async def _led_state(state: str):
         await _ctrl.set_all([0, 128, 0])    
     elif state == "listen":
         await _ctrl.stop_animation()
-        await _ctrl.start_pulsed_wipe([0, 256, 0], 20)            
+        await _ctrl.start_pulsed_wipe([0, 255, 0], 20)            
     elif state == "processing":
         await _ctrl.stop_animation()
         await _ctrl.set_all([0, 0, 0])
         await _ctrl.start_pulsed_wipe([0, 0, 128], 20)
     elif state == "speaking":
         await _ctrl.stop_animation()
-        await _ctrl.set_all([0, 0, 256])
+        await _ctrl.set_all([0, 0, 255])
     else:
         await _ctrl.stop_animation()
         await _ctrl.set_all([0, 0, 0])
@@ -131,9 +130,6 @@ def tts_say(text: str) -> int:
 def contains_wake_word(text: str) -> bool:
     t = text.lower()
     return any(w in t for w in WAKE_WORDS)
-
-#def contains_wake_word(text: str) -> bool:
-#    return True
 
 class ConversationManager:
     def __init__(self) -> None:
