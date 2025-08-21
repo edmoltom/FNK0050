@@ -5,8 +5,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core'))
 from LedController import LedController
 
-
-async def main():
+async def test_led_no_block():
     ctrl = LedController(brightness=30)
     try:
         await ctrl.set_all([255, 0, 0])
@@ -19,5 +18,5 @@ async def main():
         await ctrl.close()
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+def main():
+    asyncio.run(test_led_no_block())

@@ -12,6 +12,7 @@ for folder in ['core', 'lib', 'test_codes', 'network']:
         sys.path.insert(0, folder_path)
 
 #from hello_world import main
+#from test_led_controller import main
 #from test_led import main
 #from test_gamepad import main
 #from test_visual_perception import main  
