@@ -13,6 +13,7 @@
 import json, queue, sys, signal
 from pathlib import Path
 import sounddevice as sd
+from text_norm import normalize_punct
 from vosk import Model, KaldiRecognizer
 
 # Absolute model path on your Pi. Adjust if you move the model.
@@ -61,6 +62,7 @@ def main():
 
                     # confianza >= 0.60 y al menos 8 caracteres
                     if txt and avg_conf >= 0.60 and len(txt) >= 8:
+                        txt = normalize_punct(txt)
                         print(f"> {txt}")
 
                 else:
