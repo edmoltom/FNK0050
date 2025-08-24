@@ -40,15 +40,15 @@ from pathlib import Path
 #   - Less metallic: reduce tremolo or disable phaser.
 #   - More kawaii: raise pitch to 500 and add treble +8..+12.
 SOX_CHAIN = [
-    "pitch","410",
-    "tempo","1.00",
+    "pitch","390",
+    "tempo","0.96",
     "highpass","250","lowpass","6000",
     "equalizer","2600","1.0q","+6",
     "compand","0.05,0.15","-60,-60,-35,-12,0,-8","-5","-8","0.03",
     "tremolo","35","75",
     "phaser","0.8","0.74","3","0.4","2","-t",
     "overdrive","6","30",
-    "treble","10","12",
+    "treble","8","10",
     "gain","-n"
 ]
 TARGET_RATE = 16000  # Hz

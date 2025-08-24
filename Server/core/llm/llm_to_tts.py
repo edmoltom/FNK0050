@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
 import sys
 import subprocess
 from pathlib import Path
 import argparse
+from persona import build_system
 from llm_client import query_llm
 
 THIS_DIR = Path(__file__).resolve().parent
@@ -22,13 +22,12 @@ def speak_text(text: str):
 
 # --- CLI ----------------------------------------------------------------------
 def main():
-    ap = argparse.ArgumentParser(
-        description="Query LLM and speak the response with TTS."
-    )
-    ap.add_argument("--prompt", required=True, help="Prompt to send to the LLM")
-    args = ap.parse_args()
-
-    reply = query_llm(args.prompt, max_reply_chars=MAX_REPLY_CHARS)
+    system = build_system()
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": args.prompt},
+    ]
+    reply = query_llm(messages, max_reply_chars=MAX_REPLY_CHARS)
     if not reply:
         print("[WARN] No reply from LLM.")
         return
