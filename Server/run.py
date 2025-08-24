@@ -1,25 +1,37 @@
-import os
-import sys
+from __future__ import annotations
 
-project_root = os.path.dirname(os.path.abspath(__file__))
+"""Entry point for starting server subsystems."""
 
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+import argparse
+import json
+from pathlib import Path
+from typing import Any, Dict
 
-for folder in ['core', 'lib', 'test_codes', 'network']:
-    folder_path = os.path.join(project_root, folder)
-    if folder_path not in sys.path:
-        sys.path.insert(0, folder_path)
+from .app import create_app
 
-#from hello_world import main
-#from test_led_controller import main
-#from test_led import main
-#from test_gamepad import main
-#from test_visual_perception import main  
-#from test_ws_server import main
-#from test_llm_tts import main
-#from test_voice_loop import main
-from test_voice_interface import main
 
-if __name__ == '__main__':
+def load_config(path: Path) -> Dict[str, Any]:
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Server runner")
+    parser.add_argument("-c", "--config", type=Path, help="JSON configuration file")
+    parser.add_argument("--voice", action="store_true", help="Enable voice subsystem")
+    parser.add_argument("--vision", action="store_true", help="Enable vision subsystem")
+    args = parser.parse_args()
+
+    cfg: Dict[str, Any] = {}
+    if args.config:
+        cfg.update(load_config(args.config))
+    if args.voice:
+        cfg["voice"] = True
+    if args.vision:
+        cfg["vision"] = True
+
+    create_app(cfg)
+
+
+if __name__ == "__main__":
     main()
