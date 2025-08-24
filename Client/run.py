@@ -1,21 +1,39 @@
-import os
-import sys
+"""Run client subsystems based on command line options or a config file."""
 
-project_root = os.path.dirname(os.path.abspath(__file__))
-
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-for folder in ['network', 'test_codes']:
-    folder_path = os.path.join(project_root, folder)
-    if folder_path not in sys.path:
-        sys.path.insert(0, folder_path)
-  
-#from hello_world_gui import main
-#from test_ws_ping import main
-from test_ws_img_stream import main
-#from test_ws_command import main
+import argparse
+import json
+import app
 
 
-if __name__ == '__main__':
+def load_config(path: str) -> dict:
+    """Load JSON configuration from *path* if provided."""
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Client runner")
+    parser.add_argument("--gui", action="store_true", help="start graphical interface")
+    parser.add_argument("--network", action="store_true", help="start network client only")
+    parser.add_argument("--config", help="path to JSON configuration file")
+    args = parser.parse_args()
+
+    config = {}
+    if args.config:
+        config = load_config(args.config)
+
+    gui_enabled = args.gui or config.get("gui", False)
+    network_enabled = args.network or config.get("network", False)
+
+    if gui_enabled and network_enabled:
+        app.start_all()
+    elif gui_enabled:
+        app.start_gui()
+    elif network_enabled:
+        app.start_network()
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
     main()
