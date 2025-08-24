@@ -17,7 +17,7 @@ ARGS = [
     "-m", str(MODEL),
     "--mlock",            # if enough RAM is available, prevents paging
     "-t", "3",            # CPU threads; raise to 3 if the Pi can handle it
-    "-c", "160",          # short context for lighter usage
+    "-c", "384",          # context for lighter usage
     "--port", "8080",     # HTTP port
 ]
 
