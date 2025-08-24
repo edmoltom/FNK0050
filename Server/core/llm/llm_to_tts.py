@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 import argparse
 from persona import build_system
-from llm_client import query_llm
+from http_client import HTTPClient
 
 THIS_DIR = Path(__file__).resolve().parent
 TTS_PY = THIS_DIR / "tts.py"
@@ -27,7 +27,8 @@ def main():
         {"role": "system", "content": system},
         {"role": "user", "content": args.prompt},
     ]
-    reply = query_llm(messages, max_reply_chars=MAX_REPLY_CHARS)
+    client = HTTPClient()
+    reply = client.query(messages, max_chars=MAX_REPLY_CHARS)
     if not reply:
         print("[WARN] No reply from LLM.")
         return

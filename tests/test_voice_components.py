@@ -6,8 +6,9 @@ from Server.core.voice import (
     ConversationManager,
     VoiceInterface,
     TTSInterface,
-    LLMInterface,
+    LLMClient,
 )
+from tests.mock_llm import MockClient
 
 
 class DummySTT(SpeechInput):
@@ -41,14 +42,9 @@ class DummyTTS(TTSInterface):
         self.spoken.append(text)
 
 
-class DummyLLM(LLMInterface):
-    def ask(self, messages):
-        return "ACK: " + messages[-1]["content"]
-
-
 def test_voice_interface_flow():
     stt = DummySTT(["wake hello"])
-    llm = DummyLLM()
+    llm = MockClient()
     conv = ConversationManager(llm, wake_words=["wake"])
     tts = DummyTTS()
     output = SpeechOutput(tts)

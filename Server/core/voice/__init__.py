@@ -14,7 +14,9 @@ from .speech_output import (
     LEDInterface,
     NullLED,
 )
-from .conversation import ConversationManager, LLMInterface, DefaultLLM
+from .conversation import ConversationManager
+from core.llm.base import LLMClient
+from core.llm.http_client import HTTPClient
 
 
 class VoiceInterface:
@@ -75,7 +77,7 @@ __all__ = [
     "LEDInterface",
     "NullLED",
     "ConversationManager",
-    "LLMInterface",
-    "DefaultLLM",
+    "LLMClient",
+    "HTTPClient",
     "VoiceInterface",
 ]
