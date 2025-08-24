@@ -3,27 +3,28 @@ import time
 import subprocess
 import threading
 import queue
-import asyncio, threading
+import asyncio
 from LedController import LedController
+from core.llm.llm_memory import ConversationMemory
+from core.llm.persona import build_system
+from core.llm.llm_client import query_llm
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).resolve().parent / "llm"))
-from llm_client import query_llm
+mem = ConversationMemory(last_n=3)
 
-BASE = Path(__file__).resolve().parent
-WAKE_WORDS = ["humo", "lo humo", "alumno", "lune"]
+WAKE_WORDS = ["humo", "lo humo", "alumno", "lune", "lomo"]
 MAX_REPLY_CHARS = 220
 THINK_TIMEOUT_SEC = 30
 SPEAK_COOLDOWN_SEC = 1.5
 ATTENTION_TTL_SEC = 15.0        # wake-up window (seconds)
 ATTN_BONUS_AFTER_SPEAK = 5.0    # extra after speaking to chain turns
 
+BASE = Path(__file__).resolve().parent
 STT_PATH = BASE / "llm" / "stt.py"
 TTS_PATH = BASE / "llm" / "tts.py"
 
 STT_PAUSED = False
 STT_PROC = None
-
 
 _loop = asyncio.new_event_loop()
 threading.Thread(target=_loop.run_forever, daemon=True).start()
@@ -120,7 +121,12 @@ def stt_stream():
 
 def llm_ask(text: str) -> str:
     """Query the shared LLM client and return a brief Spanish reply."""
-    return query_llm(text, max_reply_chars=MAX_REPLY_CHARS)
+    system = build_system()
+    msgs = mem.build_messages(system, text)
+    reply = query_llm(msgs, max_reply_chars=220)
+    mem.add_turn(text, reply)
+    return reply
+
 
 def tts_say(text: str) -> int:
     p = subprocess.run([sys.executable, str(TTS_PATH), "--text", text], check=False)
