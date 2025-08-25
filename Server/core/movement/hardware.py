@@ -1,10 +1,11 @@
 """Low level hardware helpers for the quadruped robot."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import List
 
 from .kinematics import coordinate_to_angle, clamp
-from . import data
+from .data import load_points
 from .servo import Servo
 from .gait_cpg import CPG
 from ..sensing.IMU import IMU
@@ -29,7 +30,8 @@ class Hardware:
 
     # ------------------------------------------------------------------
     def load_calibration(self) -> None:
-        self.calibration_point = data.read_from_txt("point")
+        point_file = Path(__file__).resolve().parents[1] / "point.txt"
+        self.calibration_point = load_points(point_file)
         self.calibration_angle = [[0.0, 0.0, 0.0] for _ in range(4)]
 
     # ------------------------------------------------------------------

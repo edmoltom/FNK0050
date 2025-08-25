@@ -18,8 +18,9 @@ import time
 from dataclasses import dataclass
 from queue import Empty, Queue
 from typing import Any, Optional, Union
+from pathlib import Path
 
-from . import gait_runner, kinematics, posture
+from . import gait_runner, kinematics, posture, data
 from .hardware import Hardware
 from .logger import MovementLogger
 
@@ -212,6 +213,16 @@ class MovementController:
                 self.run()
         else:
             gait_runner.stop(self)
+
+    # ------------------------------------------------------------------
+    def load_points_from_file(self, path: Path) -> None:
+        """Replace current leg points with coordinates from ``path``."""
+        self.point = data.load_points(path)
+
+    # ------------------------------------------------------------------
+    def save_points_to_file(self, path: Path) -> None:
+        """Persist current leg points into ``path``."""
+        data.save_points(path, self.point)
 
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
