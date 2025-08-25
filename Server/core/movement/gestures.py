@@ -11,6 +11,7 @@ keyframes when ``update`` is called.
 from __future__ import annotations
 
 from typing import List, Sequence, Tuple
+import logging
 
 
 class Gestures:
@@ -68,6 +69,16 @@ class Gestures:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    def supported(self) -> List[str]:
+        """Return a list of names for the gestures available."""
+        return list(self._library.keys())
+
+    def add_gesture(
+        self, name: str, sequence: Sequence[Tuple[float, List[List[float]]]]
+    ) -> None:
+        """Register a new gesture sequence under ``name``."""
+        self._library[name] = list(sequence)
+
     def start(self, name: str) -> None:
         """Begin the gesture identified by ``name``.
 
@@ -76,8 +87,12 @@ class Gestures:
         ``controller._locomotion_enabled`` to ``False`` and stopping any
         ongoing CPG cycle via ``controller.stop()``.
         """
-        seq = self._library.get(name)
-        if not seq:
+        if name not in self._library:
+            logging.getLogger(__name__).warning(
+                "Unrecognized gesture '%s'", name
+            )
+            # Cancel any running gesture but do not alter leg positions
+            self.cancel()
             return
 
         # Stop any previous gesture and locomotion
@@ -86,7 +101,7 @@ class Gestures:
         if hasattr(self.controller, "stop"):
             self.controller.stop()
 
-        self._sequence = seq
+        self._sequence = self._library[name]
         self._index = 0
         self._elapsed = 0.0
         # Capture the stance once at the beginning of the gesture.  Subsequent
