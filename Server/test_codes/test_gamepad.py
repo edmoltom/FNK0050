@@ -2,9 +2,10 @@ import Gamepad
 import time
 import threading
 
-from Action import Action
+from movement.controller import Controller
 
-def polling_loop(gamepad, action):
+
+def polling_loop(gamepad, controller):
 
     DEADZONE = 0.2
     prev_A = False
@@ -18,35 +19,41 @@ def polling_loop(gamepad, action):
             y1 = gamepad.axis(4)
 
             if (abs(x0) > DEADZONE or abs(y0) > DEADZONE):
-                action.current_speed = max(1, int(action.max_speed * max(abs(x0), abs(y0))))
+                controller.speed = max(
+                    1, int(controller.MAX_SPEED_LIMIT * max(abs(x0), abs(y0)))
+                )
                 if x0 > DEADZONE:
-                    action.state = 'turning_right'
+                    controller.turnRight()
                 elif x0 < -DEADZONE:
-                    action.state = 'turning_left'
+                    controller.turnLeft()
                 elif y0 < -DEADZONE:
-                    action.state = 'walking_forward'
+                    controller.forWard()
                 elif y0 > DEADZONE:
-                    action.state = 'walking_backward'
+                    controller.backWard()
 
             elif (abs(x1) > DEADZONE or abs(y1) > DEADZONE):
-                action.current_speed = max(1, int(action.max_speed * max(abs(x1), abs(y1))))
+                controller.speed = max(
+                    1, int(controller.MAX_SPEED_LIMIT * max(abs(x1), abs(y1)))
+                )
                 if x1 > DEADZONE:
-                    action.state = 'step_right'
+                    controller.stepRight()
                 elif x1 < -DEADZONE:
-                    action.state = 'step_left'
+                    controller.stepLeft()
 
             elif gamepad.isPressed('A') and not prev_A:
-                action.state = 'greeting'
+                controller.gestures.start("greet")
 
             elif gamepad.isPressed('B') and not prev_B:
-                action.state = 'relax'
+                controller.relax(True)
 
             else:
-                action.state = 'idle'
+                controller.stop()
 
             prev_A = gamepad.isPressed('A')
             prev_B = gamepad.isPressed('B')
 
+            # Gestures run asynchronously; ``update`` advances them each tick.
+            controller.update(0.1)
             time.sleep(0.1)
 
         except Exception as e:
@@ -63,10 +70,10 @@ def main():
         gamepad = Gamepad.Xbox360()
         gamepad.startBackgroundUpdates()
 
-        action = Action()
+        controller = Controller()
 
-        if (test_mode == False):
-            thread = threading.Thread(target=polling_loop, args=(gamepad, action))
+        if not test_mode:
+            thread = threading.Thread(target=polling_loop, args=(gamepad, controller))
             thread.daemon = True  # will be closed with main script
             thread.start()
 
@@ -82,3 +89,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
