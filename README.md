@@ -25,3 +25,12 @@ g.add_gesture(
 )
 g.start("wave")
 ```
+
+## Gamepad testing
+
+The script `Server/test_codes/test_gamepad.py` demonstrates polling an
+Xbox360-style controller. If the gamepad disconnects or another error occurs,
+the polling loop clears internal button-state flags (`prev_A` and `prev_B`) and
+the main loop waits briefly before attempting to reconnect. The connection
+status of a controller can be queried with `Gamepad.is_connected()` to aid
+testing when no physical gamepad is present.
