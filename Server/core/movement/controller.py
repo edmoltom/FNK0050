@@ -77,11 +77,36 @@ class MovementController:
     MAX_SPEED_LIMIT = 200
     MIN_SPEED_LIMIT = 20
 
-    def __init__(self, hardware: Hardware, gait: Any, logger: MovementLogger, config: Optional[dict] = None) -> None:
-        self.hardware = hardware
-        self.gait = GaitRunner(gait)
+    def __init__(
+        self,
+        hardware: Optional[Hardware] = None,
+        gait: Optional[Any] = None,
+        logger: Optional[MovementLogger] = None,
+        *,
+        imu: Optional[Any] = None,
+        odom: Optional[Any] = None,
+        config: Optional[dict] = None,
+    ) -> None:
+        """Create a new movement controller.
+
+        Parameters
+        ----------
+        hardware:
+            Optional pre-configured :class:`Hardware` bundle.  If omitted a
+            new one will be created.
+        gait:
+            Optional CPG or gait runner to drive the legs.  Defaults to the
+            CPG embedded in ``hardware``.
+        logger:
+            Optional movement logger instance.
+        imu, odom:
+            Optional IMU and odometry instances forwarded to
+            :class:`Hardware` when it needs to construct its own bundle.
+        """
+        self.hardware = hardware or Hardware(imu=imu, odom=odom)
+        self.gait = GaitRunner(gait or self.hardware.cpg)
         self.cpg = self.gait.cpg
-        self.logger = logger
+        self.logger = logger or MovementLogger()
         self.config = config or {}
         self.state = "idle"
         self.queue: Queue[Command] = Queue()

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from movement.controller import (
     AttitudeCmd,
-    Command,
     HeightCmd,
     MovementController,
     RelaxCmd,
@@ -18,10 +17,20 @@ from movement.logger import MovementLogger
 class MovementControl:
     """High-level façade queuing movement commands."""
 
-    def __init__(self, hardware: Hardware | None = None, logger: MovementLogger | None = None) -> None:
-        hardware = hardware or Hardware()
-        logger = logger or MovementLogger()
-        self.controller = MovementController(hardware, hardware.cpg, logger)
+    def __init__(
+        self,
+        hardware: Hardware | None = None,
+        logger: MovementLogger | None = None,
+        *,
+        imu: object | None = None,
+        odom: object | None = None,
+    ) -> None:
+        self.controller = MovementController(
+            hardware=hardware,
+            logger=logger,
+            imu=imu,
+            odom=odom,
+        )
 
     def walk(self, vx: float, vy: float, omega: float) -> None:
         """\brief Request continuous walking velocity.
