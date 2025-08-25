@@ -18,7 +18,7 @@ level movement controller:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 from .kinematics import coordinate_to_angle, clamp
 from .data import load_points
@@ -40,16 +40,28 @@ class Hardware:
         (11, 12, 13) # Front-right
     )
 
-    def __init__(self) -> None:
-        self.setup_hardware()
+    def __init__(self, *, imu: Optional[IMU] = None, odom: Optional[Odometry] = None) -> None:
+        """Create a new hardware bundle.
+
+        Parameters
+        ----------
+        imu:
+            Optional IMU instance.  If ``None`` a default :class:`IMU` will be
+            constructed.
+        odom:
+            Optional odometry instance.  If ``None`` a default
+            :class:`Odometry` will be constructed.
+        """
+        self.setup_hardware(imu=imu, odom=odom)
         self.load_calibration()
 
     # ------------------------------------------------------------------
-    def setup_hardware(self) -> None:
-        self.imu = IMU()
+    def setup_hardware(self, *, imu: Optional[IMU] = None, odom: Optional[Odometry] = None) -> None:
+        """Initialise the individual hardware components."""
+        self.imu = imu or IMU()
         self.servo = Servo()
         self.pid = Incremental_PID(0.5, 0.0, 0.0025)
-        self.odom = Odometry(stride_gain=0.55)
+        self.odom = odom or Odometry(stride_gain=0.55)
         self.cpg = CPG("walk")
 
     # ------------------------------------------------------------------
