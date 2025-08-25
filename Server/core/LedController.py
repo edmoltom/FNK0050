@@ -47,8 +47,9 @@ class LedController:
             self.loop.create_task(self._run(func, *args, **kwargs))
 
     async def _start_anim(self, coro):
-        
-        # Cancela animación previa si existe
+        """Launch ``coro`` as animation, cancelling any previous one."""
+
+        # Cancel previous animation if one is running
         await self.stop_animation()
         self._anim_stop = asyncio.Event()
         self._anim_task = self.loop.create_task(coro)
@@ -56,22 +57,28 @@ class LedController:
     # Public API --------------------------------------------------------------
 
     async def set_all(self, color):
+        """Set all LEDs to ``color`` and update the strip."""
         await self._enqueue(self.led.set_all, color)
         await self._enqueue(self.led.show)
 
     async def off(self):
+        """Turn off all LEDs."""
         await self._enqueue(self.led.off)
 
     async def color_wipe(self, color, wait_ms=10):
+        """Fill the strip color-by-color with ``color``."""
         await self._enqueue(self.led.colorWipe, color, wait_ms)
 
     async def rainbow(self, wait_ms=10):
+        """Display a moving rainbow animation."""
         await self._enqueue(self.led.rainbow, wait_ms)
 
     async def rainbow_cycle(self, wait_ms=10, cycles=1):
+        """Show ``cycles`` of rainbow cycle animation."""
         await self._enqueue(self.led.rainbowCycle, wait_ms, cycles)
 
     async def stop_animation(self):
+        """Request any running animation coroutine to finish."""
         if self._anim_task:
             if self._anim_stop:
                 self._anim_stop.set()
@@ -83,14 +90,17 @@ class LedController:
             self._anim_stop = None
 
     async def start_pulsed_wipe(self, color, wait_ms=10, pause_ms=120, off_ms=120):
+        """Start a repeating wipe animation that pulses on and off."""
+
         async def _loop():
-            # bucle hasta que pidamos parar
+            # Loop until ``_anim_stop`` is set by :meth:`stop_animation`
             while not self._anim_stop.is_set():
                 await self._run(self.led.off)
                 await self._run(self.led.colorWipe, color, wait_ms)
                 await asyncio.sleep(pause_ms / 1000)
                 await self._run(self.led.off)
                 await asyncio.sleep(off_ms / 1000)
+
         await self._start_anim(_loop())
 
     async def close(self):

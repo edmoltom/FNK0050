@@ -1,6 +1,11 @@
+"""Command string constants used by the robot's control protocol."""
+
+
 class COMMAND:
+    """Namespace for predefined command identifiers."""
+
     CMD_MOVE_STOP = "CMD_MOVE_STOP"
-    CMD_MOVE_FORWARD = "CMD_MOVE_FORWARD" 
+    CMD_MOVE_FORWARD = "CMD_MOVE_FORWARD"
     CMD_MOVE_BACKWARD = "CMD_MOVE_BACKWARD"
     CMD_MOVE_LEFT = "CMD_MOVE_LEFT"
     CMD_MOVE_RIGHT = "CMD_MOVE_RIGHT"
@@ -19,5 +24,7 @@ class COMMAND:
     CMD_ATTITUDE = "CMD_ATTITUDE"
     CMD_RELAX = "CMD_RELAX"
     CMD_WORKING_TIME = "CMD_WORKING_TIME"
-    def __init__(self):
+
+    def __init__(self) -> None:
+        """Prevent instantiation; class is used as a constants container."""
         pass

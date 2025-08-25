@@ -1,3 +1,5 @@
+"""Low level motion control routines for the quadruped robot."""
+
 import time
 import os
 import math
@@ -9,7 +11,9 @@ from sensing.IMU import IMU
 from sensing.odometry import Odometry
 from Command import COMMAND as cmd
 
+
 class Control:
+    """Provide gait generation, servo control and sensor logging."""
 
     FL, RL, RR, FR = 0, 1, 2, 3
     X, Y, Z = 0, 1, 2
@@ -17,6 +21,7 @@ class Control:
     MIN_SPEED_LIMIT = 20
 
     def __init__(self):
+        """Initialise hardware and default state."""
         self.setup_hardware()
         self.setup_state()
         self.load_calibration()
@@ -24,6 +29,7 @@ class Control:
         self.relax(True)
 
     def setup_hardware(self):
+        """Create hardware interface objects and controllers."""
         self.imu = IMU()
         self.servo = Servo()
         self.pid = Incremental_PID(0.5, 0.0, 0.0025)
@@ -31,6 +37,7 @@ class Control:
         self.cpg = CPG("walk")
 
     def setup_state(self):
+        """Initialise kinematic and control state variables."""
         self.speed = self.MIN_SPEED_LIMIT
         self.height = 99
         self.step_height = 10
@@ -52,8 +59,9 @@ class Control:
         self.relax_flag = True
         self.balance_flag = False
         self.attitude_flag = False
-        
+
     def start_logging(self, filename="empty.csv"):
+        """Start logging IMU, kinematics and odometry data to ``filename``."""
         self.logfile = open(filename, "w")
         header = [
             "timestamp","step","roll","pitch","yaw","accel_x","accel_y","accel_z",
@@ -63,14 +71,16 @@ class Control:
         self.logfile.write(",".join(header) + "\n")
         self.log_enabled = True
         self.log_step = 0
-    
+
     def stop_logging(self):
+        """Stop an active logging session."""
         if hasattr(self, 'logfile') and self.logfile:
             self.logfile.close()
             self.logfile = None
             self.log_enabled = False
-    
-    def readFromTxt(self,filename):
+
+    def readFromTxt(self, filename):
+        """Read a calibration matrix from ``filename`` inside this folder."""
         base_path = os.path.dirname(os.path.abspath(__file__))
         filepath = os.path.join(base_path, filename + ".txt")
         file1 = open(filepath, "r")
@@ -86,6 +96,7 @@ class Control:
         return list_source
 
     def saveToTxt(self,list, filename):
+        """Persist ``list`` of calibration data to ``filename`` in this folder."""
         base_path = os.path.dirname(os.path.abspath(__file__))
         filepath = os.path.join(base_path, filename + ".txt")
         file2 = open(filepath, 'w')
@@ -96,53 +107,72 @@ class Control:
             file2.write('\n')
         file2.close()
         
-    def coordinateToAngle(self,x,y,z,l1=23,l2=55,l3=55):
-        a=math.pi/2-math.atan2(z,y)
-        x_3=0
-        x_4=l1*math.sin(a)
-        x_5=l1*math.cos(a)
-        l23=math.sqrt((z-x_5)**2+(y-x_4)**2+(x-x_3)**2)
-        w=(x-x_3)/l23
-        v=(l2*l2+l23*l23-l3*l3)/(2*l2*l23)
-        b=math.asin(round(w,2))-math.acos(round(v,2))
-        c=math.pi-math.acos(round((l2**2+l3**2-l23**2)/(2*l3*l2),2))
-        a=round(math.degrees(a))
-        b=round(math.degrees(b))
-        c=round(math.degrees(c))
-        return a,b,c
+    def coordinateToAngle(self, x, y, z, l1=23, l2=55, l3=55):
+        """Inverse kinematics: convert foot coordinates to joint angles."""
+        a = math.pi/2 - math.atan2(z, y)
+        x_3 = 0
+        x_4 = l1 * math.sin(a)
+        x_5 = l1 * math.cos(a)
+        l23 = math.sqrt((z - x_5)**2 + (y - x_4)**2 + (x - x_3)**2)
+        w = (x - x_3) / l23
+        v = (l2*l2 + l23*l23 - l3*l3) / (2*l2*l23)
+        b = math.asin(round(w, 2)) - math.acos(round(v, 2))
+        c = math.pi - math.acos(round((l2**2 + l3**2 - l23**2) / (2*l3*l2), 2))
+        a = round(math.degrees(a))
+        b = round(math.degrees(b))
+        c = round(math.degrees(c))
+        return a, b, c
     
-    def angleToCoordinate(self,a,b,c,l1=23,l2=55,l3=55):
-        a=math.pi/180*a
-        b=math.pi/180*b
-        c=math.pi/180*c
-        x=l3*math.sin(b+c)+l2*math.sin(b)
-        y=l3*math.sin(a)*math.cos(b+c)+l2*math.sin(a)*math.cos(b)+l1*math.sin(a)
-        z=l3*math.cos(a)*math.cos(b+c)+l2*math.cos(a)*math.cos(b)+l1*math.cos(a)
-        return x,y,z
+    def angleToCoordinate(self, a, b, c, l1=23, l2=55, l3=55):
+        """Forward kinematics: convert joint angles to foot coordinates."""
+        a = math.pi/180 * a
+        b = math.pi/180 * b
+        c = math.pi/180 * c
+        x = l3*math.sin(b+c) + l2*math.sin(b)
+        y = (
+            l3*math.sin(a)*math.cos(b+c)
+            + l2*math.sin(a)*math.cos(b)
+            + l1*math.sin(a)
+        )
+        z = (
+            l3*math.cos(a)*math.cos(b+c)
+            + l2*math.cos(a)*math.cos(b)
+            + l1*math.cos(a)
+        )
+        return x, y, z
 
     def load_calibration(self):
+        """Load servo calibration points from disk."""
         self.calibration_point = self.readFromTxt('point')
 
     def calibration(self):
+        """Compute servo angle offsets from calibration points."""
         for i in range(4):
-            self.calibration_angle[i][0],self.calibration_angle[i][1],self.calibration_angle[i][2]=self.coordinateToAngle(self.calibration_point[i][0],
-                                                                                                                          self.calibration_point[i][1],
-                                                                                                                          self.calibration_point[i][2])
-        for i in range(4):
-            self.angle[i][0],self.angle[i][1],self.angle[i][2]=self.coordinateToAngle(self.point[i][0],
-                                                                                      self.point[i][1],
-                                                                                      self.point[i][2])
-        for i in range(4):
-            self.calibration_angle[i][0]=self.calibration_angle[i][0]-self.angle[i][0]
-            self.calibration_angle[i][1]=self.calibration_angle[i][1]-self.angle[i][1]
-            self.calibration_angle[i][2]=self.calibration_angle[i][2]-self.angle[i][2]
-    
-    def update_angles_from_points(self):
+            self.calibration_angle[i][0], self.calibration_angle[i][1], self.calibration_angle[i][2] = self.coordinateToAngle(
+                self.calibration_point[i][0],
+                self.calibration_point[i][1],
+                self.calibration_point[i][2],
+            )
         for i in range(4):
             self.angle[i][0], self.angle[i][1], self.angle[i][2] = self.coordinateToAngle(
-                self.point[i][self.X], self.point[i][self.Y], self.point[i][self.Z])
+                self.point[i][0],
+                self.point[i][1],
+                self.point[i][2],
+            )
+        for i in range(4):
+            self.calibration_angle[i][0] = self.calibration_angle[i][0] - self.angle[i][0]
+            self.calibration_angle[i][1] = self.calibration_angle[i][1] - self.angle[i][1]
+            self.calibration_angle[i][2] = self.calibration_angle[i][2] - self.angle[i][2]
+    
+    def update_angles_from_points(self):
+        """Recalculate joint angles from current foot coordinates."""
+        for i in range(4):
+            self.angle[i][0], self.angle[i][1], self.angle[i][2] = self.coordinateToAngle(
+                self.point[i][self.X], self.point[i][self.Y], self.point[i][self.Z]
+            )
 
     def apply_calibration_to_angles(self):
+        """Apply calibration offsets to current joint angles."""
         for i in range(2):
             # Left legs
             self.angle[i][0] = self.restriction(self.angle[i][0] + self.calibration_angle[i][0], 0, 180)
@@ -155,6 +185,7 @@ class Control:
             self.angle[i+2][2] = self.restriction(180 - (self.angle[i+2][2] + self.calibration_angle[i+2][2]), 0, 180)
 
     def send_angles_to_servos(self):
+        """Write the current joint angles to the servo driver."""
         for i in range(2):
             # Left side servos
             self.servo.setServoAngle(4 + i*3, self.angle[i][0])
@@ -167,6 +198,7 @@ class Control:
             self.servo.setServoAngle(10 + i*3, self.angle[i+2][2])
 
     def log_current_state(self):
+        """Append current kinematic and sensor state to the log file."""
         if hasattr(self, 'log_enabled') and self.log_enabled:
             timestamp = time.time()
 
