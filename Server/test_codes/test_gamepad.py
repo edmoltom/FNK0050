@@ -1,7 +1,13 @@
-import Gamepad
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.extend([str(ROOT / "lib"), str(ROOT / "core")])
+
 import time
 import threading
 
+from Gamepad import Xbox360
 from MovementControl import MovementControl
 
 
@@ -45,12 +51,11 @@ def main():
     test_mode = False
 
     try:
-        gamepad = Gamepad.Xbox360()
+        gamepad = Xbox360()
         gamepad.startBackgroundUpdates()
 
         controller = MovementControl()
-        loop_thread = threading.Thread(target=controller.start_loop, daemon=True)
-        loop_thread.start()
+        threading.Thread(target=controller.start_loop, daemon=True).start()
 
         if not test_mode:
             thread = threading.Thread(target=polling_loop, args=(gamepad, controller))
