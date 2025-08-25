@@ -14,7 +14,7 @@ import subprocess as _subprocess, sys as _sys, os as _os, argparse as _argparse
 # --- Paths (adjust if needed) ---
 _PROJECT_ROOT = _Path(__file__).resolve().parents[1]
 _LLM_TO_TTS = _PROJECT_ROOT / "core" / "llm" / "llm_to_tts.py"
-# Updated path to the speech-to-text helper in the hearing module
+# Path to the speech-to-text helper in the hearing module
 _STT_SCRIPT = _PROJECT_ROOT / "core" / "hearing" / "stt.py"
 
 def main():  # entrypoint expected by your run.py
