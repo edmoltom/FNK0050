@@ -6,6 +6,7 @@ from movement.controller import (
     MovementController,
     RelaxCmd,
     GreetCmd,
+    GestureCmd,
     StepCmd,
     StopCmd,
     TurnCmd,
@@ -77,8 +78,12 @@ class MovementControl:
         self.controller.queue.put(RelaxCmd(to_pose=True))
 
     def greet(self) -> None:
-        """\brief Perform a greeting action."""
-        self.controller.queue.put(GreetCmd())
+        """\brief Play the default greeting gesture."""
+        self.controller.queue.put(GestureCmd(name="greet"))
+
+    def gesture(self, name: str) -> None:
+        """\brief Play any named gesture via the controller's gesture engine."""
+        self.controller.queue.put(GestureCmd(name=name))
 
     def set_speed(self, speed: int) -> None:
         """\brief Set the controller speed.
