@@ -70,6 +70,11 @@ class RelaxCmd:
 class GreetCmd:
     pass
 
+@dataclass
+class GestureCmd:
+    """Generic gesture request (non-blocking animation)."""
+    name: str  # e.g., "greet"
+
 
 Command = Union[
     WalkCmd,
@@ -80,6 +85,7 @@ Command = Union[
     StopCmd,
     RelaxCmd,
     GreetCmd,
+    GestureCmd,
 ]
 
 
@@ -132,6 +138,12 @@ class MovementController:
         self._prev_phase: float = 0.0
         self._gait_enabled: bool = True
         self.torque_off: bool = False
+        # --- gesture FSM ---
+        self._gesture_active: bool = False
+        self._gesture_name: str | None = None
+        self._gesture_phase: int = 0
+        self._gesture_t: float = 0.0
+        self._gesture_orig = None
 
     # ------------------------------------------------------------------
     def setup_state(self) -> None:
@@ -285,41 +297,76 @@ class MovementController:
         data.save_points(path, self.point)
 
     # ------------------------------------------------------------------
-    def _do_greeting(self) -> None:
-        """Perform a simple greeting gesture without altering torque state."""
+    # ---------- Generic gesture engine (non-blocking) ----------
+    def _start_gesture(self, name: str) -> None:
+        """Start a non-blocking gesture by name."""
         self.stop_requested = False
-        prev = self._gait_enabled
+        self.torque_off = False
         self._gait_enabled = False
-        original = [p.copy() for p in self.point]
+        self._gesture_active = True
+        self._gesture_name = name
+        self._gesture_phase = 0
+        self._gesture_t = 0.0
+        self._gesture_orig = [p.copy() for p in self.point]
 
-        # Raise front-right leg
-        x, y, z = original[self.FR]
-        self.set_leg_position(self.FR, x, y + 20, z)
-        self.run()
-        time.sleep(0.3)
-        self.set_leg_position(self.FR, x, y, z)
-        self.run()
-        time.sleep(0.3)
+    def _update_gesture(self, dt: float) -> None:
+        """Advance the active gesture; when finished, deactivate it."""
+        if not self._gesture_active:
+            return
+        # Helpers
+        def lerp(a, b, t): return a + (b - a) * t
+        def phase_done(next_phase: int):
+            self._gesture_phase = next_phase
+            self._gesture_t = 0.0
+        self._gesture_t += dt
+        o = self._gesture_orig
+        name = self._gesture_name or ""
 
-        # Nod with front legs
-        for _ in range(2):
-            self.set_leg_position(self.FL, original[self.FL][self.X], original[self.FL][self.Y] - 10, original[self.FL][self.Z])
-            self.set_leg_position(self.FR, original[self.FR][self.X], original[self.FR][self.Y] - 10, original[self.FR][self.Z])
-            self.run()
-            time.sleep(0.2)
-            self.set_leg_position(self.FL, *original[self.FL])
-            self.set_leg_position(self.FR, *original[self.FR])
-            self.run()
-            time.sleep(0.2)
-
-        for i, pos in enumerate(original):
-            self.set_leg_position(i, *pos)
-        self.run()
-        self._gait_enabled = prev
+        if name == "greet":
+            # Phases: 0 raise FR, 1 lower FR, 2 nod down, 3 nod up, 4 nod down, 5 restore, 6 finish
+            if self._gesture_phase == 0:
+                t = min(1.0, self._gesture_t / 0.25)
+                x, y, z = o[self.FR]
+                self.set_leg_position(self.FR, x, lerp(y, y + 20, t), z)
+                if t >= 1.0: phase_done(1)
+            elif self._gesture_phase == 1:
+                t = min(1.0, self._gesture_t / 0.25)
+                x, y, z = o[self.FR]
+                self.set_leg_position(self.FR, x, lerp(y + 20, y, t), z)
+                if t >= 1.0: phase_done(2)
+            elif self._gesture_phase in (2, 3, 4):
+                t = min(1.0, self._gesture_t / 0.2)
+                dy = 10
+                if self._gesture_phase % 2 == 0:  # down
+                    for leg in (self.FL, self.FR):
+                        x, y, z = o[leg]
+                        self.set_leg_position(leg, x, lerp(y, y - dy, t), z)
+                else:                              # up
+                    for leg in (self.FL, self.FR):
+                        x, y, z = o[leg]
+                        self.set_leg_position(leg, x, lerp(y - dy, y, t), z)
+                if t >= 1.0: phase_done(self._gesture_phase + 1)
+            elif self._gesture_phase == 5:
+                t = min(1.0, self._gesture_t / 0.2)
+                for i, (ox, oy, oz) in enumerate(o):
+                    cx, cy, cz = self.point[i]
+                    self.set_leg_position(i, lerp(cx, ox, t), lerp(cy, oy, t), lerp(cz, oz, t))
+                if t >= 1.0: phase_done(6)
+            else:  # finish
+                self._gesture_active = False
+                self._gesture_name = None
+                self._gesture_orig = None
+                self._gait_enabled = False
+        else:
+            # Unknown gesture: finish immediately
+            self._gesture_active = False
+            self._gesture_name = None
+            self._gesture_orig = None
+            self._gait_enabled = False
 
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
-        if isinstance(cmd, (WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, GreetCmd)):
+        if isinstance(cmd, (WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, GreetCmd, GestureCmd)):
             self._in_relax = False
         if isinstance(cmd, WalkCmd):
             self.stop_requested = False
@@ -387,10 +434,13 @@ class MovementController:
             self._turn_dir = 0
             self._active_cmd = None
         elif isinstance(cmd, GreetCmd):
-            # Keep servos powered throughout the greeting animation
-            self.stop_requested = False
-            self.torque_off = False
-            self._do_greeting()
+            # Backwards-compat: map greet → generic gesture
+            self._in_relax = False
+            self._start_gesture("greet")
+            self._active_cmd = None
+        elif isinstance(cmd, GestureCmd):
+            self._in_relax = False
+            self._start_gesture(cmd.name)
             self._active_cmd = None
         elif isinstance(cmd, RelaxCmd):
             self._gait_enabled = False
@@ -424,8 +474,10 @@ class MovementController:
                 self._turn_dir = 0
                 self._active_cmd = None
 
-        # Advance CPG and apply new angles
-        if self._gait_enabled and not self.stop_requested:
+        # Gestures (non-blocking) first
+        self._update_gesture(dt)
+        # Advance CPG and apply new angles (only if gait enabled)
+        if self._gait_enabled and not self.stop_requested and not self._gesture_active:
             self.gait.update_legs_from_cpg(self, dt)
         self.run()
 
