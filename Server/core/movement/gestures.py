@@ -2,16 +2,33 @@
 
 This module defines a :class:`Gestures` helper responsible for handling
 scripted gestures that move the robot legs through absolute positions over
-time. Gestures are represented as a sequence of keyframes; each keyframe is a
-list of absolute leg coordinates ``[[x,y,z], ...]`` for the four legs and a
-duration in seconds. ``Gestures`` interpolates linearly between consecutive
-keyframes when ``update`` is called.
+time. Gestures are represented as a sequence of keyframes and a corresponding
+list of phase durations stored in :data:`DEFAULT_DURATIONS`. Durations may be
+scaled by supplying a ``speed`` factor or overridden entirely when starting a
+gesture. ``Gestures`` interpolates linearly between consecutive keyframes when
+``update`` is called.
+
+The default timings for built in gestures are::
+
+    DEFAULT_DURATIONS = {
+        "greet": [0.6, 0.4, 0.4, 0.6],
+    }
+
+Tuning can be achieved by modifying :data:`DEFAULT_DURATIONS`, passing a
+``speed`` scalar to :meth:`Gestures.start` or providing an explicit list of
+durations via the ``durations`` argument.
 """
 
 from __future__ import annotations
 
-from typing import List, Sequence, Tuple
+from typing import List, Sequence
 import logging
+
+
+# Default phase durations for built-in gestures.
+DEFAULT_DURATIONS = {
+    "greet": [0.6, 0.4, 0.4, 0.6],
+}
 
 
 class Gestures:
@@ -32,7 +49,10 @@ class Gestures:
     def __init__(self, controller) -> None:
         self.controller = controller
         self._active: bool = False
-        self._sequence: List[Tuple[float, List[List[float]]]] = []
+        # ``_sequence`` holds keyframe positions for the active gesture while
+        # ``_durations`` stores the associated phase lengths in seconds.
+        self._sequence: List[List[List[float]]] = []
+        self._durations: List[float] = []
         self._index: int = 0
         self._elapsed: float = 0.0
         # ``_entry`` stores the stance when the gesture begins so that it is
@@ -42,21 +62,27 @@ class Gestures:
         self._entry: List[List[float]] | None = None
         self._phase_start: List[List[float]] | None = None
 
-        # Library of available gestures.  Each entry is a list of
-        # ``(duration, positions)`` pairs where ``positions`` is a
-        # ``4 x 3`` matrix of absolute leg coordinates.
-        self._library = {
-            "greet": [
+        # Library of available gestures keyed by name.  Durations for each
+        # phase are stored separately in ``_duration_cfg`` to allow external
+        # tuning without altering the keyframe coordinates.
+        self._library: dict[str, List[List[List[float]]]] = {}
+        self._duration_cfg: dict[str, List[float]] = {}
+
+        # Register the built-in greeting gesture.
+        self.add_gesture(
+            "greet",
+            [
                 # Move to initial greeting pose
-                (0.6, [[-20, 120, -40], [50, 105, 0], [50, 105, 0], [0, 120, 0]]),
+                [[-20, 120, -40], [50, 105, 0], [50, 105, 0], [0, 120, 0]],
                 # Lift front-right leg forward
-                (0.4, [[-20, 120, -40], [50, 105, 0], [50, 105, 0], [80, 23, 0]]),
+                [[-20, 120, -40], [50, 105, 0], [50, 105, 0], [80, 23, 0]],
                 # Return front-right leg
-                (0.4, [[-20, 120, -40], [50, 105, 0], [50, 105, 0], [0, 120, 0]]),
+                [[-20, 120, -40], [50, 105, 0], [50, 105, 0], [0, 120, 0]],
                 # Go back to neutral standing position
-                (0.6, [[55, 78, 0], [55, 78, 0], [55, 78, 0], [55, 78, 0]]),
-            ]
-        }
+                [[55, 78, 0], [55, 78, 0], [55, 78, 0], [55, 78, 0]],
+            ],
+            DEFAULT_DURATIONS["greet"],
+        )
 
     # ------------------------------------------------------------------
     # Properties
@@ -74,18 +100,50 @@ class Gestures:
         return list(self._library.keys())
 
     def add_gesture(
-        self, name: str, sequence: Sequence[Tuple[float, List[List[float]]]]
+        self,
+        name: str,
+        positions: Sequence[List[List[float]]],
+        durations: Sequence[float],
     ) -> None:
-        """Register a new gesture sequence under ``name``."""
-        self._library[name] = list(sequence)
+        """Register a new gesture under ``name``.
 
-    def start(self, name: str) -> None:
+        Parameters
+        ----------
+        positions:
+            Sequence of ``4 x 3`` matrices describing absolute leg coordinates
+            for each keyframe.
+        durations:
+            Duration in seconds for each phase.  Must be the same length as
+            ``positions``.
+        """
+        if len(positions) != len(durations):
+            raise ValueError("positions and durations must be the same length")
+
+        self._library[name] = [[p[:] for p in frame] for frame in positions]
+        self._duration_cfg[name] = list(durations)
+
+    def start(
+        self,
+        name: str,
+        speed: float = 1.0,
+        durations: Sequence[float] | None = None,
+    ) -> None:
         """Begin the gesture identified by ``name``.
 
         Any running gesture is cancelled.  The controller's locomotion is
         disabled while the gesture is active by setting
         ``controller._locomotion_enabled`` to ``False`` and stopping any
         ongoing CPG cycle via ``controller.stop()``.
+
+        Parameters
+        ----------
+        name:
+            Name of the gesture to start.
+        speed:
+            Scalar applied to default phase durations.  ``2.0`` runs twice as
+            fast, ``0.5`` twice as slow.  Ignored if ``durations`` is provided.
+        durations:
+            Optional list of phase durations overriding the defaults.
         """
         if name not in self._library:
             logging.getLogger(__name__).warning(
@@ -102,6 +160,19 @@ class Gestures:
             self.controller.stop()
 
         self._sequence = self._library[name]
+        base_durations = self._duration_cfg.get(name, [])
+        if durations is not None:
+            self._durations = list(durations)
+        else:
+            self._durations = [d / speed for d in base_durations]
+
+        if len(self._sequence) != len(self._durations):
+            logging.getLogger(__name__).warning(
+                "Duration/keyframe mismatch for gesture '%s'", name
+            )
+            self.cancel()
+            return
+
         self._index = 0
         self._elapsed = 0.0
         # Capture the stance once at the beginning of the gesture.  Subsequent
@@ -118,6 +189,7 @@ class Gestures:
         """Abort the current gesture, if any, and re-enable locomotion."""
         self._active = False
         self._sequence = []
+        self._durations = []
         self._index = 0
         self._elapsed = 0.0
         self._entry = None
@@ -140,7 +212,8 @@ class Gestures:
         if not self._active or not self._sequence:
             return False
 
-        duration, target = self._sequence[self._index]
+        duration = self._durations[self._index] if self._durations else 0.0
+        target = self._sequence[self._index]
         self._elapsed += dt
         fraction = min(1.0, duration and self._elapsed / duration)
 
