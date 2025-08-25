@@ -130,6 +130,7 @@ class MovementController:
         self._active_cmd: Optional[Command] = None
         self._cmd_cycles_remaining: int = 0
         self._prev_phase: float = 0.0
+        self._gait_enabled: bool = True
 
     # ------------------------------------------------------------------
     def setup_state(self) -> None:
@@ -252,6 +253,8 @@ class MovementController:
         self._turn_dir = 0
         self._stride_dir_x = 0
         self._stride_dir_z = 0
+        prev = self._gait_enabled
+        self._gait_enabled = False
         if flag:
             self.stop_requested = False
             p = [[55, 78, 0], [55, 78, 0], [55, 78, 0], [55, 78, 0]]
@@ -267,6 +270,7 @@ class MovementController:
                 self.run()
         self.stop_requested = True
         self.gait.stop(self)
+        self._gait_enabled = prev
 
     # ------------------------------------------------------------------
     def load_points_from_file(self, path: Path) -> None:
@@ -282,6 +286,8 @@ class MovementController:
     def _do_greeting(self) -> None:
         """Perform a simple greeting gesture."""
         self.stop_requested = False
+        prev = self._gait_enabled
+        self._gait_enabled = False
         original = [p.copy() for p in self.point]
 
         # Raise front-right leg
@@ -307,11 +313,13 @@ class MovementController:
         for i, pos in enumerate(original):
             self.set_leg_position(i, *pos)
         self.run()
+        self._gait_enabled = prev
 
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
         if isinstance(cmd, WalkCmd):
             self.stop_requested = False
+            self._gait_enabled = True
             self._stride_dir_x = 1 if cmd.vx > 0 else -1 if cmd.vx < 0 else 0
             self._stride_dir_z = 1 if cmd.vy > 0 else -1 if cmd.vy < 0 else 0
             self._is_turning = cmd.omega != 0
@@ -320,6 +328,7 @@ class MovementController:
             self._active_cmd = cmd
         elif isinstance(cmd, StepCmd):
             self.stop_requested = False
+            self._gait_enabled = True
             self.clamp_speed()
             scale = self.speed_scale()
             self._is_turning = False
@@ -341,6 +350,7 @@ class MovementController:
             self._active_cmd = cmd
         elif isinstance(cmd, TurnCmd):
             self.stop_requested = False
+            self._gait_enabled = True
             self._stride_dir_x = 0
             self._stride_dir_z = 0
             self._is_turning = cmd.yaw_rate != 0
@@ -349,14 +359,17 @@ class MovementController:
             self._active_cmd = cmd
         elif isinstance(cmd, HeightCmd):
             self.stop_requested = False
+            self._gait_enabled = False
             posture.up_and_down(self, cmd.z)
             self._active_cmd = None
         elif isinstance(cmd, AttitudeCmd):
             self.stop_requested = False
+            self._gait_enabled = False
             posture.attitude(self, cmd.roll, cmd.pitch, cmd.yaw)
             self._active_cmd = None
         elif isinstance(cmd, StopCmd):
             self.stop_requested = False
+            self._gait_enabled = False
             self.cpg.set_velocity(0.0, 0.0, 0.0)
             self._stride_dir_x = 0
             self._stride_dir_z = 0
@@ -367,6 +380,7 @@ class MovementController:
             self._do_greeting()
             self._active_cmd = None
         elif isinstance(cmd, RelaxCmd):
+            self._gait_enabled = False
             self.relax(flag=cmd.to_pose)
             self.stop_requested = True
             self._active_cmd = None
@@ -397,7 +411,8 @@ class MovementController:
                 self._active_cmd = None
 
         # Advance CPG and apply new angles
-        self.gait.update_legs_from_cpg(self, dt)
+        if self._gait_enabled and not self.stop_requested:
+            self.gait.update_legs_from_cpg(self, dt)
         self.run()
 
     # ------------------------------------------------------------------
