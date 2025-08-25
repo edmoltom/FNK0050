@@ -87,6 +87,10 @@ class MovementController:
         self.queue: Queue[Command] = Queue()
         self.setup_state()
         self.hardware.calibration(self.point, self.angle)
+        # Internal command tracking
+        self._active_cmd: Optional[Command] = None
+        self._cmd_cycles_remaining: int = 0
+        self._prev_phase: float = 0.0
 
     # ------------------------------------------------------------------
     def setup_state(self) -> None:
@@ -140,13 +144,6 @@ class MovementController:
             if leg_lenght[i] > 130 or leg_lenght[i] < 25:
                 flag = False
         return flag
-
-    # ------------------------------------------------------------------
-    def wait_for_next_tick(self, last_tick: float, tick_time: float) -> float:
-        next_tick = last_tick + tick_time
-        now = time.monotonic()
-        time.sleep(max(0, next_tick - now))
-        return next_tick
 
     # ------------------------------------------------------------------
     def clamp_speed(self, min_val: Optional[int] = None, max_val: Optional[int] = None) -> None:
@@ -226,51 +223,94 @@ class MovementController:
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
         if isinstance(cmd, WalkCmd):
-            if cmd.vx > 0:
-                self.gait.forWard(self)
-            elif cmd.vx < 0:
-                self.gait.backWard(self)
-            elif cmd.vy > 0:
-                self.gait.stepLeft(self)
-            elif cmd.vy < 0:
-                self.gait.stepRight(self)
-            elif cmd.omega > 0:
-                self.gait.turnLeft(self)
-            elif cmd.omega < 0:
-                self.gait.turnRight(self)
+            self._stride_dir_x = 1 if cmd.vx > 0 else -1 if cmd.vx < 0 else 0
+            self._stride_dir_z = 1 if cmd.vy > 0 else -1 if cmd.vy < 0 else 0
+            self._is_turning = cmd.omega != 0
+            self._turn_dir = 1 if cmd.omega > 0 else -1 if cmd.omega < 0 else 0
+            self.cpg.set_velocity(cmd.vx, cmd.vy, cmd.omega)
+            self._active_cmd = cmd
         elif isinstance(cmd, StepCmd):
+            self.clamp_speed()
+            scale = self.speed_scale()
+            self._is_turning = False
+            self._turn_dir = 0
             if cmd.direction == "left":
-                self.gait.stepLeft(self)
+                self.cpg.set_velocity(0.0, scale, 0.0)
+                self._stride_dir_x, self._stride_dir_z = 0, 1
             elif cmd.direction == "right":
-                self.gait.stepRight(self)
+                self.cpg.set_velocity(0.0, -scale, 0.0)
+                self._stride_dir_x, self._stride_dir_z = 0, -1
             elif cmd.direction == "forward":
-                self.gait.forWard(self)
+                self.cpg.set_velocity(scale, 0.0, 0.0)
+                self._stride_dir_x, self._stride_dir_z = 1, 0
             elif cmd.direction == "backward":
-                self.gait.backWard(self)
+                self.cpg.set_velocity(-scale, 0.0, 0.0)
+                self._stride_dir_x, self._stride_dir_z = -1, 0
+            self._cmd_cycles_remaining = max(1, int(cmd.distance))
+            self._prev_phase = self.cpg.phi[0]
+            self._active_cmd = cmd
         elif isinstance(cmd, TurnCmd):
-            if cmd.yaw_rate > 0:
-                self.gait.turnLeft(self)
-            elif cmd.yaw_rate < 0:
-                self.gait.turnRight(self)
+            self._stride_dir_x = 0
+            self._stride_dir_z = 0
+            self._is_turning = cmd.yaw_rate != 0
+            self._turn_dir = 1 if cmd.yaw_rate > 0 else -1 if cmd.yaw_rate < 0 else 0
+            self.cpg.set_velocity(0.0, 0.0, cmd.yaw_rate)
+            self._active_cmd = cmd
         elif isinstance(cmd, HeightCmd):
             posture.up_and_down(self, cmd.z)
+            self._active_cmd = None
         elif isinstance(cmd, AttitudeCmd):
             posture.attitude(self, cmd.roll, cmd.pitch, cmd.yaw)
+            self._active_cmd = None
         elif isinstance(cmd, StopCmd):
-            self.gait.stop(self)
+            self.cpg.set_velocity(0.0, 0.0, 0.0)
+            self._stride_dir_x = 0
+            self._stride_dir_z = 0
+            self._is_turning = False
+            self._turn_dir = 0
+            self._active_cmd = None
         elif isinstance(cmd, RelaxCmd):
             self.relax()
+            self._active_cmd = None
 
     # ------------------------------------------------------------------
     def tick(self, dt: float) -> None:
+        # Drain queue and update the active command/state
         try:
-            cmd = self.queue.get_nowait()
+            while True:
+                cmd = self.queue.get_nowait()
+                self._process_command(cmd)
         except Empty:
-            return
-        self._process_command(cmd)
+            pass
+
+        # Track progress for finite commands (e.g. StepCmd)
+        if isinstance(self._active_cmd, StepCmd):
+            phase = self.cpg.phi[0]
+            if phase < self._prev_phase:
+                self._cmd_cycles_remaining -= 1
+            self._prev_phase = phase
+            if self._cmd_cycles_remaining <= 0:
+                # Step finished -> stop movement
+                self.cpg.set_velocity(0.0, 0.0, 0.0)
+                self._stride_dir_x = 0
+                self._stride_dir_z = 0
+                self._is_turning = False
+                self._turn_dir = 0
+                self._active_cmd = None
+
+        # Advance CPG and apply new angles
+        self.gait.update_legs_from_cpg(self, dt)
+        self.run()
 
     # ------------------------------------------------------------------
-    def start_loop(self, dt: float = 0.01) -> None:
+    def start_loop(self, rate_hz: float = 100.0) -> None:
+        tick_time = 1.0 / rate_hz
+        last = time.monotonic()
         while True:
+            now = time.monotonic()
+            dt = now - last
+            last = now
             self.tick(dt)
-            time.sleep(dt)
+            sleep_time = tick_time - (time.monotonic() - now)
+            if sleep_time > 0:
+                time.sleep(sleep_time)

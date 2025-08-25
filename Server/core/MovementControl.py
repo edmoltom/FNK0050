@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 from movement.controller import (
     AttitudeCmd,
     Command,
@@ -69,15 +67,19 @@ class MovementControl:
         self.controller.queue.put(RelaxCmd())
 
     def tick(self, dt: float) -> None:
-        """\brief Process pending commands.
-        \param dt Time step in seconds (unused).
+        """Process pending commands.
+
+        Parameters
+        ----------
+        dt:
+            Time step in seconds.
         """
         self.controller.tick(dt)
 
-    def start_loop(self, dt: float = 0.01) -> None:
-        """\brief Blocking loop repeatedly calling tick.
-        \param dt Loop period in seconds.
+    def start_loop(self, rate_hz: float = 100.0) -> None:
+        """Blocking loop repeatedly calling :meth:`tick`.
+
+        The loop runs at ``rate_hz`` using ``time.monotonic`` for timing and
+        delegates to :class:`MovementController`.
         """
-        while True:
-            self.tick(dt)
-            time.sleep(dt)
+        self.controller.start_loop(rate_hz)
