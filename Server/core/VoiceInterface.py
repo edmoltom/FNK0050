@@ -93,16 +93,15 @@ def stt_stream():
 
     while True:
         if STT_PAUSED:
-            drained = False
-            try:
-                while True:
+            # drain any buffered phrases while paused
+            while True:
+                try:
                     item = q.get_nowait()
                     if item is None:
                         return
-                    drained = True
-            except queue.Empty:
-                pass
-            time.sleep(0.01 if drained else 0.02)
+                except queue.Empty:
+                    break
+            time.sleep(0.02)
             yield None
             continue
 
