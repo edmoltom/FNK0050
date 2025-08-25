@@ -24,9 +24,9 @@ from .kinematics import coordinate_to_angle, clamp
 from .data import load_points
 from .servo import Servo
 from .gait_cpg import CPG
-from ..sensing.IMU import IMU
-from ..sensing.odometry import Odometry
-from ..PID import Incremental_PID
+from sensing.IMU import IMU
+from sensing.odometry import Odometry
+from PID import Incremental_PID
 
 
 class Hardware:
