@@ -73,8 +73,8 @@ class MovementControl:
         self.controller.queue.put(StopCmd())
 
     def relax(self) -> None:
-        """\brief Relax the robot servos."""
-        self.controller.queue.put(RelaxCmd())
+        """\brief Move to the predefined relaxed pose before releasing torque."""
+        self.controller.queue.put(RelaxCmd(to_pose=True))
 
     def greet(self) -> None:
         """\brief Perform a greeting action."""
