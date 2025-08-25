@@ -1,15 +1,15 @@
-import sys
 import time
-import subprocess
 import threading
 import queue
 import asyncio
+from pathlib import Path
+
 from LedController import LedController
 from core.llm.llm_memory import ConversationMemory
 from core.llm.persona import build_system
 from core.llm.llm_client import query_llm
 from core.voice.tts import TextToSpeech
-from pathlib import Path
+from core.hearing.stt import SpeechToText
 
 mem = ConversationMemory(last_n=3)
 
@@ -21,13 +21,12 @@ ATTENTION_TTL_SEC = 15.0        # wake-up window (seconds)
 ATTN_BONUS_AFTER_SPEAK = 5.0    # extra after speaking to chain turns
 
 BASE = Path(__file__).resolve().parent
-STT_PATH = BASE / "hearing" / "stt.py"
 
-# Instantiate the TTS engine once so it can be reused across calls
+# Instantiate engines once so they can be reused across calls
 _tts_engine = TextToSpeech()
+_stt_engine = SpeechToText()
 
 STT_PAUSED = False
-STT_PROC = None
 
 _loop = asyncio.new_event_loop()
 threading.Thread(target=_loop.run_forever, daemon=True).start()
@@ -66,47 +65,40 @@ def leds_set(state: str) -> None:
 def stt_pause() -> None:
     global STT_PAUSED
     STT_PAUSED = True
+    _stt_engine.pause()
 
 
 def stt_resume() -> None:
     global STT_PAUSED
     STT_PAUSED = False
+    _stt_engine.resume()
 
 
 def stt_stop() -> None:
-    if STT_PROC and STT_PROC.poll() is None:
-        STT_PROC.terminate()
+    global STT_PAUSED
+    STT_PAUSED = True
+    _stt_engine.pause()
 
 
 def stt_stream():
-    """Yield utterances from the STT subprocess (drains queue when paused)."""
-    global STT_PROC
-    proc = subprocess.Popen(
-        [sys.executable, "-u", str(STT_PATH)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1,
-    )
-    STT_PROC = proc
-    q = queue.Queue()
+    """Yield utterances from the STT engine (drains queue when paused)."""
+    q: queue.Queue[str | None] = queue.Queue()
 
-    def reader():
-        for line in iter(proc.stdout.readline, ""):
-            if line.startswith("> "):
-                q.put(line[2:].strip())
-        # EOF: mark with sentinel
+    def reader() -> None:
+        for phrase in _stt_engine.listen():
+            q.put(phrase)
         q.put(None)
 
     threading.Thread(target=reader, daemon=True).start()
 
     while True:
         if STT_PAUSED:
-            # Drain fast while paused
             drained = False
             try:
                 while True:
                     item = q.get_nowait()
                     if item is None:
-                        return  # STT ended
+                        return
                     drained = True
             except queue.Empty:
                 pass
@@ -117,7 +109,7 @@ def stt_stream():
         try:
             item = q.get(timeout=0.1)
             if item is None:
-                return  # STT ended
+                return
             yield item
         except queue.Empty:
             yield None
