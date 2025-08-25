@@ -14,6 +14,7 @@ from MovementControl import MovementControl
 def polling_loop(gamepad, controller):
     """Poll gamepad and enqueue movement commands."""
     DEADZONE = 0.2
+    prev_B = False
     while True:
         try:
             x0 = gamepad.axis(0)
@@ -38,11 +39,16 @@ def polling_loop(gamepad, controller):
             elif gamepad.isPressed('A'):
                 controller.greet()
                 continue
-            elif gamepad.isPressed('B'):
-                controller.relax()
-                continue
             else:
-                controller.stop()
+                b_pressed = gamepad.isPressed('B')
+                if b_pressed and not prev_B:
+                    controller.relax()
+                    prev_B = True
+                    continue
+                elif not b_pressed:
+                    controller.stop()
+                    prev_B = False
+                # If B is held, do nothing to avoid repeated RelaxCmd
 
             time.sleep(0.1)
         except Exception as e:
