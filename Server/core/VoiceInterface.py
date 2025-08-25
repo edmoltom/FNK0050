@@ -8,6 +8,7 @@ from LedController import LedController
 from core.llm.llm_memory import ConversationMemory
 from core.llm.persona import build_system
 from core.llm.llm_client import query_llm
+from core.voice.tts import TextToSpeech
 from pathlib import Path
 
 mem = ConversationMemory(last_n=3)
@@ -21,7 +22,9 @@ ATTN_BONUS_AFTER_SPEAK = 5.0    # extra after speaking to chain turns
 
 BASE = Path(__file__).resolve().parent
 STT_PATH = BASE / "llm" / "stt.py"
-TTS_PATH = BASE / "llm" / "tts.py"
+
+# Instantiate the TTS engine once so it can be reused across calls
+_tts_engine = TextToSpeech()
 
 STT_PAUSED = False
 STT_PROC = None
@@ -129,8 +132,12 @@ def llm_ask(text: str) -> str:
 
 
 def tts_say(text: str) -> int:
-    p = subprocess.run([sys.executable, str(TTS_PATH), "--text", text], check=False)
-    return p.returncode
+    try:
+        _tts_engine.speak(text)
+        return 0
+    except Exception as e:
+        print(f"[ERROR] TTS failed: {e}")
+        return 1
 
 
 def contains_wake_word(text: str) -> bool:
