@@ -11,18 +11,15 @@ import os
 
 
 class Camera:
-    """
-    @brief Camera wrapper using Picamera2 with a periodic vision pipeline.
-    @details
-    Captures frames at resolution defined in ``CAMERA_RESOLUTION``, runs a detection pipeline, draws overlays,
-    and exposes the last processed frame as a base64-encoded JPEG string.
-    The camera is started once on start_periodic_capture() and stopped on stop.
+    """Camera wrapper using Picamera2 with a periodic vision pipeline.
+
+    Frames are captured at the resolution defined by ``CAMERA_RESOLUTION`` and
+    passed through ``process_frame``.  Overlays are drawn and the last
+    processed frame is exposed as a base64 encoded JPEG string.
     """
 
     def __init__(self):
-        """
-        @brief Initialize the camera and default state.
-        """
+        """Initialise the camera and internal state."""
         self.picam2 = Picamera2()
         self.picam2.configure(
             self.picam2.create_still_configuration(
@@ -42,9 +39,12 @@ class Camera:
             self._logger = VisionLogger(stride=stride, api_config={"stable": True})
 
     def set_processing_config(self, config: dict):
-        """
-        @brief Set runtime configuration for the processing pipeline.
-        @param config Arbitrary dict consumed by the downstream pipeline.
+        """Set runtime configuration for the processing pipeline.
+
+        Parameters
+        ----------
+        config:
+            Arbitrary dictionary consumed by the downstream pipeline.
         """
         self._config = dict(config or {})
 
@@ -59,10 +59,12 @@ class Camera:
             self._camera_started = False
 
     def capture_array(self):
-        """
-        @brief Capture a single RGB frame as a NumPy array.
-        @return RGB image (H, W, 3).
-        @note Camera must be started beforehand.
+        """Capture a single RGB frame as a NumPy array.
+
+        Returns
+        -------
+        ndarray
+            RGB image (H, W, 3).  The camera is started on demand if needed.
         """
         self._ensure_camera_started()
         return self.picam2.capture_array()
@@ -70,9 +72,9 @@ class Camera:
     # -------- Internal helpers --------
 
     def _get_reference_resolution(self, res: dict, frame_shape):
-        """
-        Try to infer the coordinate space used by the pipeline results.
-        Fallbacks: config['ref_size'] or REF_SIZE.
+        """Infer the coordinate space used by the pipeline results.
+
+        Falls back to ``config['ref_size']`` or ``REF_SIZE``.
         """
         # Try common keys
         if isinstance(res.get("space"), (tuple, list)) and len(res["space"]) == 2:
@@ -91,9 +93,12 @@ class Camera:
         return float(ref_w), float(ref_h)
 
     def _apply_pipeline(self):
-        """
-        @brief Run the vision pipeline and draw overlays on the frame.
-        @return BGR image with overlays.
+        """Run the vision pipeline and draw overlays on the frame.
+
+        Returns
+        -------
+        ndarray
+            Image in BGR format with overlays applied.
         """
         frame_rgb = self.capture_array()                       # Picam2 → RGB
         frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)     # OpenCV uses BGR
@@ -135,10 +140,14 @@ class Camera:
     # -------- Public streaming API --------
 
     def start_periodic_capture(self, interval=1.0):
-        """
-        @brief Start a background thread that captures and processes frames periodically.
-        @param interval Desired seconds between captures (processing time compensated).
-        @note Stores the last processed frame as base64 JPEG in _last_encoded_image.
+        """Start a background thread that periodically captures and processes frames.
+
+        Parameters
+        ----------
+        interval:
+            Desired seconds between captures.  Processing time is compensated to
+            maintain cadence.  The last processed frame is stored as a base64
+            JPEG string.
         """
         if self._streaming:
             print("[Camera] Streaming already running.")
@@ -176,9 +185,7 @@ class Camera:
         print("[Camera] Started periodic capture.")
 
     def stop_periodic_capture(self):
-        """
-        @brief Stop the background thread and wait for clean shutdown.
-        """
+        """Stop the background thread and wait for a clean shutdown."""
         self._streaming = False
         if self._thread:
             self._thread.join()
@@ -189,9 +196,12 @@ class Camera:
         print("[Camera] Stopped periodic capture.")
 
     def get_last_processed_encoded(self):
-        """
-        @brief Get the last processed frame as a base64-encoded JPEG.
-        @return str or None.
+        """Return the last processed frame as a base64 encoded JPEG string.
+
+        Returns
+        -------
+        Optional[str]
+            Encoded image or ``None`` if no frame has been processed yet.
         """
         with self._lock:
             return self._last_encoded_image
