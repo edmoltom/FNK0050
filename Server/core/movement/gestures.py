@@ -34,7 +34,12 @@ class Gestures:
         self._sequence: List[Tuple[float, List[List[float]]]] = []
         self._index: int = 0
         self._elapsed: float = 0.0
-        self._start_pos: List[List[float]] | None = None
+        # ``_entry`` stores the stance when the gesture begins so that it is
+        # only captured once.  ``_phase_start`` tracks the leg positions at the
+        # start of the current keyframe for interpolation toward the absolute
+        # target of that keyframe.
+        self._entry: List[List[float]] | None = None
+        self._phase_start: List[List[float]] | None = None
 
         # Library of available gestures.  Each entry is a list of
         # ``(duration, positions)`` pairs where ``positions`` is a
@@ -84,8 +89,11 @@ class Gestures:
         self._sequence = seq
         self._index = 0
         self._elapsed = 0.0
-        # Capture starting positions for interpolation
-        self._start_pos = [p[:] for p in self.controller.point]
+        # Capture the stance once at the beginning of the gesture.  Subsequent
+        # keyframes interpolate from the robot's current pose rather than this
+        # entry stance.
+        self._entry = [p[:] for p in self.controller.point]
+        self._phase_start = [p[:] for p in self.controller.point]
         self._active = True
 
         # Disable locomotion while the gesture is active
@@ -97,7 +105,8 @@ class Gestures:
         self._sequence = []
         self._index = 0
         self._elapsed = 0.0
-        self._start_pos = None
+        self._entry = None
+        self._phase_start = None
         setattr(self.controller, "_locomotion_enabled", True)
 
     def update(self, dt: float) -> bool:
@@ -120,19 +129,20 @@ class Gestures:
         self._elapsed += dt
         fraction = min(1.0, duration and self._elapsed / duration)
 
-        # Linear interpolation between the starting pose and the target pose
-        assert self._start_pos is not None
+        # Interpolate from the pose at the start of this phase toward the
+        # absolute target of the keyframe.
+        assert self._phase_start is not None
         for leg in range(4):
             for axis in range(3):
-                start_val = self._start_pos[leg][axis]
+                start_val = self._phase_start[leg][axis]
                 end_val = target[leg][axis]
                 self.controller.point[leg][axis] = (
                     start_val + (end_val - start_val) * fraction
                 )
 
         if fraction >= 1.0:
-            # Move to the next keyframe
-            self._start_pos = [p[:] for p in target]
+            # Prepare for the next keyframe by capturing the stance once.
+            self._phase_start = [p[:] for p in self.controller.point]
             self._elapsed = 0.0
             self._index += 1
             if self._index >= len(self._sequence):
