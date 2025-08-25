@@ -37,6 +37,7 @@ def polling_loop(gamepad, controller):
                     controller.step('left', 1.0)
             elif gamepad.isPressed('B'):
                 controller.relax()
+                continue
             else:
                 controller.stop()
 
