@@ -283,7 +283,7 @@ class MovementController:
 
     # ------------------------------------------------------------------
     def _do_greeting(self) -> None:
-        """Perform a simple greeting gesture."""
+        """Perform a simple greeting gesture without altering torque state."""
         self.stop_requested = False
         prev = self._gait_enabled
         self._gait_enabled = False
@@ -382,6 +382,7 @@ class MovementController:
             self._turn_dir = 0
             self._active_cmd = None
         elif isinstance(cmd, GreetCmd):
+            # Keep servos powered throughout the greeting animation
             self.stop_requested = False
             self.torque_off = False
             self._do_greeting()
