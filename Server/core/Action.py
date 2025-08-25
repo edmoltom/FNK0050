@@ -1,14 +1,14 @@
 import threading
 import time
 
-from Control import Control
+from movement.controller import Controller
 from movement.servo import Servo
 
 class Action:
 
     def __init__(self):
         self.servo=Servo()
-        self.control=Control()
+        self.control=Controller()
         self.max_speed = self.control.MAX_SPEED_LIMIT
         self.current_speed = 0
         self.servo.setServoAngle(15,90)
@@ -91,51 +91,9 @@ class Action:
 
             time.sleep(0.1)
     
-    def hello(self):  
-        #self.control.start_logging("hello.csv")
-        xyz=[[-20,120,-40],[50,105,0],[50,105,0],[0,120,0]]
-        for i in range(4):
-            xyz[i][0]=(xyz[i][0]-self.control.point[i][0])/30
-            xyz[i][1]=(xyz[i][1]-self.control.point[i][1])/30
-            xyz[i][2]=(xyz[i][2]-self.control.point[i][2])/30
-        for j in range(30):
-            for i in range(4):
-                self.control.point[i][0]+=xyz[i][0]
-                self.control.point[i][1]+=xyz[i][1]
-                self.control.point[i][2]+=xyz[i][2]
-            self.control.run()
-            time.sleep(0.02)
-        x3=(80-self.control.point[3][0])/30
-        y3=(23-self.control.point[3][1])/30
-        z3=(0-self.control.point[3][2])/30
-        for j in range(30):
-            self.control.point[3][0]+=x3
-            self.control.point[3][1]+=y3
-            self.control.point[3][2]+=z3
-            self.control.run()
-            time.sleep(0.01)
-        for i in range(2):
-            for i in range(92,120,1):
-                self.servo.setServoAngle(11,i)
-                time.sleep(0.01)
-            for i in range(120,60,-1):
-                self.servo.setServoAngle(11,i)
-                time.sleep(0.01)
-            for i in range(60,92,1):
-                self.servo.setServoAngle(11,i)
-                time.sleep(0.01)
-        xyz=[[55,78,0],[55,78,0],[55,78,0],[55,78,0]]
-        for i in range(4):
-            xyz[i][0]=(xyz[i][0]-self.control.point[i][0])/30
-            xyz[i][1]=(xyz[i][1]-self.control.point[i][1])/30
-            xyz[i][2]=(xyz[i][2]-self.control.point[i][2])/30
-        for j in range(30):
-            for i in range(4):
-                self.control.point[i][0]+=xyz[i][0]
-                self.control.point[i][1]+=xyz[i][1]
-                self.control.point[i][2]+=xyz[i][2]
-            self.control.run()
-            time.sleep(0.02)
+    def hello(self):
+        """Trigger the greeting gesture."""
+        self.control.gestures.start("greet")
 
     def stand_up(self):
         self.control.speed = 2
