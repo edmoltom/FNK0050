@@ -250,6 +250,9 @@ class MovementController:
 
     # ------------------------------------------------------------------
     def relax(self, flag: bool = False) -> None:
+        if getattr(self, "_in_relax", False):
+            return
+        self._in_relax = True
         self._is_turning = False
         self._turn_dir = 0
         self._stride_dir_x = 0
@@ -269,7 +272,7 @@ class MovementController:
                     self.point[i][1] -= p[i][1]
                     self.point[i][2] -= p[i][2]
                 self.run()
-        self.gait.stop(self)
+        self.cpg.set_velocity(0.0, 0.0, 0.0)
 
     # ------------------------------------------------------------------
     def load_points_from_file(self, path: Path) -> None:
@@ -316,6 +319,8 @@ class MovementController:
 
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
+        if isinstance(cmd, (WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, GreetCmd)):
+            self._in_relax = False
         if isinstance(cmd, WalkCmd):
             self.stop_requested = False
             self.torque_off = False
