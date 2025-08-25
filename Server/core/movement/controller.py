@@ -95,11 +95,7 @@ class MovementController:
         self.order = ["", "", "", "", ""]
         self.point = [[0, 99, 10], [0, 99, 10], [0, 99, -10], [0, 99, -10]]
         self.angle = [[90, 0, 0], [90, 0, 0], [90, 0, 0], [90, 0, 0]]
-        self._prev_yaw = None
-        self._prev_t = None
         self._prev_t_gait = None
-        self._gait_angle = 0.0
-        self._yr = 0.0
         self._is_turning = False
         self._turn_dir = 0
         self._stride_dir_x = 1
@@ -125,7 +121,8 @@ class MovementController:
             try:
                 self.update_angles_from_points()
                 self.hardware.apply_angles(self.angle)
-                self.logger.log_current_state(self)
+                if self.logger.active:
+                    self.logger.log_state(time.time(), self.hardware.imu, self.point, self.hardware.odom)
             except Exception as e:
                 print("Exception during run():", e)
         else:
