@@ -16,10 +16,7 @@ from typing import Generator, Optional
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
 
-# Access text normalization helper from the neighbouring llm module
-BASE = Path(__file__).resolve().parent
-sys.path.append(str(BASE.parent / "llm"))
-from text_norm import normalize_punct  # type: ignore
+from .text_norm import normalize_punct
 
 # Default configuration (same as the original script)
 DEFAULT_MODEL_DIR = Path("/home/user/vosk/vosk-model-small-es-0.42")

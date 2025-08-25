@@ -1,4 +1,4 @@
-# llm/text_norm.py
+# hearing/text_norm.py
 import re
 
 _Q = r"(que|qué|cual|cuál|como|cómo|donde|dónde|cuando|cuándo|por que|por qué|cuanto|cuánto|quien|quién|cuáles|cuantos|cuántos)"
