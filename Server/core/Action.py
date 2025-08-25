@@ -2,16 +2,15 @@ import threading
 import time
 
 from movement.controller import Controller
-from movement.servo import Servo
 
 class Action:
 
     def __init__(self):
-        self.servo=Servo()
-        self.control=Controller()
+        self.control = Controller()
         self.max_speed = self.control.MAX_SPEED_LIMIT
         self.current_speed = 0
-        self.servo.setServoAngle(15,90)
+        # Example servo initialisation routed through the controller
+        self.control.set_servo_angle(15, 90)
         self.start_fsm()
 
     def start_fsm(self):
@@ -93,7 +92,7 @@ class Action:
     
     def hello(self):
         """Trigger the greeting gesture."""
-        self.control.gestures.start("greet")
+        self.control.greet()
 
     def stand_up(self):
         self.control.speed = 2
