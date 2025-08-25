@@ -98,6 +98,7 @@ class ControllerCancelTest(unittest.TestCase):
         self.controller.cancel()
         self.assertFalse(self.controller.gestures.active)
         self.assertTrue(self.controller._locomotion_enabled)
+        self.assertTrue(self.controller._gait_enabled)
         self._assert_safe_stance()
 
     def test_stop_cancels_gesture(self):
@@ -115,6 +116,16 @@ class ControllerCancelTest(unittest.TestCase):
         self.controller.relax()
         self.assertFalse(self.controller.gestures.active)
         self._assert_safe_stance()
+
+    def test_gait_resumes_after_completion(self):
+        self.controller.gestures.start("greet")
+        # Gesture should disable gait
+        self.assertFalse(self.controller._gait_enabled)
+        # Run until the gesture finishes
+        while self.controller.gestures.active:
+            self.controller.update(1.0)
+        # Gait should be restored after completion
+        self.assertTrue(self.controller._gait_enabled)
 
 
 if __name__ == "__main__":

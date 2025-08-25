@@ -40,6 +40,7 @@ class Controller(Control):
         # ``_locomotion_enabled`` when running a gesture.
         self.gestures = Gestures(self)
         self._locomotion_enabled = True
+        self._gait_enabled = True
 
     # ------------------------------------------------------------------
     # High level public API
@@ -69,8 +70,8 @@ class Controller(Control):
         implementation to place the robot back into its neutral stance.
         """
         self.gestures.cancel()
-        # ``Gestures.cancel`` already re-enables locomotion but we make it
-        # explicit here for clarity.
+        # ``Gestures.cancel`` already restores locomotion and gait, but we
+        # make the locomotion flag explicit here for clarity.
         self._locomotion_enabled = True
         Control.stop(self)
 
@@ -94,7 +95,7 @@ class Controller(Control):
                 self._locomotion_enabled = True
             return
 
-        if not self._locomotion_enabled:
+        if not self._locomotion_enabled or not self._gait_enabled:
             return
 
         super().update_legs_from_cpg(dt)

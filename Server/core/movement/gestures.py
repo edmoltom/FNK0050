@@ -92,6 +92,9 @@ class Gestures:
         self._entry: List[List[float]] | None = None
         self._phase_start: List[List[float]] | None = None
 
+        # Track controller gait state so it can be restored after a gesture
+        self._prev_gait_enabled: bool = True
+
         # Library of available gestures keyed by name.  Durations for each
         # phase are stored separately in ``_duration_cfg`` to allow external
         # tuning without altering the keyframe coordinates.
@@ -212,8 +215,11 @@ class Gestures:
         self._phase_start = [p[:] for p in self.controller.point]
         self._active = True
 
-        # Disable locomotion while the gesture is active
+        # Temporarily disable locomotion and gait while the gesture runs.
+        # The previous gait state is stored so it can be restored on finish.
+        self._prev_gait_enabled = getattr(self.controller, "_gait_enabled", True)
         setattr(self.controller, "_locomotion_enabled", False)
+        setattr(self.controller, "_gait_enabled", False)
 
     def cancel(self) -> None:
         """Abort the current gesture, if any, and re-enable locomotion."""
@@ -224,7 +230,10 @@ class Gestures:
         self._elapsed = 0.0
         self._entry = None
         self._phase_start = None
+        # Restore locomotion and any gait state that was active before the
+        # gesture began.
         setattr(self.controller, "_locomotion_enabled", True)
+        setattr(self.controller, "_gait_enabled", self._prev_gait_enabled)
 
     def update(self, dt: float) -> bool:
         """Advance the current gesture in a non-blocking fashion.
