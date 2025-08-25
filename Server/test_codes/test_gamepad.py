@@ -7,6 +7,8 @@ from Action import Action
 def polling_loop(gamepad, action):
 
     DEADZONE = 0.2
+    prev_A = False
+    prev_B = False
 
     while(True):
         try:
@@ -33,14 +35,17 @@ def polling_loop(gamepad, action):
                 elif x1 < -DEADZONE:
                     action.state = 'step_left'
 
-            elif gamepad.isPressed('A'):
+            elif gamepad.isPressed('A') and not prev_A:
                 action.state = 'greeting'
 
-            elif gamepad.isPressed('B'):
+            elif gamepad.isPressed('B') and not prev_B:
                 action.state = 'relax'
 
             else:
                 action.state = 'idle'
+
+            prev_A = gamepad.isPressed('A')
+            prev_B = gamepad.isPressed('B')
 
             time.sleep(0.1)
 
