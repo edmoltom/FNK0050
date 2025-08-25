@@ -23,6 +23,20 @@ def available(joystickNumber = 0):
     joystickPath = '/dev/input/js' + str(joystickNumber)
     return os.path.exists(joystickPath)
 
+
+def is_connected(gamepad):
+    """Utility function to query the connection status of a gamepad instance.
+
+    Returns True if the gamepad reports an active connection, otherwise
+    False. If the provided object does not have the expected interface,
+    False is returned.
+    """
+    try:
+        return gamepad.isConnected()
+    except AttributeError:
+        return False
+
+
 class Gamepad:
     EVENT_CODE_BUTTON = 0x01
     EVENT_CODE_AXIS = 0x02
