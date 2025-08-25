@@ -23,7 +23,7 @@ DEFAULT_MODEL_DIR = Path("/home/user/vosk/vosk-model-small-es-0.42")
 DEFAULT_RATE = 16000
 DEFAULT_CHANNELS = 1
 DEFAULT_DEVICE: Optional[int] = None
-BLOCK_SIZE = 8000
+DEFAULT_BLOCK_SIZE = 8000
 
 
 class SpeechToText:
@@ -35,6 +35,7 @@ class SpeechToText:
         sample_rate: int = DEFAULT_RATE,
         device: Optional[int] = DEFAULT_DEVICE,
         channels: int = DEFAULT_CHANNELS,
+        block_size: int = DEFAULT_BLOCK_SIZE,
     ) -> None:
         self.model_dir = Path(model_dir)
         if not self.model_dir.exists():
@@ -43,6 +44,7 @@ class SpeechToText:
         self.sample_rate = sample_rate
         self.device = device
         self.channels = channels
+        self.block_size = block_size
         self._paused = False
 
         self.model = Model(str(self.model_dir))
@@ -70,7 +72,7 @@ class SpeechToText:
 
         with sd.RawInputStream(
             samplerate=self.sample_rate,
-            blocksize=BLOCK_SIZE,
+            blocksize=self.block_size,
             device=self.device,
             dtype="int16",
             channels=self.channels,
