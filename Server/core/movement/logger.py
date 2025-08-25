@@ -1,88 +1,207 @@
-"""Light‑weight logging helpers for movement related data."""
+"""Asynchronous CSV logger for movement related state.
+
+This module provides a minimal :class:`MovementLogger` that can be used by
+the movement controller to persist state information without blocking the
+real‑time control loop.  Logging happens on a background thread and an
+optional list of *odometry hooks* can be supplied.  These hooks receive the
+raw logging data and may update the odometry object before the row is
+written.
+
+The logger exposes three non blocking methods:
+
+``start(file: Path)``
+    Start logging to ``file``.  A CSV header is written and the background
+    worker thread is launched.
+
+``stop()``
+    Stop logging and close the file handle.  Any pending log entries are
+    flushed before returning.
+
+``log_state(timestamp, imu, leg_points, odom)``
+    Queue one state sample for logging.  The call returns immediately and is
+    safe to invoke from time critical code paths.
+"""
+
 from __future__ import annotations
 
 import math
-import time
-from typing import Iterable, Optional, TextIO
+import threading
+from pathlib import Path
+from queue import Empty, Queue
+from typing import Callable, Iterable, List, Optional, Sequence, TextIO
+
+
+OdometryHook = Callable[[float, Sequence[Sequence[float]], object], None]
 
 
 class MovementLogger:
     """CSV based logger used by the movement controller.
 
-    The logger does not depend on the concrete controller
-    implementation; instead :meth:`log_current_state` expects an object
-    that exposes the minimal set of attributes that the historic
-    ``Control`` class used.
+    Parameters
+    ----------
+    odom_hooks:
+        Optional iterable of callables executed for every queued sample.  The
+        callables receive ``(timestamp, leg_points, odom)`` and may mutate the
+        ``odom`` object (for example to update its internal estimate).  Any
+        exception raised by a hook is swallowed to keep logging robust.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, odom_hooks: Optional[Iterable[OdometryHook]] = None) -> None:
         self._fh: Optional[TextIO] = None
+        self._queue: "Queue[tuple[float, object, List[List[float]], object]]" = Queue()
+        self._thread: Optional[threading.Thread] = None
+        self._stop_evt = threading.Event()
         self._step = 0
+        self._odom_hooks: List[OdometryHook] = list(odom_hooks or [])
+        self._prev_yaw: Optional[float] = None
+        self._prev_t: Optional[float] = None
 
     # ------------------------------------------------------------------
-    def start_logging(self, filename: str = "empty.csv") -> None:
-        """Open ``filename`` for writing and emit a CSV header."""
-        self._fh = open(filename, "w")
-        header: Iterable[str] = [
-            "timestamp", "step", "roll", "pitch", "yaw",
-            "accel_x", "accel_y", "accel_z",
-            "fl_x", "fl_y", "fl_z", "rl_x", "rl_y", "rl_z",
-            "rr_x", "rr_y", "rr_z", "fr_x", "fr_y", "fr_z",
-            "yaw_rate_dps", "is_stance", "odom_x", "odom_y", "odom_theta_deg",
+    @property
+    def active(self) -> bool:
+        """Return ``True`` if logging is currently active."""
+
+        return self._thread is not None and self._thread.is_alive()
+
+    # ------------------------------------------------------------------
+    def add_odometry_hook(self, hook: OdometryHook) -> None:
+        """Register an additional odometry hook."""
+
+        self._odom_hooks.append(hook)
+
+    # ------------------------------------------------------------------
+    def start(self, file: Path) -> None:
+        """Start logging to ``file``.
+
+        The method returns immediately after spawning the worker thread.
+        """
+
+        if self.active:
+            return
+        self._fh = file.open("w", encoding="utf-8")
+        header = [
+            "timestamp",
+            "step",
+            "roll",
+            "pitch",
+            "yaw",
+            "accel_x",
+            "accel_y",
+            "accel_z",
+            "fl_x",
+            "fl_y",
+            "fl_z",
+            "rl_x",
+            "rl_y",
+            "rl_z",
+            "rr_x",
+            "rr_y",
+            "rr_z",
+            "fr_x",
+            "fr_y",
+            "fr_z",
+            "yaw_rate_dps",
+            "is_stance",
+            "odom_x",
+            "odom_y",
+            "odom_theta_deg",
         ]
         self._fh.write(",".join(header) + "\n")
+        self._stop_evt.clear()
+        self._thread = threading.Thread(target=self._worker, daemon=True)
+        self._thread.start()
+
+    # ------------------------------------------------------------------
+    def stop(self) -> None:
+        """Stop logging and close the file handle."""
+
+        if not self.active:
+            return
+        self._stop_evt.set()
+        if self._thread:
+            self._thread.join()
+        self._thread = None
+        if self._fh:
+            self._fh.close()
+        self._fh = None
+        self._prev_yaw = None
+        self._prev_t = None
         self._step = 0
 
     # ------------------------------------------------------------------
-    def stop_logging(self) -> None:
-        """Close the file handle if logging was active."""
-        if self._fh:
-            self._fh.close()
-            self._fh = None
+    def log_state(
+        self,
+        timestamp: float,
+        imu: object,
+        leg_points: Sequence[Sequence[float]],
+        odom: object,
+    ) -> None:
+        """Queue a state sample for logging.
+
+        All heavy work is deferred to a background thread.  If logging is not
+        active the call becomes a no-op.
+        """
+
+        if not self.active:
+            return
+        # Make a cheap copy of leg_points to avoid race conditions.
+        lp_copy = [list(p) for p in leg_points]
+        self._queue.put((timestamp, imu, lp_copy, odom))
 
     # ------------------------------------------------------------------
-    def log_current_state(self, ctl: object) -> None:
-        """Append one row of state values to the CSV file.
+    def _worker(self) -> None:
+        """Background thread consuming queued samples."""
 
-        ``ctl`` is expected to expose ``imu``, ``odom`` and ``point``
-        attributes as well as a ``_gait_angle`` and the smoothing state
-        ``_yr``.  This loose duck‑typing keeps the logger reusable and
-        easy to test.
-        """
-        if not self._fh:
-            return
+        while not self._stop_evt.is_set() or not self._queue.empty():
+            try:
+                timestamp, imu, leg_points, odom = self._queue.get(timeout=0.1)
+            except Empty:
+                continue
 
-        timestamp = time.time()
-        pitch, roll, yaw, accel_x, accel_y, accel_z = ctl.imu.update_imu()
+            # Obtain orientation and acceleration from IMU.
+            pitch, roll, yaw, ax, ay, az = imu.update_imu()
 
-        # Compute angular velocity (yaw_rate) in deg/s
-        if getattr(ctl, "_prev_yaw", None) is None:
-            yaw_rate = 0.0
-        else:
-            dt = max(1e-3, timestamp - ctl._prev_t)
-            dyaw = (yaw - ctl._prev_yaw + 180) % 360 - 180
-            yaw_rate = dyaw / dt
-        ctl._prev_yaw, ctl._prev_t = yaw, timestamp
-        ctl._yr = 0.8 * getattr(ctl, "_yr", 0.0) + 0.2 * yaw_rate
+            # Yaw rate (deg/s)
+            if self._prev_yaw is None:
+                yaw_rate = 0.0
+            else:
+                dt = max(1e-3, timestamp - (self._prev_t or timestamp))
+                dyaw = (yaw - self._prev_yaw + 180) % 360 - 180
+                yaw_rate = dyaw / dt
+            self._prev_yaw, self._prev_t = yaw, timestamp
 
-        # Update heading for odometry
-        ctl.odom.set_heading_deg(yaw)
+            # Execute odometry hooks if any
+            for hook in self._odom_hooks:
+                try:
+                    hook(timestamp, leg_points, odom)
+                except Exception:
+                    pass
 
-        phase0 = getattr(ctl, "_last_phases", [0.0])[0]
-        duty = getattr(ctl, "_last_duty", 0.75)
-        is_stance = (phase0 <= duty) and (abs(ctl._yr) < 3.0)
+            # Basic stance detection: leg 0 close to ground
+            is_stance = int(leg_points[0][2] <= 0.0)
 
-        if not ctl.odom.zupt(is_stance, ctl._yr):
-            ctl.odom.tick_gait(ctl._gait_angle, ctl.step_length)
+            row = [
+                f"{timestamp:.6f}",
+                self._step,
+                f"{roll:.2f}",
+                f"{pitch:.2f}",
+                f"{yaw:.2f}",
+                f"{ax:.4f}",
+                f"{ay:.4f}",
+                f"{az:.4f}",
+                *[f"{coord:.2f}" for leg in leg_points for coord in leg],
+                f"{yaw_rate:.2f}",
+                is_stance,
+                f"{getattr(odom, 'x', 0.0):.2f}",
+                f"{getattr(odom, 'y', 0.0):.2f}",
+                f"{math.degrees(getattr(odom, 'theta', 0.0)):.2f}",
+            ]
 
-        data = [
-            timestamp, self._step,
-            f"{roll:.2f}", f"{pitch:.2f}", f"{yaw:.2f}",
-            f"{accel_x:.4f}", f"{accel_y:.4f}", f"{accel_z:.4f}",
-            *[f"{coord:.2f}" for leg in ctl.point for coord in leg],
-            f"{ctl._yr:.2f}", int(is_stance),
-            f"{ctl.odom.x:.2f}", f"{ctl.odom.y:.2f}",
-            f"{math.degrees(ctl.odom.theta):.2f}",
-        ]
-        self._fh.write(",".join(map(str, data)) + "\n")
-        self._step += 1
+            if self._fh:
+                self._fh.write(",".join(map(str, row)) + "\n")
+                self._fh.flush()
+            self._step += 1
+
+
+__all__ = ["MovementLogger"]
+

@@ -10,9 +10,6 @@ def update_legs_from_cpg(ctrl: Any, dt: float) -> None:
     Z_BASE = [10, 10, -10, -10]
 
     phases = ctrl.cpg.update(dt)
-    ctrl._last_phases = phases
-    ctrl._last_duty = getattr(ctrl.cpg, "duty_cur", ctrl.cpg.duty)
-    ctrl._gait_angle = phases[0] * 360.0
 
     stride_len = int(30 * min(1.0, ctrl.cpg.amp_xy_cur))
     lift_height = int(12 * min(1.0, ctrl.cpg.amp_z_cur))
