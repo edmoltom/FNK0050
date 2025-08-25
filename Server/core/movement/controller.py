@@ -63,7 +63,7 @@ class StopCmd:
 
 @dataclass
 class RelaxCmd:
-    pass
+    to_pose: bool = True
 
 
 Command = Union[WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, RelaxCmd]
@@ -320,7 +320,7 @@ class MovementController:
             self._turn_dir = 0
             self._active_cmd = None
         elif isinstance(cmd, RelaxCmd):
-            self.relax()
+            self.relax(flag=cmd.to_pose)
             self.stop_requested = True
             self._active_cmd = None
 
