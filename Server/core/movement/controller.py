@@ -267,6 +267,7 @@ class MovementController:
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
         if isinstance(cmd, WalkCmd):
+            self.stop_requested = False
             self._stride_dir_x = 1 if cmd.vx > 0 else -1 if cmd.vx < 0 else 0
             self._stride_dir_z = 1 if cmd.vy > 0 else -1 if cmd.vy < 0 else 0
             self._is_turning = cmd.omega != 0
@@ -274,6 +275,7 @@ class MovementController:
             self.cpg.set_velocity(cmd.vx, cmd.vy, cmd.omega)
             self._active_cmd = cmd
         elif isinstance(cmd, StepCmd):
+            self.stop_requested = False
             self.clamp_speed()
             scale = self.speed_scale()
             self._is_turning = False
@@ -294,6 +296,7 @@ class MovementController:
             self._prev_phase = self.cpg.phi[0]
             self._active_cmd = cmd
         elif isinstance(cmd, TurnCmd):
+            self.stop_requested = False
             self._stride_dir_x = 0
             self._stride_dir_z = 0
             self._is_turning = cmd.yaw_rate != 0
@@ -301,12 +304,15 @@ class MovementController:
             self.cpg.set_velocity(0.0, 0.0, cmd.yaw_rate)
             self._active_cmd = cmd
         elif isinstance(cmd, HeightCmd):
+            self.stop_requested = False
             posture.up_and_down(self, cmd.z)
             self._active_cmd = None
         elif isinstance(cmd, AttitudeCmd):
+            self.stop_requested = False
             posture.attitude(self, cmd.roll, cmd.pitch, cmd.yaw)
             self._active_cmd = None
         elif isinstance(cmd, StopCmd):
+            self.stop_requested = False
             self.cpg.set_velocity(0.0, 0.0, 0.0)
             self._stride_dir_x = 0
             self._stride_dir_z = 0
@@ -315,6 +321,7 @@ class MovementController:
             self._active_cmd = None
         elif isinstance(cmd, RelaxCmd):
             self.relax()
+            self.stop_requested = True
             self._active_cmd = None
 
     # ------------------------------------------------------------------
