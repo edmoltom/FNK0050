@@ -252,8 +252,8 @@ class MovementController:
         self._turn_dir = 0
         self._stride_dir_x = 0
         self._stride_dir_z = 0
-        self.stop_requested = True
         if flag:
+            self.stop_requested = False
             p = [[55, 78, 0], [55, 78, 0], [55, 78, 0], [55, 78, 0]]
             for i in range(4):
                 p[i][0] = (self.point[i][0] - p[i][0]) / 50
@@ -265,8 +265,8 @@ class MovementController:
                     self.point[i][1] -= p[i][1]
                     self.point[i][2] -= p[i][2]
                 self.run()
-        else:
-            self.gait.stop(self)
+        self.stop_requested = True
+        self.gait.stop(self)
 
     # ------------------------------------------------------------------
     def load_points_from_file(self, path: Path) -> None:
