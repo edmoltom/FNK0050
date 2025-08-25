@@ -18,7 +18,10 @@ def load_points(path: Path) -> List[List[int]]:
     leg.  Empty trailing lines are ignored.
     """
     lines = path.read_text().splitlines()
-    return [[int(col) for col in line.split("\t")] for line in lines if line]
+    return [
+        [int(col) for col in line.split("\t") if col]
+        for line in lines if line.strip()
+    ]
 
 
 def save_points(path: Path, data: List[List[int]]) -> None:
