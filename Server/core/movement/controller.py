@@ -124,8 +124,7 @@ class MovementController:
         if self.checkPoint():
             try:
                 self.update_angles_from_points()
-                self.hardware.apply_calibration_to_angles(self.angle)
-                self.hardware.send_angles_to_servos(self.angle)
+                self.hardware.apply_angles(self.angle)
                 self.logger.log_current_state(self)
             except Exception as e:
                 print("Exception during run():", e)
@@ -213,6 +212,7 @@ class MovementController:
                 self.run()
         else:
             gait_runner.stop(self)
+        self.hardware.relax()
 
     # ------------------------------------------------------------------
     def load_points_from_file(self, path: Path) -> None:
