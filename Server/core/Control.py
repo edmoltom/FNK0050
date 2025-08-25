@@ -1,10 +1,12 @@
 import time
 import os
 import math
+from pathlib import Path
 import numpy as np
 from PID import Incremental_PID
 from movement.servo import Servo
 from movement.gait_cpg import CPG
+from movement import data
 from sensing.IMU import IMU
 from sensing.odometry import Odometry
 from Command import COMMAND as cmd
@@ -70,31 +72,13 @@ class Control:
             self.logfile = None
             self.log_enabled = False
     
-    def readFromTxt(self,filename):
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        filepath = os.path.join(base_path, filename + ".txt")
-        file1 = open(filepath, "r")
-        list_row = file1.readlines()
-        list_source = []
-        for i in range(len(list_row)):
-            column_list = list_row[i].strip().split("\t")
-            list_source.append(column_list)
-        for i in range(len(list_source)):
-            for j in range(len(list_source[i])):
-                list_source[i][j] = int(list_source[i][j])
-        file1.close()
-        return list_source
+    def readFromTxt(self, filename):
+        base_path = Path(__file__).resolve().parent
+        return data.load_points(base_path / f"{filename}.txt")
 
-    def saveToTxt(self,list, filename):
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        filepath = os.path.join(base_path, filename + ".txt")
-        file2 = open(filepath, 'w')
-        for i in range(len(list)):
-            for j in range(len(list[i])):
-                file2.write(str(list[i][j]))
-                file2.write('\t')
-            file2.write('\n')
-        file2.close()
+    def saveToTxt(self, list, filename):
+        base_path = Path(__file__).resolve().parent
+        data.save_points(base_path / f"{filename}.txt", list)
         
     def coordinateToAngle(self,x,y,z,l1=23,l2=55,l3=55):
         a=math.pi/2-math.atan2(z,y)
