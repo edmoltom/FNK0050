@@ -165,6 +165,9 @@ class MovementController:
 
     # ------------------------------------------------------------------
     def run(self) -> None:
+        if self.stop_requested:
+            self.hardware.relax()
+            return
         if self.checkPoint():
             try:
                 self.update_angles_from_points()
@@ -250,7 +253,6 @@ class MovementController:
                 self.run()
         else:
             self.gait.stop(self)
-        self.hardware.relax()
 
     # ------------------------------------------------------------------
     def load_points_from_file(self, path: Path) -> None:
