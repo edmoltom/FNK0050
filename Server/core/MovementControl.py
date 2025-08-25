@@ -75,6 +75,20 @@ class MovementControl:
         """\brief Relax the robot servos."""
         self.controller.queue.put(RelaxCmd())
 
+    def set_speed(self, speed: int) -> None:
+        """\brief Set the controller speed.
+
+        Exposes :meth:`MovementController.set_speed` so that callers (and
+        tests) can adjust the execution speed before issuing commands such as
+        :class:`StepCmd`.
+
+        Parameters
+        ----------
+        speed:
+            Target speed value to apply.
+        """
+        self.controller.set_speed(speed)
+
     def tick(self, dt: float) -> None:
         """Process pending commands.
 
