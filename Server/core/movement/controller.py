@@ -131,6 +131,7 @@ class MovementController:
         self._cmd_cycles_remaining: int = 0
         self._prev_phase: float = 0.0
         self._gait_enabled: bool = True
+        self.torque_off: bool = False
 
     # ------------------------------------------------------------------
     def setup_state(self) -> None:
@@ -180,7 +181,7 @@ class MovementController:
 
     # ------------------------------------------------------------------
     def run(self) -> None:
-        if self.stop_requested:
+        if self.torque_off:
             self.hardware.relax()
             return
         if self.checkPoint():
@@ -253,10 +254,10 @@ class MovementController:
         self._turn_dir = 0
         self._stride_dir_x = 0
         self._stride_dir_z = 0
-        prev = self._gait_enabled
         self._gait_enabled = False
+        self.stop_requested = False
+        self.torque_off = False
         if flag:
-            self.stop_requested = False
             p = [[55, 78, 0], [55, 78, 0], [55, 78, 0], [55, 78, 0]]
             for i in range(4):
                 p[i][0] = (self.point[i][0] - p[i][0]) / 50
@@ -268,9 +269,7 @@ class MovementController:
                     self.point[i][1] -= p[i][1]
                     self.point[i][2] -= p[i][2]
                 self.run()
-        self.stop_requested = True
         self.gait.stop(self)
-        self._gait_enabled = prev
 
     # ------------------------------------------------------------------
     def load_points_from_file(self, path: Path) -> None:
@@ -319,6 +318,7 @@ class MovementController:
     def _process_command(self, cmd: Command) -> None:
         if isinstance(cmd, WalkCmd):
             self.stop_requested = False
+            self.torque_off = False
             self._gait_enabled = True
             self._stride_dir_x = 1 if cmd.vx > 0 else -1 if cmd.vx < 0 else 0
             self._stride_dir_z = 1 if cmd.vy > 0 else -1 if cmd.vy < 0 else 0
@@ -328,6 +328,7 @@ class MovementController:
             self._active_cmd = cmd
         elif isinstance(cmd, StepCmd):
             self.stop_requested = False
+            self.torque_off = False
             self._gait_enabled = True
             self.clamp_speed()
             scale = self.speed_scale()
@@ -350,6 +351,7 @@ class MovementController:
             self._active_cmd = cmd
         elif isinstance(cmd, TurnCmd):
             self.stop_requested = False
+            self.torque_off = False
             self._gait_enabled = True
             self._stride_dir_x = 0
             self._stride_dir_z = 0
@@ -359,16 +361,19 @@ class MovementController:
             self._active_cmd = cmd
         elif isinstance(cmd, HeightCmd):
             self.stop_requested = False
+            self.torque_off = False
             self._gait_enabled = False
             posture.up_and_down(self, cmd.z)
             self._active_cmd = None
         elif isinstance(cmd, AttitudeCmd):
             self.stop_requested = False
+            self.torque_off = False
             self._gait_enabled = False
             posture.attitude(self, cmd.roll, cmd.pitch, cmd.yaw)
             self._active_cmd = None
         elif isinstance(cmd, StopCmd):
             self.stop_requested = False
+            self.torque_off = False
             self._gait_enabled = False
             self.cpg.set_velocity(0.0, 0.0, 0.0)
             self._stride_dir_x = 0
@@ -377,12 +382,15 @@ class MovementController:
             self._turn_dir = 0
             self._active_cmd = None
         elif isinstance(cmd, GreetCmd):
+            self.stop_requested = False
+            self.torque_off = False
             self._do_greeting()
             self._active_cmd = None
         elif isinstance(cmd, RelaxCmd):
             self._gait_enabled = False
             self.relax(flag=cmd.to_pose)
-            self.stop_requested = True
+            self.stop_requested = False
+            self.torque_off = False
             self._active_cmd = None
 
     # ------------------------------------------------------------------
