@@ -38,7 +38,7 @@ def polling_loop(gamepad, controller):
                     controller.step('left', 1.0)
             elif gamepad.isPressed('A'):
                 controller.greet()
-                continue
+                continue  # Skip queuing stop so greeting plays fully
             else:
                 b_pressed = gamepad.isPressed('B')
                 if b_pressed and not prev_B:
