@@ -2,55 +2,45 @@ import Gamepad
 import time
 import threading
 
-from Action import Action
+from MovementControl import MovementControl
 
-def polling_loop(gamepad, action):
 
+def polling_loop(gamepad, controller):
+    """Poll gamepad and enqueue movement commands."""
     DEADZONE = 0.2
-
-    while(True):
+    while True:
         try:
             x0 = gamepad.axis(0)
             y0 = gamepad.axis(1)
             x1 = gamepad.axis(3)
             y1 = gamepad.axis(4)
 
-            if (abs(x0) > DEADZONE or abs(y0) > DEADZONE):
-                action.current_speed = max(1, int(action.max_speed * max(abs(x0), abs(y0))))
+            if abs(x0) > DEADZONE or abs(y0) > DEADZONE:
                 if x0 > DEADZONE:
-                    action.state = 'turning_right'
+                    controller.turn(-1.0)
                 elif x0 < -DEADZONE:
-                    action.state = 'turning_left'
+                    controller.turn(1.0)
                 elif y0 < -DEADZONE:
-                    action.state = 'walking_forward'
+                    controller.walk(1.0, 0.0, 0.0)
                 elif y0 > DEADZONE:
-                    action.state = 'walking_backward'
-
-            elif (abs(x1) > DEADZONE or abs(y1) > DEADZONE):
-                action.current_speed = max(1, int(action.max_speed * max(abs(x1), abs(y1))))
+                    controller.walk(-1.0, 0.0, 0.0)
+            elif abs(x1) > DEADZONE or abs(y1) > DEADZONE:
                 if x1 > DEADZONE:
-                    action.state = 'step_right'
+                    controller.step('right', 1.0)
                 elif x1 < -DEADZONE:
-                    action.state = 'step_left'
-
-            elif gamepad.isPressed('A'):
-                action.state = 'greeting'
-
+                    controller.step('left', 1.0)
             elif gamepad.isPressed('B'):
-                action.state = 'relax'
-
+                controller.relax()
             else:
-                action.state = 'idle'
+                controller.stop()
 
             time.sleep(0.1)
-
         except Exception as e:
             print("Polling error:", e)
             break
 
 
 def main():
-    
     print("Test Gamepad")
     test_mode = False
 
@@ -58,22 +48,25 @@ def main():
         gamepad = Gamepad.Xbox360()
         gamepad.startBackgroundUpdates()
 
-        action = Action()
+        controller = MovementControl()
+        loop_thread = threading.Thread(target=controller.start_loop, daemon=True)
+        loop_thread.start()
 
-        if (test_mode == False):
-            thread = threading.Thread(target=polling_loop, args=(gamepad, action))
-            thread.daemon = True  # will be closed with main script
+        if not test_mode:
+            thread = threading.Thread(target=polling_loop, args=(gamepad, controller))
+            thread.daemon = True
             thread.start()
 
         print("Connected")
-  
+
     except Exception as e:
         print("Can't link with:", e)
         return
-    
-    while (test_mode):
+
+    while test_mode:
         eventType, name, value = gamepad.getNextEvent()
         print(f"Evento: {eventType:<6}  |  {name:<12}  |  Valor: {value}")
+
 
 if __name__ == "__main__":
     main()

@@ -1,11 +1,13 @@
-from Action import Action
+from MovementControl import MovementControl
 
-def main():
+
+def main() -> None:
+    """Simple hello world demonstrating MovementControl."""
     print("Hello!! (●'◡'●)")
+    controller = MovementControl()
+    controller.walk(1.0, 0.0, 0.0)
+    controller.tick(0.1)
 
-    action = Action()
-
-    action.hello()
 
 if __name__ == "__main__":
     main()
