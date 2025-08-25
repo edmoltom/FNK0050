@@ -66,7 +66,21 @@ class RelaxCmd:
     to_pose: bool = True
 
 
-Command = Union[WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, RelaxCmd]
+@dataclass
+class GreetCmd:
+    pass
+
+
+Command = Union[
+    WalkCmd,
+    StepCmd,
+    TurnCmd,
+    HeightCmd,
+    AttitudeCmd,
+    StopCmd,
+    RelaxCmd,
+    GreetCmd,
+]
 
 
 class MovementController:
@@ -265,6 +279,36 @@ class MovementController:
         data.save_points(path, self.point)
 
     # ------------------------------------------------------------------
+    def _do_greeting(self) -> None:
+        """Perform a simple greeting gesture."""
+        self.stop_requested = False
+        original = [p.copy() for p in self.point]
+
+        # Raise front-right leg
+        x, y, z = original[self.FR]
+        self.set_leg_position(self.FR, x, y + 20, z)
+        self.run()
+        time.sleep(0.3)
+        self.set_leg_position(self.FR, x, y, z)
+        self.run()
+        time.sleep(0.3)
+
+        # Nod with front legs
+        for _ in range(2):
+            self.set_leg_position(self.FL, original[self.FL][self.X], original[self.FL][self.Y] - 10, original[self.FL][self.Z])
+            self.set_leg_position(self.FR, original[self.FR][self.X], original[self.FR][self.Y] - 10, original[self.FR][self.Z])
+            self.run()
+            time.sleep(0.2)
+            self.set_leg_position(self.FL, *original[self.FL])
+            self.set_leg_position(self.FR, *original[self.FR])
+            self.run()
+            time.sleep(0.2)
+
+        for i, pos in enumerate(original):
+            self.set_leg_position(i, *pos)
+        self.run()
+
+    # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
         if isinstance(cmd, WalkCmd):
             self.stop_requested = False
@@ -318,6 +362,9 @@ class MovementController:
             self._stride_dir_z = 0
             self._is_turning = False
             self._turn_dir = 0
+            self._active_cmd = None
+        elif isinstance(cmd, GreetCmd):
+            self._do_greeting()
             self._active_cmd = None
         elif isinstance(cmd, RelaxCmd):
             self.relax(flag=cmd.to_pose)

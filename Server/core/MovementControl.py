@@ -5,6 +5,7 @@ from movement.controller import (
     HeightCmd,
     MovementController,
     RelaxCmd,
+    GreetCmd,
     StepCmd,
     StopCmd,
     TurnCmd,
@@ -74,6 +75,10 @@ class MovementControl:
     def relax(self) -> None:
         """\brief Relax the robot servos."""
         self.controller.queue.put(RelaxCmd())
+
+    def greet(self) -> None:
+        """\brief Perform a greeting action."""
+        self.controller.queue.put(GreetCmd())
 
     def set_speed(self, speed: int) -> None:
         """\brief Set the controller speed.
