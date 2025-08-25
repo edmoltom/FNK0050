@@ -21,7 +21,7 @@ ATTENTION_TTL_SEC = 15.0        # wake-up window (seconds)
 ATTN_BONUS_AFTER_SPEAK = 5.0    # extra after speaking to chain turns
 
 BASE = Path(__file__).resolve().parent
-STT_PATH = BASE / "llm" / "stt.py"
+STT_PATH = BASE / "hearing" / "stt.py"
 
 # Instantiate the TTS engine once so it can be reused across calls
 _tts_engine = TextToSpeech()
