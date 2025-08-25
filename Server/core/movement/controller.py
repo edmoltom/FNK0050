@@ -20,7 +20,8 @@ from queue import Empty, Queue
 from typing import Any, Optional, Union
 from pathlib import Path
 
-from . import gait_runner, kinematics, posture, data
+from . import kinematics, posture, data
+from .gait_runner import GaitRunner
 from .hardware import Hardware
 from .logger import MovementLogger
 
@@ -78,7 +79,8 @@ class MovementController:
 
     def __init__(self, hardware: Hardware, gait: Any, logger: MovementLogger, config: Optional[dict] = None) -> None:
         self.hardware = hardware
-        self.cpg = hardware.cpg
+        self.gait = GaitRunner(gait)
+        self.cpg = self.gait.cpg
         self.logger = logger
         self.config = config or {}
         self.state = "idle"
@@ -208,7 +210,7 @@ class MovementController:
                     self.point[i][2] -= p[i][2]
                 self.run()
         else:
-            gait_runner.stop(self)
+            self.gait.stop(self)
         self.hardware.relax()
 
     # ------------------------------------------------------------------
@@ -225,37 +227,37 @@ class MovementController:
     def _process_command(self, cmd: Command) -> None:
         if isinstance(cmd, WalkCmd):
             if cmd.vx > 0:
-                gait_runner.forWard(self)
+                self.gait.forWard(self)
             elif cmd.vx < 0:
-                gait_runner.backWard(self)
+                self.gait.backWard(self)
             elif cmd.vy > 0:
-                gait_runner.stepLeft(self)
+                self.gait.stepLeft(self)
             elif cmd.vy < 0:
-                gait_runner.stepRight(self)
+                self.gait.stepRight(self)
             elif cmd.omega > 0:
-                gait_runner.turnLeft(self)
+                self.gait.turnLeft(self)
             elif cmd.omega < 0:
-                gait_runner.turnRight(self)
+                self.gait.turnRight(self)
         elif isinstance(cmd, StepCmd):
             if cmd.direction == "left":
-                gait_runner.stepLeft(self)
+                self.gait.stepLeft(self)
             elif cmd.direction == "right":
-                gait_runner.stepRight(self)
+                self.gait.stepRight(self)
             elif cmd.direction == "forward":
-                gait_runner.forWard(self)
+                self.gait.forWard(self)
             elif cmd.direction == "backward":
-                gait_runner.backWard(self)
+                self.gait.backWard(self)
         elif isinstance(cmd, TurnCmd):
             if cmd.yaw_rate > 0:
-                gait_runner.turnLeft(self)
+                self.gait.turnLeft(self)
             elif cmd.yaw_rate < 0:
-                gait_runner.turnRight(self)
+                self.gait.turnRight(self)
         elif isinstance(cmd, HeightCmd):
             posture.up_and_down(self, cmd.z)
         elif isinstance(cmd, AttitudeCmd):
             posture.attitude(self, cmd.roll, cmd.pitch, cmd.yaw)
         elif isinstance(cmd, StopCmd):
-            gait_runner.stop(self)
+            self.gait.stop(self)
         elif isinstance(cmd, RelaxCmd):
             self.relax()
 
