@@ -35,6 +35,9 @@ def polling_loop(gamepad, controller):
                     controller.step('right', 1.0)
                 elif x1 < -DEADZONE:
                     controller.step('left', 1.0)
+            elif gamepad.isPressed('A'):
+                controller.greet()
+                continue
             elif gamepad.isPressed('B'):
                 controller.relax()
                 continue
