@@ -1,23 +1,23 @@
 import sys
-import subprocess
 from pathlib import Path
 import argparse
 from persona import build_system
 from llm_client import query_llm
+from core.voice.tts import TextToSpeech
 
 THIS_DIR = Path(__file__).resolve().parent
-TTS_PY = THIS_DIR / "tts.py"
-TTS_CMD = [sys.executable, str(TTS_PY), "--text"]
+# Reuse the TTS engine as a library instead of spawning a subprocess
+_tts = TextToSpeech()
 
 # Limit LLM verbosity so TTS flows better
 MAX_REPLY_CHARS = 220
 
 # --- TTS ----------------------------------------------------------------------
 def speak_text(text: str):
-    """Send text to TTS script and play audio."""
+    """Send text to the TTS engine and play audio."""
     try:
-        subprocess.run(TTS_CMD + [text], check=True)
-    except subprocess.CalledProcessError as e:
+        _tts.speak(text)
+    except Exception as e:  # pragma: no cover - runtime errors only
         print(f"[ERROR] TTS failed: {e}")
 
 # --- CLI ----------------------------------------------------------------------
