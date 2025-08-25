@@ -4,9 +4,9 @@ import math
 from pathlib import Path
 import numpy as np
 from PID import Incremental_PID
-from movement.servo import Servo
 from movement.gait_cpg import CPG
 from movement import data
+from movement.hardware import Hardware
 from sensing.IMU import IMU
 from sensing.odometry import Odometry
 from Command import COMMAND as cmd
@@ -26,11 +26,13 @@ class Control:
         self.relax(True)
 
     def setup_hardware(self):
-        self.imu = IMU()
-        self.servo = Servo()
-        self.pid = Incremental_PID(0.5, 0.0, 0.0025)
-        self.odom = Odometry(stride_gain=0.55)
-        self.cpg = CPG("walk")
+        hw = Hardware()
+        self.hardware = hw
+        self.imu = hw.imu
+        self.servo = hw.servo
+        self.pid = hw.pid
+        self.odom = hw.odom
+        self.cpg = hw.cpg
 
     def setup_state(self):
         self.speed = self.MIN_SPEED_LIMIT
@@ -139,16 +141,7 @@ class Control:
             self.angle[i+2][2] = self.restriction(180 - (self.angle[i+2][2] + self.calibration_angle[i+2][2]), 0, 180)
 
     def send_angles_to_servos(self):
-        for i in range(2):
-            # Left side servos
-            self.servo.setServoAngle(4 + i*3, self.angle[i][0])
-            self.servo.setServoAngle(3 + i*3, self.angle[i][1])
-            self.servo.setServoAngle(2 + i*3, self.angle[i][2])
-
-            # Right side servos
-            self.servo.setServoAngle(8 + i*3, self.angle[i+2][0])
-            self.servo.setServoAngle(9 + i*3, self.angle[i+2][1])
-            self.servo.setServoAngle(10 + i*3, self.angle[i+2][2])
+        self.hardware.apply_angles(self.angle)
 
     def log_current_state(self):
         if hasattr(self, 'log_enabled') and self.log_enabled:

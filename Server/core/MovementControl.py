@@ -20,9 +20,9 @@ from movement.logger import MovementLogger
 class MovementControl:
     """High-level façade queuing movement commands."""
 
-    def __init__(self) -> None:
-        hardware = Hardware()
-        logger = MovementLogger()
+    def __init__(self, hardware: Hardware | None = None, logger: MovementLogger | None = None) -> None:
+        hardware = hardware or Hardware()
+        logger = logger or MovementLogger()
         self.controller = MovementController(hardware, hardware.cpg, logger)
 
     def walk(self, vx: float, vy: float, omega: float) -> None:
