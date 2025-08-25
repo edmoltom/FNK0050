@@ -119,7 +119,10 @@ class MovementController:
 
     # ------------------------------------------------------------------
     def setup_state(self) -> None:
-        self.speed = self.MIN_SPEED_LIMIT
+        # Start with a speed above the minimum limit so the controller moves
+        # at a sensible pace by default. Tests can still adjust this value via
+        # :meth:`set_speed` exposed on :class:`MovementControl`.
+        self.speed = 120
         self.height = 99
         self.step_height = 10
         self.step_length = 15
@@ -132,6 +135,20 @@ class MovementController:
         self._stride_dir_x = 1
         self._stride_dir_z = 0
         self.stop_requested = False
+
+    # ------------------------------------------------------------------
+    def set_speed(self, speed: int) -> None:
+        """Update the controller speed.
+
+        Parameters
+        ----------
+        speed:
+            New target speed value. Values outside the permitted range are
+            clamped to remain within :data:`MIN_SPEED_LIMIT` and
+            :data:`MAX_SPEED_LIMIT`.
+        """
+        self.speed = speed
+        self.clamp_speed()
 
     # ------------------------------------------------------------------
     def set_leg_position(self, leg: int, x: float, y: float, z: float) -> None:
