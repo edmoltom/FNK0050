@@ -1,12 +1,39 @@
-"""Gesture interpolation utilities for quadruped controller.
+"""Gesture interpolation utilities for the quadruped movement controller.
 
-This module defines a :class:`Gestures` helper responsible for handling
-scripted gestures that move the robot legs through absolute positions over
-time. Gestures are represented as a sequence of keyframes and a corresponding
-list of phase durations stored in :data:`DEFAULT_DURATIONS`. Durations may be
-scaled by supplying a ``speed`` factor or overridden entirely when starting a
-gesture. ``Gestures`` interpolates linearly between consecutive keyframes when
-``update`` is called.
+The module exposes :class:`Gestures`, a helper that plays scripted motion
+sequences without blocking the rest of the control loop.  A gesture is
+described by keyframes containing **absolute** foot coordinates
+``[[x, y, z], ...]`` for the four legs and a matching list of phase
+durations.  Calling :meth:`Gestures.update` steps the interpolation toward
+the current keyframe's absolute target and returns immediately.
+
+Expected controller interface
+-----------------------------
+``Gestures`` operates on a movement controller instance and expects the
+controller to provide:
+
+* ``point`` – a ``4 x 3`` list of leg coordinates that will be modified
+  in place.
+* ``_locomotion_enabled`` – a flag toggled while gestures are active.
+* ``stop()`` – optional method called before a gesture begins to halt any
+  existing motion.
+
+Example
+-------
+Registering a new gesture with absolute keyframes and running it:
+
+>>> g = Gestures(controller)
+>>> g.add_gesture(
+...     "bow",
+...     [
+...         [[55, 78, 0], [55, 78, 0], [55, 78, 0], [55, 78, 0]],
+...         [[30, 60, -20], [55, 78, 0], [55, 78, 0], [30, 60, -20]],
+...     ],
+...     [0.5, 0.5],
+... )
+>>> g.start("bow")
+>>> while g.active:
+...     g.update(dt)  # non-blocking
 
 The default timings for built in gestures are::
 
@@ -33,6 +60,9 @@ DEFAULT_DURATIONS = {
 
 class Gestures:
     """Manager for scripted leg gestures.
+
+    Gestures operate on **absolute** leg coordinates and are advanced in a
+    non-blocking manner by calling :meth:`update` with the elapsed time.
 
     Parameters
     ----------
@@ -197,7 +227,11 @@ class Gestures:
         setattr(self.controller, "_locomotion_enabled", True)
 
     def update(self, dt: float) -> bool:
-        """Advance the current gesture.
+        """Advance the current gesture in a non-blocking fashion.
+
+        The method performs linear interpolation toward the absolute target
+        coordinates of the active keyframe and returns immediately so it can
+        be called each iteration of the controller's main loop.
 
         Parameters
         ----------
