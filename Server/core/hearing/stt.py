@@ -16,7 +16,7 @@ from typing import Generator, Optional
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
 
-from .text_norm import normalize_punct
+from core.hearing.text_norm import normalize_punct
 
 # Default configuration (same as the original script)
 DEFAULT_MODEL_DIR = Path("/home/user/vosk/vosk-model-small-es-0.42")
