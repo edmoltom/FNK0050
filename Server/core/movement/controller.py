@@ -15,6 +15,8 @@ The public API is intentionally small:
 ``update(dt)``
     Advance the controller by ``dt`` seconds, updating gestures or normal
     locomotion and sending servo commands.
+``cancel()``
+    Abort any running gesture and return the robot to a safe stance.
 ``set_servo_angle(channel, angle)``
     Convenience wrapper to set a servo angle without importing the
     :class:`Servo` class elsewhere.
@@ -59,14 +61,30 @@ class Controller(Control):
         self.update_legs_from_cpg(dt)
         self.run()
 
+    def cancel(self) -> None:
+        """Cancel any active gesture and return to a safe stance.
+
+        This delegates to :meth:`gestures.cancel` to clear any gesture state,
+        re-enables normal gait and invokes the base controller's ``stop``
+        implementation to place the robot back into its neutral stance.
+        """
+        self.gestures.cancel()
+        # ``Gestures.cancel`` already re-enables locomotion but we make it
+        # explicit here for clarity.
+        self._locomotion_enabled = True
+        Control.stop(self)
+
     # ------------------------------------------------------------------
     # Overrides
     # ------------------------------------------------------------------
-    def relax(self, flag: bool = False) -> None:
-        """Relax the robot and cancel any active gesture."""
-        if self.gestures.active:
-            self.gestures.cancel()
-        super().relax(flag)
+    def relax(self, flag: bool = False) -> None:  # type: ignore[override]
+        """Relax the robot, cancelling any active gesture first."""
+        if hasattr(self, "gestures"):
+            self.cancel()
+        if flag:
+            # ``Control.relax(True)`` moves the robot to its neutral standing
+            # pose without calling ``stop`` again.
+            Control.relax(self, True)
 
     def update_legs_from_cpg(self, dt: float) -> None:  # type: ignore[override]
         """Update leg positions and handle gestures before CPG updates."""
@@ -80,4 +98,8 @@ class Controller(Control):
             return
 
         super().update_legs_from_cpg(dt)
+
+    def stop(self) -> None:  # type: ignore[override]
+        """Stop locomotion and cancel any active gesture."""
+        self.cancel()
 
