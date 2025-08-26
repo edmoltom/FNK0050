@@ -2,6 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 from types import SimpleNamespace
+from pathlib import Path
+import json
 import time
 import threading
 from copy import deepcopy
@@ -199,6 +201,50 @@ def seq_from_table(name: str, table: List[Dict]) -> Sequence:
             servo_overrides=row.get("overrides")
         ))
     return Sequence(name=name, frames=frames, loop=False)
+
+
+def load_sequence_json(path: str) -> Sequence:
+    """Load a :class:`Sequence` definition from a JSON file.
+
+    The JSON schema mirrors the table accepted by :func:`seq_from_table`::
+
+        {
+          "name": "wave",          # optional, defaults to filename stem
+          "loop": false,            # optional
+          "frames": [
+            {"t": 0,
+             "legs": [[x, y, z], [x, y, z], [x, y, z], [x, y, z]],
+             "overrides": {"11": 92}  # optional servo overrides
+            },
+            ...
+          ]
+        }
+
+    Parameters
+    ----------
+    path:
+        Path to the JSON file on disk.
+
+    Returns
+    -------
+    Sequence
+        Parsed sequence instance.
+    """
+
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    name = data.get("name") or Path(path).stem
+    table = data.get("frames", [])
+
+    # Ensure override keys are integers for downstream consumers.
+    for row in table:
+        if "overrides" in row and row["overrides"] is not None:
+            row["overrides"] = {int(k): v for k, v in row["overrides"].items()}
+
+    seq = seq_from_table(name, table)
+    seq.loop = bool(data.get("loop", False))
+    return seq
 
 def build_hello_wave_sequence_from(controller, channel: int = 11) -> Sequence:
     """Construct a hello/wave gesture from the controller's current pose.

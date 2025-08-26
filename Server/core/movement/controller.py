@@ -24,7 +24,7 @@ from . import kinematics, posture, data
 from .gait_runner import GaitRunner
 from .hardware import Hardware
 from .logger import MovementLogger
-from .gestures import GesturePlayer, build_hello_wave_sequence_from
+from .gestures import GesturePlayer, build_hello_wave_sequence_from, load_sequence_json
 
 
 @dataclass
@@ -140,6 +140,10 @@ class MovementController:
         self._gait_enabled: bool = True
         self.torque_off: bool = False
         self.gestures = GesturePlayer(controller=self, hardware=self.hardware, kinematics=kinematics, tick_hz=100.0)
+        # Registered gesture builders. Values are callables returning a Sequence
+        # when passed the controller instance. Custom gestures can be provided
+        # via JSON files under ``gestures/`` and are loaded on-demand.
+        self._gesture_builders = {"greet": build_hello_wave_sequence_from}
 
     # ------------------------------------------------------------------
     def setup_state(self) -> None:
@@ -295,14 +299,33 @@ class MovementController:
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
     def _play_gesture(self, name: str) -> None:
-        mapping = {"greet": build_hello_wave_sequence_from}
-        builder = mapping.get(name)
-        if not builder:
+        """Play a named gesture if available.
+
+        Custom gestures are searched as JSON files under a ``gestures``
+        directory located next to this module. When first requested, the
+        gesture is lazily registered so subsequent calls reuse the cached
+        builder.
+        """
+
+        builder = self._gesture_builders.get(name)
+        if builder is None:
+            module_dir = Path(__file__).resolve().parent
+            json_path = module_dir / "gestures" / f"{name}.json"
+            if json_path.exists():
+                # Register a loader that ignores the controller instance but
+                # matches the expected callable signature.
+                self._gesture_builders[name] = builder = (
+                    lambda _ctrl, p=json_path: load_sequence_json(str(p))
+                )
+
+        if builder is None:
             return
+
         self.stop_requested = False
         self.torque_off = False
         self._gait_enabled = False
-        self.gestures.play(builder(self), blocking=False)
+        seq = builder(self)
+        self.gestures.play(seq, blocking=False)
 
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
