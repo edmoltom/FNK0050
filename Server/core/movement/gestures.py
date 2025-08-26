@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Dict, Optional
+from types import SimpleNamespace
 import time
 import threading
 from copy import deepcopy
@@ -199,24 +200,23 @@ def seq_from_table(name: str, table: List[Dict]) -> Sequence:
         ))
     return Sequence(name=name, frames=frames, loop=False)
 
-def build_hello_wave_sequence(channel: int = 11) -> Sequence:
-    """Construct a simple hello/wave gesture.
+def build_hello_wave_sequence_from(controller, channel: int = 11) -> Sequence:
+    """Construct a hello/wave gesture from the controller's current pose.
 
-    Moves the front-right leg (index 3) forward and up, then oscillates the
-    wrist joint via servo overrides.
+    Deep-copies ``controller.point`` as the base pose and adjusts the
+    front-right leg before waving via servo overrides.
 
+    @param controller MovementController instance providing the base pose.
     @param channel Servo channel controlling the waving joint (default 11).
     @return Non-looping sequence implementing the wave.
     """
-    base = [
-        [80.0, 0.0, -60.0],  # Front-left
-        [80.0, 0.0, -60.0],  # Rear-left
-        [80.0, 0.0, -60.0],  # Rear-right
-        [80.0, 0.0, -60.0],  # Front-right
-    ]
-
+    base = deepcopy(controller.point)
     lifted = deepcopy(base)
-    lifted[3] = [80.0, 20.0, -40.0]  # Raise and advance front-right
+    fr = controller.FR
+    x_idx, y_idx, z_idx = controller.X, controller.Y, controller.Z
+    lifted[fr][x_idx] += 10.0
+    lifted[fr][y_idx] += 18.0
+    lifted[fr][z_idx] += 20.0
 
     frames = [
         Keyframe(t_ms=0, legs=deepcopy(base)),
@@ -228,7 +228,28 @@ def build_hello_wave_sequence(channel: int = 11) -> Sequence:
     ]
     return Sequence(name="hello", frames=frames, loop=False)
 
+
+def build_hello_wave_sequence(channel: int = 11) -> Sequence:
+    """Backward compatible wrapper for :func:`build_hello_wave_sequence_from`.
+
+    Deprecated; prefer :func:`build_hello_wave_sequence_from` which bases the
+    gesture on the controller's current pose.
+    """
+    dummy = SimpleNamespace(
+        point=[
+            [80.0, 0.0, -60.0],
+            [80.0, 0.0, -60.0],
+            [80.0, 0.0, -60.0],
+            [80.0, 0.0, -60.0],
+        ],
+        FR=3,
+        X=0,
+        Y=1,
+        Z=2,
+    )
+    return build_hello_wave_sequence_from(dummy, channel)
+
 # Example usage (inside controller):
-# from gestures import GesturePlayer, build_hello_wave_sequence
+# from gestures import GesturePlayer, build_hello_wave_sequence_from
 # self.gestures = GesturePlayer(controller=self, tick_hz=100.0)
-# self.gestures.play(build_hello_wave_sequence(), blocking=False)
+# self.gestures.play(build_hello_wave_sequence_from(self), blocking=False)

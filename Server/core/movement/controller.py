@@ -24,7 +24,7 @@ from . import kinematics, posture, data
 from .gait_runner import GaitRunner
 from .hardware import Hardware
 from .logger import MovementLogger
-from .gestures import GesturePlayer, build_hello_wave_sequence
+from .gestures import GesturePlayer, build_hello_wave_sequence_from
 
 
 @dataclass
@@ -295,14 +295,14 @@ class MovementController:
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
     def _play_gesture(self, name: str) -> None:
-        mapping = {"greet": build_hello_wave_sequence}
+        mapping = {"greet": build_hello_wave_sequence_from}
         builder = mapping.get(name)
         if not builder:
             return
         self.stop_requested = False
         self.torque_off = False
         self._gait_enabled = False
-        self.gestures.play(builder(), blocking=False)
+        self.gestures.play(builder(self), blocking=False)
 
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
