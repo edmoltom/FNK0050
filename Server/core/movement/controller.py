@@ -90,12 +90,10 @@ class Controller(Control):
     def update_legs_from_cpg(self, dt: float) -> None:  # type: ignore[override]
         """Update leg positions and handle gestures before CPG updates."""
         if self.gestures.active:
-            finished = self.gestures.update(dt)
-            if finished:
-                self._locomotion_enabled = True
+            self.gestures.update(dt)
             return
 
-        if not self._locomotion_enabled or not self._gait_enabled:
+        if not (self._locomotion_enabled and self._gait_enabled):
             return
 
         super().update_legs_from_cpg(dt)
