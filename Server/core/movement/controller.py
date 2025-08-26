@@ -24,7 +24,8 @@ from . import kinematics, posture, data
 from .gait_runner import GaitRunner
 from .hardware import Hardware
 from .logger import MovementLogger
-from .gestures import GesturePlayer, build_hello_wave_sequence_from, load_sequence_json
+from .gestures import GesturePlayer, load_sequence_json, Keyframe
+from copy import deepcopy
 
 
 @dataclass
@@ -143,7 +144,7 @@ class MovementController:
         # Registered gesture builders. Values are callables returning a Sequence
         # when passed the controller instance. Custom gestures can be provided
         # via JSON files under ``gestures/`` and are loaded on-demand.
-        self._gesture_builders = {"greet": build_hello_wave_sequence_from}
+        self._gesture_builders = {}
 
     # ------------------------------------------------------------------
     def setup_state(self) -> None:
@@ -325,6 +326,8 @@ class MovementController:
         self.torque_off = False
         self._gait_enabled = False
         seq = builder(self)
+        if seq.frames and seq.frames[0].t_ms > 0:
+            seq.frames.insert(0, Keyframe(t_ms=0, legs=deepcopy(self.point)))
         self.gestures.play(seq, blocking=False)
 
     # ------------------------------------------------------------------
