@@ -1,119 +1,92 @@
-import Gamepad
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.extend([str(ROOT / "lib"), str(ROOT / "core")])
+
 import time
 import threading
 
-from movement.controller import Controller
+from Gamepad import Xbox360
+from MovementControl import MovementControl
 
 
-def polling_loop(gamepad, controller, state):
-    """Continuously poll the gamepad and drive the controller.
-
-    Any exception (such as a disconnect) resets the previous button states so
-    that subsequent connection attempts start cleanly.
-    """
-
+def polling_loop(gamepad, controller):
+    """Poll gamepad and enqueue movement commands."""
     DEADZONE = 0.2
-
+    prev_B = False
+    prev_A = False
     while True:
         try:
-            if not Gamepad.is_connected(gamepad):
-                raise IOError("Gamepad disconnected")
-
             x0 = gamepad.axis(0)
             y0 = gamepad.axis(1)
             x1 = gamepad.axis(3)
             y1 = gamepad.axis(4)
 
-            if (abs(x0) > DEADZONE or abs(y0) > DEADZONE):
-                controller.speed = max(
-                    1, int(controller.MAX_SPEED_LIMIT * max(abs(x0), abs(y0)))
-                )
+            if abs(x0) > DEADZONE or abs(y0) > DEADZONE:
                 if x0 > DEADZONE:
-                    controller.turnRight()
+                    controller.turn(-1.0)
                 elif x0 < -DEADZONE:
-                    controller.turnLeft()
+                    controller.turn(1.0)
                 elif y0 < -DEADZONE:
-                    controller.forWard()
+                    controller.walk(1.0, 0.0, 0.0)
                 elif y0 > DEADZONE:
-                    controller.backWard()
-
-            elif (abs(x1) > DEADZONE or abs(y1) > DEADZONE):
-                controller.speed = max(
-                    1, int(controller.MAX_SPEED_LIMIT * max(abs(x1), abs(y1)))
-                )
+                    controller.walk(-1.0, 0.0, 0.0)
+            elif abs(x1) > DEADZONE or abs(y1) > DEADZONE:
                 if x1 > DEADZONE:
-                    controller.stepRight()
+                    controller.step('right', 1.0)
                 elif x1 < -DEADZONE:
-                    controller.stepLeft()
+                    controller.step('left', 1.0)
+            # Edge-trigger A like B (avoid enqueuing every frame)
+            elif (gamepad.isPressed('A') and not prev_A):
+                controller.greet()  # or controller.gesture("greet")
+                prev_A = True
+                continue
+            else:
+                b_pressed = gamepad.isPressed('B')
+                if b_pressed and not prev_B:
+                    controller.relax()
+                    prev_B = True
+                    continue
+                elif not b_pressed:
+                    controller.stop()
+                    prev_B = False
+                # If B is held, do nothing to avoid repeated RelaxCmd
 
-            elif gamepad.isPressed('A') and not state['prev_A']:
-                controller.greet()
-
-            elif gamepad.isPressed('B') and not state['prev_B']:
-                controller.relax(True)
-
-            elif not controller.gestures.active:
-                controller.stop()
-
-            state['prev_A'] = gamepad.isPressed('A')
-            state['prev_B'] = gamepad.isPressed('B')
-
-            # Gestures run asynchronously; ``update`` advances them each tick.
-            controller.update(0.1)
+            prev_B = gamepad.isPressed('B')
+            prev_A = gamepad.isPressed('A')
             time.sleep(0.1)
-
         except Exception as e:
             print("Polling error:", e)
-            state['prev_A'] = False
-            state['prev_B'] = False
             break
 
 
 def main():
-
     print("Test Gamepad")
     test_mode = False
-    state = {'prev_A': False, 'prev_B': False}
 
-    while True:
-        gamepad = None
-        try:
-            gamepad = Gamepad.Xbox360()
-            gamepad.startBackgroundUpdates()
+    try:
+        gamepad = Xbox360()
+        gamepad.startBackgroundUpdates()
 
-            controller = Controller()
+        controller = MovementControl()
+        threading.Thread(target=controller.start_loop, daemon=True).start()
 
-            if not test_mode:
-                thread = threading.Thread(target=polling_loop, args=(gamepad, controller, state))
-                thread.daemon = True  # will be closed with main script
-                thread.start()
-                while thread.is_alive() and Gamepad.is_connected(gamepad):
-                    time.sleep(0.5)
-            else:
-                while Gamepad.is_connected(gamepad):
-                    eventType, name, value = gamepad.getNextEvent()
-                    print(f"Evento: {eventType:<6}  |  {name:<12}  |  Valor: {value}")
+        if not test_mode:
+            thread = threading.Thread(target=polling_loop, args=(gamepad, controller))
+            thread.daemon = True
+            thread.start()
 
-            print("Disconnected")
+        print("Connected")
 
-        except KeyboardInterrupt:
-            break
-        except Exception as e:
-            print("Can't link with:", e)
-        finally:
-            state['prev_A'] = False
-            state['prev_B'] = False
-            if gamepad is not None:
-                try:
-                    gamepad.stopBackgroundUpdates()
-                except Exception:
-                    pass
-            if test_mode:
-                break
-            print("Reconnecting in 1 second...")
-            time.sleep(1)
+    except Exception as e:
+        print("Can't link with:", e)
+        return
+
+    while test_mode:
+        eventType, name, value = gamepad.getNextEvent()
+        print(f"Evento: {eventType:<6}  |  {name:<12}  |  Valor: {value}")
 
 
 if __name__ == "__main__":
     main()
-

@@ -1,10 +1,12 @@
 import time
 import os
 import math
+from pathlib import Path
 import numpy as np
 from PID import Incremental_PID
-from movement.servo import Servo
 from movement.gait_cpg import CPG
+from movement import data
+from movement.hardware import Hardware
 from sensing.IMU import IMU
 from sensing.odometry import Odometry
 from Command import COMMAND as cmd
@@ -24,11 +26,13 @@ class Control:
         self.relax(True)
 
     def setup_hardware(self):
-        self.imu = IMU()
-        self.servo = Servo()
-        self.pid = Incremental_PID(0.5, 0.0, 0.0025)
-        self.odom = Odometry(stride_gain=0.55)
-        self.cpg = CPG("walk")
+        hw = Hardware()
+        self.hardware = hw
+        self.imu = hw.imu
+        self.servo = hw.servo
+        self.pid = hw.pid
+        self.odom = hw.odom
+        self.cpg = hw.cpg
 
     def setup_state(self):
         self.speed = self.MIN_SPEED_LIMIT
@@ -70,31 +74,13 @@ class Control:
             self.logfile = None
             self.log_enabled = False
     
-    def readFromTxt(self,filename):
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        filepath = os.path.join(base_path, filename + ".txt")
-        file1 = open(filepath, "r")
-        list_row = file1.readlines()
-        list_source = []
-        for i in range(len(list_row)):
-            column_list = list_row[i].strip().split("\t")
-            list_source.append(column_list)
-        for i in range(len(list_source)):
-            for j in range(len(list_source[i])):
-                list_source[i][j] = int(list_source[i][j])
-        file1.close()
-        return list_source
+    def readFromTxt(self, filename):
+        base_path = Path(__file__).resolve().parent
+        return data.load_points(base_path / f"{filename}.txt")
 
-    def saveToTxt(self,list, filename):
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        filepath = os.path.join(base_path, filename + ".txt")
-        file2 = open(filepath, 'w')
-        for i in range(len(list)):
-            for j in range(len(list[i])):
-                file2.write(str(list[i][j]))
-                file2.write('\t')
-            file2.write('\n')
-        file2.close()
+    def saveToTxt(self, list, filename):
+        base_path = Path(__file__).resolve().parent
+        data.save_points(base_path / f"{filename}.txt", list)
         
     def coordinateToAngle(self,x,y,z,l1=23,l2=55,l3=55):
         a=math.pi/2-math.atan2(z,y)
@@ -155,16 +141,7 @@ class Control:
             self.angle[i+2][2] = self.restriction(180 - (self.angle[i+2][2] + self.calibration_angle[i+2][2]), 0, 180)
 
     def send_angles_to_servos(self):
-        for i in range(2):
-            # Left side servos
-            self.servo.setServoAngle(4 + i*3, self.angle[i][0])
-            self.servo.setServoAngle(3 + i*3, self.angle[i][1])
-            self.servo.setServoAngle(2 + i*3, self.angle[i][2])
-
-            # Right side servos
-            self.servo.setServoAngle(8 + i*3, self.angle[i+2][0])
-            self.servo.setServoAngle(9 + i*3, self.angle[i+2][1])
-            self.servo.setServoAngle(10 + i*3, self.angle[i+2][2])
+        self.hardware.apply_angles(self.angle)
 
     def log_current_state(self):
         if hasattr(self, 'log_enabled') and self.log_enabled:
