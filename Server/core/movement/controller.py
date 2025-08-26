@@ -24,6 +24,8 @@ from . import kinematics, posture, data
 from .gait_runner import GaitRunner
 from .hardware import Hardware
 from .logger import MovementLogger
+from .gestures import GesturePlayer, load_sequence_json, Keyframe
+from copy import deepcopy
 
 
 @dataclass
@@ -138,12 +140,11 @@ class MovementController:
         self._prev_phase: float = 0.0
         self._gait_enabled: bool = True
         self.torque_off: bool = False
-        # --- gesture FSM ---
-        self._gesture_active: bool = False
-        self._gesture_name: str | None = None
-        self._gesture_phase: int = 0
-        self._gesture_t: float = 0.0
-        self._gesture_orig = None
+        self.gestures = GesturePlayer(controller=self, hardware=self.hardware, kinematics=kinematics, tick_hz=100.0)
+        # Registered gesture builders. Values are callables returning a Sequence
+        # when passed the controller instance. Custom gestures can be provided
+        # via JSON files under ``gestures/`` and are loaded on-demand.
+        self._gesture_builders = {}
 
     # ------------------------------------------------------------------
     def setup_state(self) -> None:
@@ -297,72 +298,37 @@ class MovementController:
         data.save_points(path, self.point)
 
     # ------------------------------------------------------------------
-    # ---------- Generic gesture engine (non-blocking) ----------
-    def _start_gesture(self, name: str) -> None:
-        """Start a non-blocking gesture by name."""
+    # ------------------------------------------------------------------
+    def _play_gesture(self, name: str) -> None:
+        """Play a named gesture if available.
+
+        Custom gestures are searched as JSON files under a ``gestures``
+        directory located next to this module. When first requested, the
+        gesture is lazily registered so subsequent calls reuse the cached
+        builder.
+        """
+
+        builder = self._gesture_builders.get(name)
+        if builder is None:
+            module_dir = Path(__file__).resolve().parent
+            json_path = module_dir / "gestures" / f"{name}.json"
+            if json_path.exists():
+                # Register a loader that ignores the controller instance but
+                # matches the expected callable signature.
+                self._gesture_builders[name] = builder = (
+                    lambda _ctrl, p=json_path: load_sequence_json(str(p))
+                )
+
+        if builder is None:
+            return
+
         self.stop_requested = False
         self.torque_off = False
         self._gait_enabled = False
-        self._gesture_active = True
-        self._gesture_name = name
-        self._gesture_phase = 0
-        self._gesture_t = 0.0
-        self._gesture_orig = [p.copy() for p in self.point]
-
-    def _update_gesture(self, dt: float) -> None:
-        """Advance the active gesture; when finished, deactivate it."""
-        if not self._gesture_active:
-            return
-        # Helpers
-        def lerp(a, b, t): return a + (b - a) * t
-        def phase_done(next_phase: int):
-            self._gesture_phase = next_phase
-            self._gesture_t = 0.0
-        self._gesture_t += dt
-        o = self._gesture_orig
-        name = self._gesture_name or ""
-
-        if name == "greet":
-            # Phases: 0 raise FR, 1 lower FR, 2 nod down, 3 nod up, 4 nod down, 5 restore, 6 finish
-            if self._gesture_phase == 0:
-                t = min(1.0, self._gesture_t / 0.25)
-                x, y, z = o[self.FR]
-                self.set_leg_position(self.FR, x, lerp(y, y + 20, t), z)
-                if t >= 1.0: phase_done(1)
-            elif self._gesture_phase == 1:
-                t = min(1.0, self._gesture_t / 0.25)
-                x, y, z = o[self.FR]
-                self.set_leg_position(self.FR, x, lerp(y + 20, y, t), z)
-                if t >= 1.0: phase_done(2)
-            elif self._gesture_phase in (2, 3, 4):
-                t = min(1.0, self._gesture_t / 0.2)
-                dy = 10
-                if self._gesture_phase % 2 == 0:  # down
-                    for leg in (self.FL, self.FR):
-                        x, y, z = o[leg]
-                        self.set_leg_position(leg, x, lerp(y, y - dy, t), z)
-                else:                              # up
-                    for leg in (self.FL, self.FR):
-                        x, y, z = o[leg]
-                        self.set_leg_position(leg, x, lerp(y - dy, y, t), z)
-                if t >= 1.0: phase_done(self._gesture_phase + 1)
-            elif self._gesture_phase == 5:
-                t = min(1.0, self._gesture_t / 0.2)
-                for i, (ox, oy, oz) in enumerate(o):
-                    cx, cy, cz = self.point[i]
-                    self.set_leg_position(i, lerp(cx, ox, t), lerp(cy, oy, t), lerp(cz, oz, t))
-                if t >= 1.0: phase_done(6)
-            else:  # finish
-                self._gesture_active = False
-                self._gesture_name = None
-                self._gesture_orig = None
-                self._gait_enabled = False
-        else:
-            # Unknown gesture: finish immediately
-            self._gesture_active = False
-            self._gesture_name = None
-            self._gesture_orig = None
-            self._gait_enabled = False
+        seq = builder(self)
+        if seq.frames and seq.frames[0].t_ms > 0:
+            seq.frames.insert(0, Keyframe(t_ms=0, legs=deepcopy(self.point)))
+        self.gestures.play(seq, blocking=False)
 
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
@@ -436,11 +402,11 @@ class MovementController:
         elif isinstance(cmd, GreetCmd):
             # Backwards-compat: map greet → generic gesture
             self._in_relax = False
-            self._start_gesture("greet")
+            self._play_gesture("greet")
             self._active_cmd = None
         elif isinstance(cmd, GestureCmd):
             self._in_relax = False
-            self._start_gesture(cmd.name)
+            self._play_gesture(cmd.name)
             self._active_cmd = None
         elif isinstance(cmd, RelaxCmd):
             self._gait_enabled = False
@@ -473,11 +439,9 @@ class MovementController:
                 self._is_turning = False
                 self._turn_dir = 0
                 self._active_cmd = None
-
-        # Gestures (non-blocking) first
-        self._update_gesture(dt)
-        # Advance CPG and apply new angles (only if gait enabled)
-        if self._gait_enabled and not self.stop_requested and not self._gesture_active:
+        if self.gestures.is_playing():
+            return
+        if self._gait_enabled and not self.stop_requested:
             self.gait.update_legs_from_cpg(self, dt)
         self.run()
 
