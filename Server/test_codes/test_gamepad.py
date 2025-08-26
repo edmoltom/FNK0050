@@ -47,12 +47,12 @@ def polling_loop(gamepad, controller, state):
                     controller.stepLeft()
 
             elif gamepad.isPressed('A') and not state['prev_A']:
-                controller.gestures.start("greet")
+                controller.greet()
 
             elif gamepad.isPressed('B') and not state['prev_B']:
                 controller.relax(True)
 
-            else:
+            elif not controller.gestures.active:
                 controller.stop()
 
             state['prev_A'] = gamepad.isPressed('A')
