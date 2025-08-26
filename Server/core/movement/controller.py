@@ -67,11 +67,6 @@ class StopCmd:
 class RelaxCmd:
     to_pose: bool = True
 
-
-@dataclass
-class GreetCmd:
-    pass
-
 @dataclass
 class GestureCmd:
     """Generic gesture request (non-blocking animation)."""
@@ -86,7 +81,6 @@ Command = Union[
     AttitudeCmd,
     StopCmd,
     RelaxCmd,
-    GreetCmd,
     GestureCmd,
 ]
 
@@ -332,7 +326,7 @@ class MovementController:
 
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
-        if isinstance(cmd, (WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, GreetCmd, GestureCmd)):
+        if isinstance(cmd, (WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, GestureCmd)):
             self._in_relax = False
         if isinstance(cmd, WalkCmd):
             self.stop_requested = False
@@ -398,11 +392,6 @@ class MovementController:
             self._stride_dir_z = 0
             self._is_turning = False
             self._turn_dir = 0
-            self._active_cmd = None
-        elif isinstance(cmd, GreetCmd):
-            # Backwards-compat: map greet → generic gesture
-            self._in_relax = False
-            self._play_gesture("greet")
             self._active_cmd = None
         elif isinstance(cmd, GestureCmd):
             self._in_relax = False

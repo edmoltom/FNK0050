@@ -14,8 +14,10 @@ from MovementControl import MovementControl
 def polling_loop(gamepad, controller):
     """Poll gamepad and enqueue movement commands."""
     DEADZONE = 0.2
-    prev_B = False
     prev_A = False
+    prev_B = False
+    prev_X = False
+    prev_Y = False
     while True:
         try:
             x0 = gamepad.axis(0)
@@ -39,8 +41,16 @@ def polling_loop(gamepad, controller):
                     controller.step('left', 1.0)
             # Edge-trigger A like B (avoid enqueuing every frame)
             elif (gamepad.isPressed('A') and not prev_A):
-                controller.greet()  # or controller.gesture("greet")
+                controller.gesture("greet")  
                 prev_A = True
+                continue
+            elif (gamepad.isPressed('X') and not prev_X):
+                controller.gesture("sit") 
+                prev_X = True
+                continue
+            elif (gamepad.isPressed('Y') and not prev_Y):
+                controller.gesture("stand_neutral")  
+                prev_Y = True
                 continue
             else:
                 b_pressed = gamepad.isPressed('B')
@@ -53,8 +63,11 @@ def polling_loop(gamepad, controller):
                     prev_B = False
                 # If B is held, do nothing to avoid repeated RelaxCmd
 
-            prev_B = gamepad.isPressed('B')
             prev_A = gamepad.isPressed('A')
+            prev_B = gamepad.isPressed('B')
+            prev_X = gamepad.isPressed('X')
+            prev_Y = gamepad.isPressed('Y')
+
             time.sleep(0.1)
         except Exception as e:
             print("Polling error:", e)
