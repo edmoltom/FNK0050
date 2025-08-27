@@ -6,7 +6,6 @@ from movement.controller import (
     HeightCmd,
     MovementController,
     RelaxCmd,
-    GreetCmd,
     GestureCmd,
     StepCmd,
     StopCmd,
@@ -90,10 +89,6 @@ class MovementControl:
     def relax(self) -> None:
         """\brief Move to the predefined relaxed pose before releasing torque."""
         self.controller.queue.put(RelaxCmd(to_pose=True))
-
-    def greet(self) -> None:
-        """\brief Play the default greeting gesture."""
-        self.controller.queue.put(GestureCmd(name="greet"))
 
     def gesture(self, name: str) -> None:
         """\brief Play any named gesture via the controller's gesture engine."""
