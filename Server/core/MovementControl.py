@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from movement.controller import (
     AttitudeCmd,
+    HeadCmd,
+    HeadPctCmd,
     HeightCmd,
     MovementController,
     RelaxCmd,
-    GreetCmd,
     GestureCmd,
     StepCmd,
     StopCmd,
@@ -69,6 +70,28 @@ class MovementControl:
         """
         self.controller.queue.put(AttitudeCmd(roll, pitch, yaw))
 
+    def head(self, pct: float, duration_ms: int = 0) -> None:
+        """\brief Move the head to a yaw percentage.
+        \param pct Head yaw as a percentage [0-100].
+        \param duration_ms Motion duration in milliseconds.
+
+        The motion is dispatched through :class:`HeadPctCmd`.
+        """
+        self.controller.queue.put(HeadPctCmd(pct, duration_ms))
+
+    def head_deg(self, angle_deg: float, duration_ms: int = 0) -> None:
+        """\brief Move the head to an absolute yaw angle in degrees.
+        \param angle_deg Head yaw angle in degrees.
+        \param duration_ms Motion duration in milliseconds.
+
+        The motion is dispatched through :class:`HeadCmd`.
+        """
+        self.controller.queue.put(HeadCmd(angle_deg, duration_ms))
+
+    def head_center(self) -> None:
+        """\brief Center the head using :class:`HeadPctCmd`."""
+        self.controller.queue.put(HeadPctCmd(50.0, 0))
+
     def stop(self) -> None:
         """\brief Stop any ongoing motion."""
         self.controller.queue.put(StopCmd())
@@ -77,13 +100,15 @@ class MovementControl:
         """\brief Move to the predefined relaxed pose before releasing torque."""
         self.controller.queue.put(RelaxCmd(to_pose=True))
 
-    def greet(self) -> None:
-        """\brief Play the default greeting gesture."""
-        self.controller.queue.put(GestureCmd(name="greet"))
-
     def gesture(self, name: str) -> None:
         """\brief Play any named gesture via the controller's gesture engine."""
         self.controller.queue.put(GestureCmd(name=name))
+
+    @property
+    def head_limits(self) -> tuple[float, float, float]:
+        """Expose head min, max, and center angles from the internal controller."""
+        c = self.controller
+        return c.head_min_deg, c.head_max_deg, c.head_center_deg
 
     def set_speed(self, speed: int) -> None:
         """\brief Set the controller speed.

@@ -11,9 +11,27 @@ from Gamepad import Xbox360
 from MovementControl import MovementControl
 
 
+DEADZONE = 0.2
+last_pct = 50.0
+
+
+def map_head_pct(y1: float) -> float:
+    """Map joystick input to head percentage with smoothing."""
+    global last_pct
+    if abs(y1) <= DEADZONE:
+        target = 50.0
+    else:
+        norm = (abs(y1) - DEADZONE) / (1 - DEADZONE)
+        curve = norm ** 3
+        direction = -1.0 if y1 > 0 else 1.0
+        target = 50.0 + direction * curve * 50.0
+    smoothed = last_pct + (target - last_pct) * 0.2
+    last_pct = smoothed
+    return smoothed
+
+
 def polling_loop(gamepad, controller):
     """Poll gamepad and enqueue movement commands."""
-    DEADZONE = 0.2
     prev_A = False
     prev_B = False
     prev_X = False
@@ -24,6 +42,9 @@ def polling_loop(gamepad, controller):
             y0 = gamepad.axis(1)
             x1 = gamepad.axis(3)
             y1 = gamepad.axis(4)
+            if abs(y1) > DEADZONE or last_pct != 50.0:
+                pct = map_head_pct(y1)
+                controller.head(pct)
 
             if abs(x0) > DEADZONE or abs(y0) > DEADZONE:
                 if x0 > DEADZONE:
@@ -34,7 +55,7 @@ def polling_loop(gamepad, controller):
                     controller.walk(1.0, 0.0, 0.0)
                 elif y0 > DEADZONE:
                     controller.walk(-1.0, 0.0, 0.0)
-            elif abs(x1) > DEADZONE or abs(y1) > DEADZONE:
+            elif abs(x1) > DEADZONE:
                 if x1 > DEADZONE:
                     controller.step('right', 1.0)
                 elif x1 < -DEADZONE:

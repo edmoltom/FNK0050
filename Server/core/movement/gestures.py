@@ -166,16 +166,8 @@ class GesturePlayer:
 
     def _apply_servo_overrides(self, overrides: Dict[int, float]) -> None:
         """Direct servo channel overrides for effects like 'paw wave'."""
-        if not hasattr(self, "hardware") or self.hardware is None:
-            return
-        pwm = getattr(self.hardware, "servo", None)
-        if not pwm:
-            return
-        func = getattr(pwm, "setServoAngle", None) or getattr(pwm, "set_servo_angle", None)
-        if not func:
-            return
-        for ch, deg in overrides.items():
-            func(ch, deg)
+        if self.controller and hasattr(self.controller, "apply_servo_overrides"):
+            self.controller.apply_servo_overrides(overrides)
 
 # -------- convenience builders --------
 
