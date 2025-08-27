@@ -71,14 +71,16 @@ class MovementControl:
         self.controller.queue.put(AttitudeCmd(roll, pitch, yaw))
 
     def head(self, angle_deg: float, duration_ms: int = 0) -> None:
-        """\brief Move the head to a given angle.
+        """\brief Move the head to an absolute yaw angle in degrees.
         \param angle_deg Head yaw angle in degrees.
         \param duration_ms Motion duration in milliseconds.
+
+        The motion is dispatched through :class:`HeadCmd`.
         """
         self.controller.queue.put(HeadCmd(angle_deg, duration_ms))
 
     def head_center(self) -> None:
-        """\brief Center the head."""
+        """\brief Center the head using :class:`HeadCmd`."""
         self.controller.queue.put(HeadCmd(self.controller.head_center_deg, 0))
 
     def stop(self) -> None:
