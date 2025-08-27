@@ -26,8 +26,8 @@ def polling_loop(gamepad, controller):
             y1 = gamepad.axis(4)
 
             if abs(y1) > DEADZONE:
-                span = controller.head_max_deg - controller.head_min_deg
-                angle = controller.head_center_deg + y1 * span / 2
+                span = controller.controller.head_max_deg - controller.controller.head_min_deg
+                angle = controller.controller.head_center_deg + y1 * span / 2
                 controller.head(angle)
 
             if abs(x0) > DEADZONE or abs(y0) > DEADZONE:
