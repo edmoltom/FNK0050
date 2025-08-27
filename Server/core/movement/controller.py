@@ -59,6 +59,12 @@ class AttitudeCmd:
 
 
 @dataclass
+class HeadCmd:
+    angle_deg: float
+    duration_ms: int = 0
+
+
+@dataclass
 class StopCmd:
     pass
 
@@ -79,6 +85,7 @@ Command = Union[
     TurnCmd,
     HeightCmd,
     AttitudeCmd,
+    HeadCmd,
     StopCmd,
     RelaxCmd,
     GestureCmd,
@@ -124,6 +131,11 @@ class MovementController:
         self.cpg = self.gait.cpg
         self.logger = logger or MovementLogger()
         self.config = config or {}
+        self.head_channel = int(self.config.get("head_channel", 11))
+        self.head_min_deg = float(self.config.get("head_min_deg", 20.0))
+        self.head_max_deg = float(self.config.get("head_max_deg", 160.0))
+        self.head_center_deg = float(self.config.get("head_center_deg", 90.0))
+        self._head_angle_deg = self.head_center_deg
         self.state = "idle"
         self.queue: Queue[Command] = Queue()
         self.setup_state()
@@ -201,6 +213,41 @@ class MovementController:
                 print("Exception during run():", e)
         else:
             print("This coordinate point is out of the active range")
+
+    # ------------------------------------------------------------------
+    def apply_servo_overrides(self, overrides: dict[int, float]) -> None:
+        """Direct servo channel overrides with head clamping."""
+        pwm = getattr(self.hardware, "servo", None)
+        if not pwm:
+            return
+        func = getattr(pwm, "setServoAngle", None) or getattr(pwm, "set_servo_angle", None)
+        if not func:
+            return
+        for ch, deg in overrides.items():
+            if ch == self.head_channel:
+                deg = max(self.head_min_deg, min(self.head_max_deg, deg))
+                self._head_angle_deg = deg
+            func(ch, deg)
+
+    # ------------------------------------------------------------------
+    def set_head(self, angle_deg: float, duration_ms: int = 0) -> None:
+        """Move the head servo to ``angle_deg`` optionally over ``duration_ms``."""
+        target = max(self.head_min_deg, min(self.head_max_deg, angle_deg))
+        start = getattr(self, "_head_angle_deg", self.head_center_deg)
+        if duration_ms <= 0 or not hasattr(self.hardware, "servo"):
+            self.apply_servo_overrides({self.head_channel: target})
+            return
+        steps = max(1, duration_ms // 20)
+        step_ms = duration_ms / steps
+        for i in range(1, steps + 1):
+            deg = start + (target - start) * (i / steps)
+            self.apply_servo_overrides({self.head_channel: deg})
+            time.sleep(step_ms / 1000.0)
+
+    # ------------------------------------------------------------------
+    def head_center(self) -> None:
+        """Convenience to centre the head."""
+        self.set_head(self.head_center_deg, 0)
 
     # ------------------------------------------------------------------
     def checkPoint(self) -> bool:
@@ -326,7 +373,7 @@ class MovementController:
 
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
-        if isinstance(cmd, (WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, GestureCmd)):
+        if isinstance(cmd, (WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, GestureCmd, HeadCmd)):
             self._in_relax = False
         if isinstance(cmd, WalkCmd):
             self.stop_requested = False
@@ -396,6 +443,11 @@ class MovementController:
         elif isinstance(cmd, GestureCmd):
             self._in_relax = False
             self._play_gesture(cmd.name)
+            self._active_cmd = None
+        elif isinstance(cmd, HeadCmd):
+            self._in_relax = False
+            self.stop_requested = False
+            self.set_head(cmd.angle_deg, cmd.duration_ms)
             self._active_cmd = None
         elif isinstance(cmd, RelaxCmd):
             self._gait_enabled = False
