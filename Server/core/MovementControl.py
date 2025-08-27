@@ -91,7 +91,7 @@ class MovementControl:
 
     def greet(self) -> None:
         """\brief Play the default greeting gesture."""
-        self.controller.queue.put(GestureCmd(name="greet"))
+        self.controller.queue.put(GreetCmd())
 
     def gesture(self, name: str) -> None:
         """\brief Play any named gesture via the controller's gesture engine."""

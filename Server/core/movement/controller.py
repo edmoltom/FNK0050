@@ -79,6 +79,12 @@ class GestureCmd:
     name: str  # e.g., "greet"
 
 
+@dataclass
+class GreetCmd:
+    """Play the default greeting gesture."""
+    pass
+
+
 Command = Union[
     WalkCmd,
     StepCmd,
@@ -89,6 +95,7 @@ Command = Union[
     StopCmd,
     RelaxCmd,
     GestureCmd,
+    GreetCmd,
 ]
 
 
@@ -373,7 +380,7 @@ class MovementController:
 
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
-        if isinstance(cmd, (WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, GestureCmd, HeadCmd)):
+        if isinstance(cmd, (WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, GestureCmd, GreetCmd, HeadCmd)):
             self._in_relax = False
         if isinstance(cmd, WalkCmd):
             self.stop_requested = False
@@ -443,6 +450,10 @@ class MovementController:
         elif isinstance(cmd, GestureCmd):
             self._in_relax = False
             self._play_gesture(cmd.name)
+            self._active_cmd = None
+        elif isinstance(cmd, GreetCmd):
+            self._in_relax = False
+            self._play_gesture("greet")
             self._active_cmd = None
         elif isinstance(cmd, HeadCmd):
             self._in_relax = False
