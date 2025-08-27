@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from movement.controller import (
     AttitudeCmd,
+    HeadCmd,
     HeightCmd,
     MovementController,
     RelaxCmd,
@@ -68,6 +69,17 @@ class MovementControl:
         \param yaw Yaw angle in degrees.
         """
         self.controller.queue.put(AttitudeCmd(roll, pitch, yaw))
+
+    def head(self, angle_deg: float, duration_ms: int = 0) -> None:
+        """\brief Move the head to a given angle.
+        \param angle_deg Head yaw angle in degrees.
+        \param duration_ms Motion duration in milliseconds.
+        """
+        self.controller.queue.put(HeadCmd(angle_deg, duration_ms))
+
+    def head_center(self) -> None:
+        """\brief Center the head."""
+        self.controller.queue.put(HeadCmd(self.controller.head_center_deg, 0))
 
     def stop(self) -> None:
         """\brief Stop any ongoing motion."""
