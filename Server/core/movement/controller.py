@@ -65,6 +65,12 @@ class HeadCmd:
 
 
 @dataclass
+class HeadPctCmd:
+    pct: float
+    duration_ms: int = 0
+
+
+@dataclass
 class StopCmd:
     pass
 
@@ -86,6 +92,7 @@ Command = Union[
     HeightCmd,
     AttitudeCmd,
     HeadCmd,
+    HeadPctCmd,
     StopCmd,
     RelaxCmd,
     GestureCmd,
@@ -131,10 +138,11 @@ class MovementController:
         self.cpg = self.gait.cpg
         self.logger = logger or MovementLogger()
         self.config = config or {}
-        self.head_channel = int(self.config.get("head_channel", 15))
+        self.head_channel = int(self.config.get("head_channel", 11))
         self.head_min_deg = float(self.config.get("head_min_deg", 20.0))
         self.head_max_deg = float(self.config.get("head_max_deg", 160.0))
         self.head_center_deg = float(self.config.get("head_center_deg", 90.0))
+        self.head_inverted = bool(self.config.get("head_inverted", False))
         self._head_angle_deg = self.head_center_deg
         self.state = "idle"
         self.queue: Queue[Command] = Queue()
@@ -233,6 +241,8 @@ class MovementController:
     def set_head(self, angle_deg: float, duration_ms: int = 0) -> None:
         """Move the head servo to ``angle_deg`` optionally over ``duration_ms``."""
         target = max(self.head_min_deg, min(self.head_max_deg, angle_deg))
+        if self.head_inverted:
+            target = self.head_max_deg - (target - self.head_min_deg)
         start = getattr(self, "_head_angle_deg", self.head_center_deg)
         if duration_ms <= 0 or not hasattr(self.hardware, "servo"):
             self.apply_servo_overrides({self.head_channel: target})
@@ -245,9 +255,19 @@ class MovementController:
             time.sleep(step_ms / 1000.0)
 
     # ------------------------------------------------------------------
+    def set_head_pct(self, pct: float, duration_ms: int = 0) -> None:
+        """Move the head based on a 0-100 percentage of its range."""
+        pct = max(0.0, min(100.0, pct))
+        if pct <= 50.0:
+            angle = self.head_min_deg + (self.head_center_deg - self.head_min_deg) * (pct / 50.0)
+        else:
+            angle = self.head_center_deg + (self.head_max_deg - self.head_center_deg) * ((pct - 50.0) / 50.0)
+        self.set_head(angle, duration_ms)
+
+    # ------------------------------------------------------------------
     def head_center(self) -> None:
         """Convenience to centre the head."""
-        self.set_head(self.head_center_deg, 0)
+        self.set_head_pct(50.0, 0)
 
     # ------------------------------------------------------------------
     def checkPoint(self) -> bool:
@@ -373,7 +393,7 @@ class MovementController:
 
     # ------------------------------------------------------------------
     def _process_command(self, cmd: Command) -> None:
-        if isinstance(cmd, (WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, GestureCmd, HeadCmd)):
+        if isinstance(cmd, (WalkCmd, StepCmd, TurnCmd, HeightCmd, AttitudeCmd, StopCmd, GestureCmd, HeadCmd, HeadPctCmd)):
             self._in_relax = False
         if isinstance(cmd, WalkCmd):
             self.stop_requested = False
@@ -448,6 +468,11 @@ class MovementController:
             self._in_relax = False
             self.stop_requested = False
             self.set_head(cmd.angle_deg, cmd.duration_ms)
+            self._active_cmd = None
+        elif isinstance(cmd, HeadPctCmd):
+            self._in_relax = False
+            self.stop_requested = False
+            self.set_head_pct(cmd.pct, cmd.duration_ms)
             self._active_cmd = None
         elif isinstance(cmd, RelaxCmd):
             self._gait_enabled = False
