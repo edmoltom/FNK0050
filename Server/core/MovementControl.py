@@ -94,6 +94,12 @@ class MovementControl:
         """\brief Play any named gesture via the controller's gesture engine."""
         self.controller.queue.put(GestureCmd(name=name))
 
+    @property
+    def head_limits(self) -> tuple[float, float, float]:
+        """Expose head min, max, and center angles from the internal controller."""
+        c = self.controller
+        return c.head_min_deg, c.head_max_deg, c.head_center_deg
+
     def set_speed(self, speed: int) -> None:
         """\brief Set the controller speed.
 
