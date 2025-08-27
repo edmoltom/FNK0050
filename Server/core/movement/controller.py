@@ -131,7 +131,7 @@ class MovementController:
         self.cpg = self.gait.cpg
         self.logger = logger or MovementLogger()
         self.config = config or {}
-        self.head_channel = int(self.config.get("head_channel", 11))
+        self.head_channel = int(self.config.get("head_channel", 15))
         self.head_min_deg = float(self.config.get("head_min_deg", 20.0))
         self.head_max_deg = float(self.config.get("head_max_deg", 160.0))
         self.head_center_deg = float(self.config.get("head_center_deg", 90.0))
