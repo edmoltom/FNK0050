@@ -44,7 +44,7 @@ def polling_loop(gamepad, controller):
             y1 = gamepad.axis(4)
             if abs(y1) > DEADZONE or last_pct != 50.0:
                 pct = map_head_pct(y1)
-                controller.head(pct, duration_ms=120)
+                controller.head(pct)
 
             if abs(x0) > DEADZONE or abs(y0) > DEADZONE:
                 if x0 > DEADZONE:
