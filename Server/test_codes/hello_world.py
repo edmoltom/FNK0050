@@ -1,19 +1,14 @@
 from MovementControl import MovementControl
-import time
-
+import threading, time
 
 def main() -> None:
     """Simple hello world demonstrating MovementControl."""
     print("Hello!! (●'◡'●)")
     controller = MovementControl()
-    controller.walk(1.0, 0.0, 0.0)
-
-    for _ in range(20):
-        controller.tick(0.1)
-        time.sleep(0.1)
-
-    controller.stop()
-
+    threading.Thread(target=controller.start_loop, daemon=True).start() 
+    controller.gesture("greet") 
+    time.sleep(10)  
+    controller.relax()
 
 if __name__ == "__main__":
     main()
