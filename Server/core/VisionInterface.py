@@ -10,9 +10,9 @@ import time
 import os
 
 
-class Camera:
+class VisionInterface:
     """
-    @brief Camera wrapper using Picamera2 with a periodic vision pipeline.
+    @brief Vision interface wrapper using Picamera2 with a periodic vision pipeline.
     @details
     Captures frames at resolution defined in ``CAMERA_RESOLUTION``, runs a detection pipeline, draws overlays,
     and exposes the last processed frame as a base64-encoded JPEG string.
@@ -141,7 +141,7 @@ class Camera:
         @note Stores the last processed frame as base64 JPEG in _last_encoded_image.
         """
         if self._streaming:
-            print("[Camera] Streaming already running.")
+            print("[VisionInterface] Streaming already running.")
             return
         self._streaming = True
         self._ensure_camera_started()
@@ -161,7 +161,7 @@ class Camera:
                         with self._lock:
                             self._last_encoded_image = encoded
                 except Exception as e:
-                    print(f"[Camera] Error in periodic capture: {e}")
+                    print(f"[VisionInterface] Error in periodic capture: {e}")
 
                 # Compensate processing time to keep cadence
                 sleep_s = next_tick - time.monotonic()
@@ -173,7 +173,7 @@ class Camera:
 
         self._thread = threading.Thread(target=_capture_loop, daemon=True)
         self._thread.start()
-        print("[Camera] Started periodic capture.")
+        print("[VisionInterface] Started periodic capture.")
 
     def stop_periodic_capture(self):
         """
@@ -186,7 +186,7 @@ class Camera:
         self._ensure_camera_stopped()
         if self._logger:
             self._logger.close()
-        print("[Camera] Stopped periodic capture.")
+        print("[VisionInterface] Stopped periodic capture.")
 
     def get_last_processed_encoded(self):
         """
