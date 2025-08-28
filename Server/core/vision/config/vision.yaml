@@ -3,7 +3,7 @@
 # The detectors section includes the default parameters formerly provided by
 # the separate profile files. Adjust as needed.
 
-engine:
+engine: {}
   # stable: true
   # on_th: 0.55
   # off_th: 0.45
