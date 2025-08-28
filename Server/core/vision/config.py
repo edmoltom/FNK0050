@@ -260,7 +260,7 @@ def load_config(path: Optional[str] = None) -> VisionConfig:
             big=_strict(DetectorConfig, raw.get("detectors", {}).get("big", {})),
             small=_strict(DetectorConfig, raw.get("detectors", {}).get("small", {})),
         ),
-        logging=_strict(LoggingConfig, raw.get("logging", {})),
+        logging=_strict(LoggingConfig, raw.get("logging") or {}),
     )
     return merge_with_defaults(cfg)
 
