@@ -292,30 +292,6 @@ def _try_with_margins(edges: NDArray, proc_cfg: "ProcConfig", morph_cfg: "MorphC
     return best, e_used
 
 
-def _draw_overlay(proc_bgr: NDArray, info: Dict[str, Any], mask_final: NDArray, color_enabled: bool) -> Tuple[NDArray, Tuple[int, int]]:
-    """
-    @brief Draw detection overlay on processed image.
-    @param proc_bgr NDArray Processed BGR image.
-    @param info Dict[str,Any] Selected contour information.
-    @param mask_final NDArray Mask image where contour will be drawn.
-    @param color_enabled bool Whether color gate is enabled.
-    @return Tuple[NDArray,Tuple[int,int]] Overlay image and contour center.
-    """
-    overlay = proc_bgr.copy()
-    x, y, w, h = info["bbox"]
-    cv2.drawContours(mask_final, [info["cnt"]], -1, 255, thickness=cv2.FILLED)
-    cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2)
-    M = cv2.moments(info["cnt"])
-    c = (x + w // 2, y + h // 2)
-    if M["m00"] != 0:
-        c = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
-    cv2.circle(overlay, c, 4, (0, 255, 0), -1)
-    tag = "color_gate" if color_enabled else "canny"
-    txt = f"{tag}  fill={info['fill']:.2f}  bbox={info['bbox_ratio']:.2f}  sc={info['score']:.2f}"
-    cv2.putText(overlay, txt, (x, max(18, y - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-    return overlay, c
-
-
 def _color_gate(bgr: NDArray, color_cfg: "ColorGateConfig") -> NDArray:
     """
     @brief Generate mask by filtering colors.

@@ -50,8 +50,8 @@ from ..imgproc import (
     _preprocess,
     _color_gate,
     _try_with_margins,
-    _draw_overlay,
 )
+from ..overlays import draw_detector
 from ..dynamics import CannyConfig
 from .base import Detector, DetectionResult
 
@@ -342,17 +342,33 @@ class ContourDetector(Detector):
             )
 
         mask_final, info, chosen_ck, chosen_dk = best
-        overlay, center = _draw_overlay(proc, info, mask_final, self.color.enabled)
+        x, y, w, h = info["bbox"]
+        cv2.drawContours(mask_final, [info["cnt"]], -1, 255, thickness=cv2.FILLED)
+        M = cv2.moments(info["cnt"])
+        center = (x + w // 2, y + h // 2)
+        if M["m00"] != 0:
+            center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+
+        det_fields = {
+            "bbox": (x, y, w, h),
+            "center": center,
+            "fill": info["fill"],
+            "bbox_ratio": info["bbox_ratio"],
+            "score": info["score"],
+            "color_used": bool(color_used),
+        }
+        overlay = draw_detector(proc, det_fields) if return_overlay else None
 
         if save_dir is not None:
             cv2.imwrite(os.path.join(save_dir, f"{stamp}_mask_final.png"), mask_final)
-            cv2.imwrite(os.path.join(save_dir, f"{stamp}_overlay.png"), overlay)
+            if overlay is not None:
+                cv2.imwrite(os.path.join(save_dir, f"{stamp}_overlay.png"), overlay)
 
         result = DetectionResult(
             ok=True,
             used_rescue=used_rescue,
             life_canny_pct=float(life),
-            bbox=tuple(int(v) for v in info["bbox"]),
+            bbox=det_fields["bbox"],
             score=float(info["score"]),
             fill=float(info["fill"]),
             bbox_ratio=float(info["bbox_ratio"]),

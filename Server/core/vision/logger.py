@@ -6,6 +6,8 @@ from typing import Optional, Dict, Any, TYPE_CHECKING
 import cv2
 import numpy as np
 
+from .overlays import draw_engine
+
 if TYPE_CHECKING:  # pragma: no cover - for type checking only
     from .engine import EngineResult
 
@@ -63,9 +65,11 @@ class VizLogger:
             cv2.imwrite(os.path.join(self.run_dir, raw_name), frame_bgr)
             data["raw"] = raw_name
 
-        # Use explicit overlay argument if given, otherwise result['overlay']
-        if overlay is None and isinstance(result, dict):
-            overlay = result.get("overlay")  # type: ignore[assignment]
+        if overlay is None and frame_bgr is not None:
+            try:
+                overlay = draw_engine(frame_bgr, result)
+            except Exception:
+                overlay = None
         if overlay is not None:
             ov_name = f"{stamp}_overlay.png"
             cv2.imwrite(os.path.join(self.run_dir, ov_name), overlay)
