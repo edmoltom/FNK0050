@@ -1,6 +1,5 @@
 from picamera2 import Picamera2
 from core.vision.engine import VisionEngine
-from core.vision.logger import VizLogger
 from core.vision.config_defaults import CAMERA_RESOLUTION
 from core.vision.overlays import draw_engine
 
@@ -8,21 +7,26 @@ import cv2
 import base64
 import threading
 import time
-import os
 
 
 class VisionInterface:
-    """
-    @brief Vision interface wrapper using Picamera2 with a periodic vision pipeline.
-    @details
-    Captures frames at resolution defined in ``CAMERA_RESOLUTION``, runs a detection pipeline, draws overlays,
-    and exposes the last processed frame as a base64-encoded JPEG string.
-    The camera is started once on start_periodic_capture() and stopped on stop.
+    """Lightweight camera wrapper that captures frames and streams processed output.
+
+    The interface is agnostic of detection details and delegates processing to a
+    provided :class:`VisionEngine`. Its sole responsibilities are:
+
+    * Capturing frames from ``Picamera2``.
+    * Running the provided engine on each frame.
+    * Encoding the result to base64 JPEG for streaming.
     """
 
-    def __init__(self):
-        """
-        @brief Initialize the camera and default state.
+    def __init__(self, engine: VisionEngine):
+        """Initialise the camera and internal state.
+
+        Parameters
+        ----------
+        engine: VisionEngine
+            Instance used to process captured frames.
         """
         self.picam2 = Picamera2()
         self.picam2.configure(
@@ -30,29 +34,12 @@ class VisionInterface:
                 main={"size": CAMERA_RESOLUTION}
             )
         )
-        self._engine = VisionEngine()
-        self._config = {}              # Optional processing config (set via set_processing_config)
+        self._engine = engine
         self._last_encoded_image = None
         self._streaming = False
         self._thread = None
         self._lock = threading.Lock()
         self._camera_started = False
-        
-        self._logger = None
-        if os.getenv("VISION_LOG", "0") == "1":
-            stride = int(os.getenv("VISION_LOG_STRIDE", "5"))
-            save_raw = os.getenv("VISION_LOG_RAW", "0") == "1"
-            self._logger = VizLogger(stride=stride, save_raw=save_raw)
-            self._engine.set_logger(self._logger)
-
-    def set_processing_config(self, config: dict):
-        """
-        @brief Set runtime configuration for the processing pipeline.
-        @param config Arbitrary dict consumed by the downstream pipeline.
-        """
-        self._config = dict(config or {})
-        self._engine.config = self._config
-        self._engine.reload_config()
 
     def _ensure_camera_started(self):
         if not self._camera_started:
@@ -80,19 +67,20 @@ class VisionInterface:
         """
         frame_rgb = self.capture_array()                       # Picam2 → RGB
         frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)     # OpenCV uses BGR
-
-        # Try passing config; fall back if pipeline doesn't accept it
         res = self._engine.process(frame)
         frame = draw_engine(frame, res)
         return frame
 
     # -------- Public streaming API --------
 
-    def start_periodic_capture(self, interval=1.0):
-        """
-        @brief Start a background thread that captures and processes frames periodically.
-        @param interval Desired seconds between captures (processing time compensated).
-        @note Stores the last processed frame as base64 JPEG in _last_encoded_image.
+    def start(self, interval: float = 1.0) -> None:
+        """Start capturing and processing frames in a background thread.
+
+        Parameters
+        ----------
+        interval: float, optional
+            Desired seconds between captures. Processing time is compensated to
+            maintain this cadence.
         """
         if self._streaming:
             print("[VisionInterface] Streaming already running.")
@@ -100,7 +88,7 @@ class VisionInterface:
         self._streaming = True
         self._ensure_camera_started()
 
-        def _capture_loop():
+        def _capture_loop() -> None:
             period = max(0.0, float(interval))
             next_tick = time.monotonic()
             while self._streaming:
@@ -114,7 +102,7 @@ class VisionInterface:
                         encoded = base64.b64encode(buffer).decode("utf-8")
                         with self._lock:
                             self._last_encoded_image = encoded
-                except Exception as e:
+                except Exception as e:  # pragma: no cover - capture loop should not raise
                     print(f"[VisionInterface] Error in periodic capture: {e}")
 
                 # Compensate processing time to keep cadence
@@ -127,20 +115,23 @@ class VisionInterface:
 
         self._thread = threading.Thread(target=_capture_loop, daemon=True)
         self._thread.start()
-        print("[VisionInterface] Started periodic capture.")
+        print("[VisionInterface] Started capture thread.")
 
-    def stop_periodic_capture(self):
-        """
-        @brief Stop the background thread and wait for clean shutdown.
-        """
+    def stop(self) -> None:
+        """Stop the background capture thread and release the camera."""
         self._streaming = False
         if self._thread:
             self._thread.join()
             self._thread = None
         self._ensure_camera_stopped()
-        if self._logger:
-            self._logger.close()
-        print("[VisionInterface] Stopped periodic capture.")
+        print("[VisionInterface] Stopped capture thread.")
+
+    # Backwards compatibility wrappers
+    def start_periodic_capture(self, interval: float = 1.0) -> None:  # pragma: no cover
+        self.start(interval)
+
+    def stop_periodic_capture(self) -> None:  # pragma: no cover
+        self.stop()
 
     def get_last_processed_encoded(self):
         """
