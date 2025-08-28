@@ -8,6 +8,8 @@ import numpy as np
 
 @dataclass
 class DetectionResult:
+    """Structured result returned by a detector."""
+
     ok: bool
     used_rescue: bool
     life_canny_pct: float
@@ -25,13 +27,38 @@ class DetectionResult:
     color_used: Optional[bool] = None
 
 
+@dataclass
+class DetectionContext:
+    """Execution context passed to detectors.
+
+    Attributes:
+        save_dir: Directory where intermediate images will be stored.
+        stamp: Prefix for saved files within ``save_dir``.
+        save_profile: Whether to persist profile snapshots.
+        return_overlay: Whether detectors should return overlay images.
+    """
+
+    save_dir: Optional[str] = None
+    stamp: Optional[str] = None
+    save_profile: bool = True
+    return_overlay: bool = True
+
+
 class Detector(Protocol):
     """Interface for vision detectors."""
 
     name: str
 
     def configure(self, cfg: Any) -> None:
-        """Configure detector using a configuration object or dict."""
+        """Configure detector using a configuration object or dictionary."""
 
-    def infer(self, frame: np.ndarray, ctx: Optional[Any] = None) -> DetectionResult:
-        """Run detection on a frame and return a :class:`DetectionResult`."""
+    def infer(self, frame: np.ndarray, ctx: Optional[DetectionContext] = None) -> DetectionResult:
+        """Run detection on ``frame``.
+
+        Args:
+            frame: BGR image in NumPy array format.
+            ctx: Optional execution context.
+
+        Returns:
+            DetectionResult: Structured detection output.
+        """
