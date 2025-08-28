@@ -1,8 +1,8 @@
-from Camera import Camera
+from VisionInterface import VisionInterface
 import base64, datetime, os, time
 
 def main():
-    cam = Camera()
+    cam = VisionInterface()
     os.makedirs("logs", exist_ok=True)
     ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"logs/{ts}.jpg"
