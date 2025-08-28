@@ -255,7 +255,7 @@ def load_config(path: Optional[str] = None) -> VisionConfig:
         raw = yaml.safe_load(text) or {}
 
     cfg = VisionConfig(
-        engine=_strict(EngineConfig, raw.get("engine", {})),
+        engine=_strict(EngineConfig, raw.get("engine") or {}),
         detectors=DetectorsConfig(
             big=_strict(DetectorConfig, raw.get("detectors", {}).get("big", {})),
             small=_strict(DetectorConfig, raw.get("detectors", {}).get("small", {})),
