@@ -1,6 +1,6 @@
 from picamera2 import Picamera2
 from core.vision.engine import VisionEngine
-from core.vision.viz_logger import VisionLogger
+from core.vision.logger import VizLogger
 from core.vision.config_defaults import CAMERA_RESOLUTION, REF_SIZE
 
 import cv2
@@ -40,7 +40,9 @@ class VisionInterface:
         self._logger = None
         if os.getenv("VISION_LOG", "0") == "1":
             stride = int(os.getenv("VISION_LOG_STRIDE", "5"))
-            self._logger = VisionLogger(engine=self._engine, stride=stride)
+            save_raw = os.getenv("VISION_LOG_RAW", "0") == "1"
+            self._logger = VizLogger(stride=stride, save_raw=save_raw)
+            self._engine.set_logger(self._logger)
 
     def set_processing_config(self, config: dict):
         """
@@ -103,9 +105,6 @@ class VisionInterface:
 
         # Try passing config; fall back if pipeline doesn't accept it
         res = self._engine.process(frame)
-
-        if self._logger:
-            self._logger.log_only(frame, out=res)
 
         if res and res.get("ok"):
             # Compute scaling from the pipeline's coordinate space to current frame
