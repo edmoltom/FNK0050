@@ -1,5 +1,5 @@
 from picamera2 import Picamera2
-from core.vision.api import process_frame
+from core.vision.engine import VisionEngine
 from core.vision.viz_logger import VisionLogger
 from core.vision.config_defaults import CAMERA_RESOLUTION, REF_SIZE
 
@@ -29,6 +29,7 @@ class VisionInterface:
                 main={"size": CAMERA_RESOLUTION}
             )
         )
+        self._engine = VisionEngine()
         self._config = {}              # Optional processing config (set via set_processing_config)
         self._last_encoded_image = None
         self._streaming = False
@@ -39,7 +40,7 @@ class VisionInterface:
         self._logger = None
         if os.getenv("VISION_LOG", "0") == "1":
             stride = int(os.getenv("VISION_LOG_STRIDE", "5"))
-            self._logger = VisionLogger(stride=stride, api_config={"stable": True})
+            self._logger = VisionLogger(engine=self._engine, stride=stride)
 
     def set_processing_config(self, config: dict):
         """
@@ -47,6 +48,8 @@ class VisionInterface:
         @param config Arbitrary dict consumed by the downstream pipeline.
         """
         self._config = dict(config or {})
+        self._engine.config = self._config
+        self._engine.reload_config()
 
     def _ensure_camera_started(self):
         if not self._camera_started:
@@ -99,10 +102,7 @@ class VisionInterface:
         frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)     # OpenCV uses BGR
 
         # Try passing config; fall back if pipeline doesn't accept it
-        try:
-            res = process_frame(frame, return_overlay=False, config=self._config)
-        except TypeError:
-            res = process_frame(frame, return_overlay=False)
+        res = self._engine.process(frame)
 
         if self._logger:
             self._logger.log_only(frame, out=res)

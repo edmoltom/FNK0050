@@ -2,7 +2,7 @@ import os, csv, time
 from typing import Optional, Tuple
 import numpy as np
 
-from .api import process_frame, get_detectors
+from .engine import VisionEngine
 from .detectors.contour_detector import ContourDetector, DetectionResult
 
 def _ref_size(det: ContourDetector) -> Tuple[int,int]:
@@ -16,7 +16,7 @@ class VisionLogger:
     Guarda artefactos (original, canny, color_mask, edges_patched, mask_final, overlay, etc.)
     cada `stride` frames usando el propio detector.
     """
-    def __init__(self, output_dir: Optional[str] = None, stride: int = 5, api_config: Optional[dict]=None):
+    def __init__(self, engine: VisionEngine, output_dir: Optional[str] = None, stride: int = 5):
         ts = time.strftime("%Y%m%d_%H%M%S")
         self.run_dir = output_dir or os.path.join("runs", "vision", ts)
         os.makedirs(self.run_dir, exist_ok=True)
@@ -30,8 +30,8 @@ class VisionLogger:
         ])
         self.stride = max(1,int(stride))
         self.idx = 0
-        self.api_cfg = dict(api_config or {})
-        self.det_big, self.det_small = get_detectors()
+        self.engine = engine
+        self.det_big, self.det_small = self.engine.get_detectors()
 
     def log_only(self, frame_bgr, out=None):
         """Usa el resultado ya calculado (out) y SOLO cada 'stride' guarda artefactos/CSV."""
@@ -66,7 +66,7 @@ class VisionLogger:
     def _which(self, space):
         # refresco perezoso
         if self.det_big is None or self.det_small is None:
-            self.det_big, self.det_small = get_detectors()
+            self.det_big, self.det_small = self.engine.get_detectors()
         # si siguen a None (muy raro), fallback seguro
         if self.det_big is None and self.det_small is None:
             return "big", None
@@ -80,7 +80,7 @@ class VisionLogger:
     def step(self, frame_bgr: np.ndarray):
         """Procesa un frame, devuelve overlay para visualizar."""
         self.idx += 1
-        out = process_frame(frame_bgr, return_overlay=True, config=self.api_cfg)
+        out = self.engine.process(frame_bgr)
         tag, det = self._which(tuple(out.get("space", (0,0))))
         stamp = f"f{self.idx:06d}"
         save_dir = self.run_dir if (self.idx % self.stride == 0) else None
@@ -115,8 +115,10 @@ class VisionLogger:
 # Uso rápido (bucle de cámara):
 if __name__ == "__main__":
     import cv2
+    eng = VisionEngine({"stable": True, "roi_factor":1.8, "ema":0.7})
+    eng.reload_config()
     cap = cv2.VideoCapture(0)
-    logger = VisionLogger(stride=5, api_config={"stable": True, "roi_factor":1.8, "ema":0.7})
+    logger = VisionLogger(engine=eng, stride=5)
     try:
         while True:
             ok, frame = cap.read()
