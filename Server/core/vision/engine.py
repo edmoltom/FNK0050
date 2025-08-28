@@ -1,24 +1,14 @@
-import os
 import threading
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
 
-from .detectors.contours import ContourDetector, configs_from_profile
+from .detectors.contours import ContourDetector
 from .detectors.base import DetectionResult, DetectionContext
-from .profile_manager import load_profile as pm_load_profile, get_config
 from .dynamics import DynamicAdjuster
 from .imgproc import mask_to_roi
-from .config_defaults import (
-    DEFAULT_STABLE,
-    DEFAULT_ON_THRESHOLD,
-    DEFAULT_OFF_THRESHOLD,
-    DEFAULT_STICK_K,
-    DEFAULT_MISS_M,
-    DEFAULT_ROI_FACTOR,
-    DEFAULT_EMA_ALPHA,
-)
+from .config import VisionConfig, EngineConfig, DetectorConfig
 
 if TYPE_CHECKING:  # pragma: no cover
     from .logger import VizLogger
@@ -56,16 +46,14 @@ class VisionEngine:
             self.score_ema: Optional[float] = None
             self.miss_count: int = 0
 
-    BASE = os.path.dirname(os.path.abspath(__file__))
-
     def __init__(
         self,
-        config: Optional[Dict[str, Any]] = None,
+        config: Optional[VisionConfig] = None,
         adjuster_cls=DynamicAdjuster,
         logger: Optional["VizLogger"] = None,
     ) -> None:
         self._lock = threading.Lock()
-        self.config: Dict[str, Any] = dict(config or {})
+        self.config: VisionConfig = config if config is not None else VisionConfig()
         self.dynamic: Dict[str, Dict[str, Any]] = {"big": {}, "small": {}}
         self._det_big: Optional[ContourDetector] = None
         self._det_small: Optional[ContourDetector] = None
@@ -80,41 +68,43 @@ class VisionEngine:
         self.logger: Optional["VizLogger"] = logger
 
     # ---- internal helpers ----
-    def _knobs(self, config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        cfg = dict(config or {})
-        p = cfg.get("profiles", {})
+    def _knobs(self, config: Optional[EngineConfig]) -> Dict[str, Any]:
+        cfg = config or EngineConfig()
         return dict(
-            big_profile=p.get("big", "profile_big.json"),
-            small_profile=p.get("small", "profile_small.json"),
-            stable=bool(cfg.get("stable", DEFAULT_STABLE)),
-            on_th=float(cfg.get("on_th", DEFAULT_ON_THRESHOLD)),
-            off_th=float(cfg.get("off_th", DEFAULT_OFF_THRESHOLD)),
-            stick_k=int(cfg.get("stick_k", DEFAULT_STICK_K)),
-            miss_m=int(cfg.get("miss_m", DEFAULT_MISS_M)),
-            roi_fact=float(cfg.get("roi_factor", DEFAULT_ROI_FACTOR)),
-            ema_a=float(cfg.get("ema", DEFAULT_EMA_ALPHA)),
+            stable=bool(cfg.stable),
+            on_th=float(cfg.on_th),
+            off_th=float(cfg.off_th),
+            stick_k=int(cfg.stick_k),
+            miss_m=int(cfg.miss_m),
+            roi_fact=float(cfg.roi_factor),
+            ema_a=float(cfg.ema),
         )
 
-    def _resolve_profile(self, p: str) -> str:
-        if os.path.isabs(p):
-            return p
-        return os.path.join(self.BASE, "profiles", p)
-
-    def _ensure_detectors(self, k: Dict[str, Any]) -> None:
+    def _ensure_detectors(self) -> None:
         if self._det_big is None:
-            big = self._resolve_profile(k["big_profile"])
-            pm_load_profile("big", big)
-            cfg, canny = configs_from_profile(get_config("big"))
-            self._adj_big = self._adj_cls(canny)
+            cfg: DetectorConfig = self.config.detectors.big
+            self._adj_big = self._adj_cls(cfg.canny)
             self._det_big = ContourDetector(adjuster=self._adj_big)
-            self._det_big.configure(cfg)
+            self._det_big.configure({
+                "proc": cfg.proc,
+                "morph": cfg.morph,
+                "geo": cfg.geo,
+                "w": cfg.w,
+                "premorph": cfg.premorph,
+                "color": cfg.color,
+            })
         if self._det_small is None:
-            small = self._resolve_profile(k["small_profile"])
-            pm_load_profile("small", small)
-            cfg, canny = configs_from_profile(get_config("small"))
-            self._adj_small = self._adj_cls(canny)
+            cfg: DetectorConfig = self.config.detectors.small
+            self._adj_small = self._adj_cls(cfg.canny)
             self._det_small = ContourDetector(adjuster=self._adj_small)
-            self._det_small.configure(cfg)
+            self._det_small.configure({
+                "proc": cfg.proc,
+                "morph": cfg.morph,
+                "geo": cfg.geo,
+                "w": cfg.w,
+                "premorph": cfg.premorph,
+                "color": cfg.color,
+            })
 
     def _ref_size(self, det: ContourDetector) -> Tuple[int, int]:
         return det.proc.proc_w, det.proc.proc_h
@@ -199,9 +189,9 @@ class VisionEngine:
             EngineResult with detection information.
         """
         with self._lock:
-            knobs = self._knobs(self.config)
-            self._ensure_detectors(knobs)
-            return_overlay = bool(self.config.get("return_overlay", False))
+            knobs = self._knobs(self.config.engine)
+            self._ensure_detectors()
+            return_overlay = bool(self.config.engine.return_overlay)
             ok_big, out_big = self._step(self._det_big, self._st_big, frame, knobs, return_overlay)
             if ok_big:
                 res = out_big
@@ -245,8 +235,8 @@ class VisionEngine:
             self._adj_small = None
             self._st_big = self._StableState()
             self._st_small = self._StableState()
-            knobs = self._knobs(self.config)
-            self._ensure_detectors(knobs)
+            knobs = self._knobs(self.config.engine)
+            self._ensure_detectors()
 
     def get_last_result(self) -> Optional[EngineResult]:
         """Return the most recent result produced by :meth:`process`."""
