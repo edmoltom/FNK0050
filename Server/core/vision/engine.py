@@ -8,7 +8,7 @@ import numpy as np
 from .detectors.contours import ContourDetector, configs_from_profile
 from .detectors.base import DetectionResult
 from .profile_manager import load_profile as pm_load_profile, get_config
-from .dynamic_adjuster import DynamicAdjuster
+from .dynamics import DynamicAdjuster
 from .imgproc import mask_to_roi
 from .config_defaults import (
     DEFAULT_STABLE,
@@ -50,7 +50,7 @@ class VisionEngine:
 
     BASE = os.path.dirname(os.path.abspath(__file__))
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, config: Optional[Dict[str, Any]] = None, adjuster_cls=DynamicAdjuster) -> None:
         self._lock = threading.Lock()
         self.config: Dict[str, Any] = dict(config or {})
         self.dynamic: Dict[str, Dict[str, Any]] = {"big": {}, "small": {}}
@@ -61,6 +61,8 @@ class VisionEngine:
         self._st_big = self._StableState()
         self._st_small = self._StableState()
         self._last_result: Optional[EngineResult] = None
+        # Allow dependency injection of the dynamic adjuster
+        self._adj_cls = adjuster_cls
 
     # ---- internal helpers ----
     def _knobs(self, config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -88,14 +90,14 @@ class VisionEngine:
             big = self._resolve_profile(k["big_profile"])
             pm_load_profile("big", big)
             cfg, canny = configs_from_profile(get_config("big"))
-            self._adj_big = DynamicAdjuster(canny)
+            self._adj_big = self._adj_cls(canny)
             self._det_big = ContourDetector(adjuster=self._adj_big)
             self._det_big.configure(cfg)
         if self._det_small is None:
             small = self._resolve_profile(k["small_profile"])
             pm_load_profile("small", small)
             cfg, canny = configs_from_profile(get_config("small"))
-            self._adj_small = DynamicAdjuster(canny)
+            self._adj_small = self._adj_cls(canny)
             self._det_small = ContourDetector(adjuster=self._adj_small)
             self._det_small.configure(cfg)
 

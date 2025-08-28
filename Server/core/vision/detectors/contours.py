@@ -52,7 +52,7 @@ from ..imgproc import (
     _try_with_margins,
     _draw_overlay,
 )
-from ..dynamic_adjuster import CannyConfig
+from ..dynamics import CannyConfig
 from .base import Detector, DetectionResult
 
 NDArray = np.ndarray
@@ -207,7 +207,7 @@ class ContourDetector(Detector):
         self.premorph = PreMorphPatches()
         self.color = ColorGateConfig()
         if adjuster is None:
-            from ..dynamic_adjuster import DynamicAdjuster, CannyConfig
+            from ..dynamics import DynamicAdjuster, CannyConfig
             adjuster = DynamicAdjuster(CannyConfig())
         self.adjuster = adjuster
 
@@ -417,7 +417,7 @@ class ContourDetector(Detector):
 def run_file(image_path: str, profile: Optional[str] = None, out_dir: Optional[str] = "results"):
     if profile:
         from ..profile_manager import load_profile, get_config
-        from ..dynamic_adjuster import DynamicAdjuster
+        from ..dynamics import DynamicAdjuster
 
         load_profile("cli", profile)
         cfg_dict = get_config("cli")
