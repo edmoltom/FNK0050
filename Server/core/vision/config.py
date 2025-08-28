@@ -217,8 +217,12 @@ def merge_with_defaults(cfg: Optional[VisionConfig] = None) -> VisionConfig:
         return base
 
     def _merge(dst: Any, src: Any) -> Any:
+        """Recursively merge dataclass ``src`` into ``dst``."""
+
         if not is_dataclass(dst):
             return src
+        if not is_dataclass(src):  # defensive – avoid attribute access on dicts
+            raise TypeError(f"Expected dataclass, got {type(src).__name__}")
         for f in fields(dst):
             sv = getattr(src, f.name)
             if sv is None:
@@ -254,13 +258,37 @@ def load_config(path: Optional[str] = None) -> VisionConfig:
     else:
         raw = yaml.safe_load(text) or {}
 
-    cfg = VisionConfig(
-        engine=_strict(EngineConfig, raw.get("engine") or {}),
-        detectors=DetectorsConfig(
-            big=_strict(DetectorConfig, raw.get("detectors", {}).get("big", {})),
-            small=_strict(DetectorConfig, raw.get("detectors", {}).get("small", {})),
-        ),
-        logging=_strict(LoggingConfig, raw.get("logging") or {}),
+    # Build detector configs with strict validation at every level
+    det_raw = raw.get("detectors") or {}
+
+    def _build_detector(section: Dict[str, Any]) -> DetectorConfig:
+        return _strict(
+            DetectorConfig,
+            {
+                "canny": _strict(CannyConfig, section.get("canny") or {}),
+                "proc": _strict(ProcConfig, section.get("proc") or {}),
+                "morph": _strict(MorphConfig, section.get("morph") or {}),
+                "geo": _strict(GeoFilters, section.get("geo") or {}),
+                "w": _strict(Weights, section.get("w") or {}),
+                "premorph": _strict(PreMorphPatches, section.get("premorph") or {}),
+                "color": _strict(ColorGateConfig, section.get("color") or {}),
+            },
+        )
+
+    cfg = _strict(
+        VisionConfig,
+        {
+            "engine": _strict(EngineConfig, raw.get("engine") or {}),
+            "detectors": _strict(
+                DetectorsConfig,
+                {
+                    "big": _build_detector(det_raw.get("big") or {}),
+                    "small": _build_detector(det_raw.get("small") or {}),
+                },
+            ),
+            "logging": _strict(LoggingConfig, raw.get("logging") or {}),
+        },
     )
+
     return merge_with_defaults(cfg)
 

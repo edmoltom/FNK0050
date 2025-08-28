@@ -23,7 +23,7 @@ from typing import Optional
 from dataclasses import asdict
 
 from .engine import VisionEngine, DynamicParams, EngineResult
-from .config import load_config, merge_with_defaults
+from .config import load_config
 from .logger import VizLogger
 
 _engine: Optional[VisionEngine] = None
@@ -47,7 +47,7 @@ def create_engine_from_config(path: Optional[str] = None) -> VisionEngine:
         package is used.
     """
     global _engine
-    cfg = merge_with_defaults(load_config(path))
+    cfg = load_config(path)
     logger = VizLogger(**asdict(cfg.logging))
     _engine = VisionEngine(cfg, logger=logger)
     return _engine
