@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from dataclasses import dataclass
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 from .config_defaults import (
     CANNY_T1_INIT,
@@ -13,10 +13,31 @@ from .config_defaults import (
     CANNY_MAX_ITER,
     ADAPTIVE_BLOCK_SIZE,
     ADAPTIVE_C,
+    DEFAULT_EMA_ALPHA,
 )
 from .imgproc import pct_on
 
 NDArray = np.ndarray
+
+
+@dataclass
+class EMA:
+    """Simple exponential moving average helper."""
+
+    alpha: float = DEFAULT_EMA_ALPHA
+    value: Optional[float] = None
+
+    def update(self, v: float) -> float:
+        """Update the EMA with a new value and return the smoothed result."""
+        if self.value is None:
+            self.value = float(v)
+        else:
+            self.value = self.alpha * self.value + (1.0 - self.alpha) * float(v)
+        return self.value
+
+    def reset(self) -> None:
+        """Reset the EMA state."""
+        self.value = None
 
 
 def _adaptive_thresh(gray: NDArray) -> NDArray:
@@ -29,6 +50,7 @@ def _adaptive_thresh(gray: NDArray) -> NDArray:
         ADAPTIVE_C,
     )
 
+
 @dataclass
 class CannyConfig:
     t1_init: float = CANNY_T1_INIT
@@ -39,10 +61,13 @@ class CannyConfig:
     kp: float = CANNY_KP
     max_iter: int = CANNY_MAX_ITER
 
+
 class DynamicAdjuster:
-    """Auto-Canny and rescue logic applied before detection."""
-    def __init__(self, cfg: Optional[CannyConfig] = None) -> None:
+    """Auto-Canny with optional EMA for threshold smoothing."""
+
+    def __init__(self, cfg: Optional[CannyConfig] = None, ema: Optional[EMA] = None) -> None:
         self.cfg = cfg if cfg is not None else CannyConfig()
+        self._ema = ema if ema is not None else EMA()
 
     def update(self, **kwargs) -> None:
         """Update configuration values at runtime."""
@@ -57,7 +82,8 @@ class DynamicAdjuster:
     def apply(self, gray: NDArray) -> Tuple[NDArray, NDArray, float, int, float, bool]:
         """Return (edges, canny, t1, t2, life, used_rescue)."""
         cfg = self.cfg
-        t1 = float(cfg.t1_init)
+        # Start from EMA-smoothed threshold or initial config
+        t1 = self._ema.value if self._ema.value is not None else float(cfg.t1_init)
         life = 0.0
         for _ in range(1, cfg.max_iter + 1):
             t2 = int(np.clip(cfg.t2_ratio * t1, 0, 255))
@@ -69,6 +95,8 @@ class DynamicAdjuster:
                 t1 = max(1.0, t1 - cfg.kp * (cfg.life_min - life))
             else:
                 t1 = min(220.0, t1 + cfg.kp * (life - cfg.life_max))
+        # Update EMA for next call
+        self._ema.update(t1)
         t2 = int(np.clip(cfg.t2_ratio * t1, 0, 255))
         used_rescue = False
         edges = canny.copy()
@@ -77,4 +105,3 @@ class DynamicAdjuster:
             edges = cv2.bitwise_or(canny, th)
             used_rescue = True
         return edges, canny, float(t1), int(t2), float(life), bool(used_rescue)
-
