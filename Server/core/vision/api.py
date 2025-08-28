@@ -36,15 +36,15 @@ def _require_engine() -> VisionEngine:
     return _engine
 
 
-def create_engine_from_config(path: str = "configs/vision.yaml") -> VisionEngine:
+def create_engine_from_config(path: Optional[str] = None) -> VisionEngine:
     """Create and store a :class:`VisionEngine` from the given YAML file.
 
     Parameters
     ----------
     path:
-        Location of the YAML configuration file. The default mirrors the
-        previous behaviour of looking for ``configs/vision.yaml`` relative to
-        the working directory.
+        Optional location of the YAML configuration file. If ``None`` or a
+        relative path is provided, the default configuration bundled with the
+        package is used.
     """
     global _engine
     cfg = merge_with_defaults(load_config(path))
