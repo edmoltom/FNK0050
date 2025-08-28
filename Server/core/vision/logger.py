@@ -1,6 +1,7 @@
 import os
 import time
 import json
+from dataclasses import asdict, is_dataclass
 from typing import Optional, Dict, Any, TYPE_CHECKING
 
 import cv2
@@ -49,7 +50,8 @@ class VizLogger:
         data: Dict[str, Any] = {"frame": self.idx, "ts": time.time()}
 
         # Copy result, normalising types and skipping the overlay array
-        for k, v in dict(result or {}).items():
+        res_dict = asdict(result) if is_dataclass(result) else dict(result or {})
+        for k, v in res_dict.items():
             if k == "overlay":
                 continue
             if isinstance(v, np.generic):

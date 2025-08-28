@@ -1,12 +1,12 @@
 import os
 import threading
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, Tuple, TypedDict, TYPE_CHECKING
+from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
 
 from .detectors.contours import ContourDetector, configs_from_profile
-from .detectors.base import DetectionResult
+from .detectors.base import DetectionResult, DetectionContext
 from .profile_manager import load_profile as pm_load_profile, get_config
 from .dynamics import DynamicAdjuster
 from .imgproc import mask_to_roi
@@ -24,20 +24,25 @@ if TYPE_CHECKING:  # pragma: no cover
     from .logger import VizLogger
 
 
-class EngineResult(TypedDict, total=False):
+@dataclass
+class EngineResult:
+    """Aggregate result produced by :class:`VisionEngine`."""
+
     ok: bool
-    bbox: Tuple[int, int, int, int]
-    score: float
-    fill: float
-    bbox_ratio: float
-    life: float
-    center: Tuple[float, float]
-    space: Tuple[int, int]
-    overlay: np.ndarray
+    bbox: Optional[Tuple[int, int, int, int]] = None
+    score: Optional[float] = None
+    fill: Optional[float] = None
+    bbox_ratio: Optional[float] = None
+    life: Optional[float] = None
+    center: Optional[Tuple[float, float]] = None
+    space: Optional[Tuple[int, int]] = None
+    overlay: Optional[np.ndarray] = None
 
 
 @dataclass
 class DynamicParams:
+    """Runtime update for dynamic adjusters."""
+
     which: str
     params: Dict[str, Any] = field(default_factory=dict)
 
@@ -117,82 +122,96 @@ class VisionEngine:
     def _export(self, res: DetectionResult, det: ContourDetector, score_override: Optional[float] = None) -> EngineResult:
         ref = self._ref_size(det)
         if not res.ok:
-            return {"ok": False, "life": getattr(res, "life_canny_pct", 0.0), "space": ref}
-        out: EngineResult = {
-            "ok": True,
-            "bbox": res.bbox,
-            "score": float(score_override if score_override is not None else res.score),
-            "fill": res.fill,
-            "bbox_ratio": res.bbox_ratio,
-            "life": res.life_canny_pct,
-            "center": res.center,
-            "space": ref,
-        }
-        if res.overlay is not None:
-            out["overlay"] = res.overlay
-        return out
+            return EngineResult(ok=False, life=getattr(res, "life_canny_pct", 0.0), space=ref)
+        return EngineResult(
+            ok=True,
+            bbox=res.bbox,
+            score=float(score_override if score_override is not None else res.score),
+            fill=res.fill,
+            bbox_ratio=res.bbox_ratio,
+            life=res.life_canny_pct,
+            center=res.center,
+            space=ref,
+            overlay=res.overlay if res.overlay is not None else None,
+        )
 
-    def _step(self, det: ContourDetector, st: "VisionEngine._StableState", frame: np.ndarray, k: Dict[str, Any], return_overlay: bool) -> Tuple[bool, EngineResult]:
+    def _step(
+        self,
+        det: ContourDetector,
+        st: "VisionEngine._StableState",
+        frame: np.ndarray,
+        knobs: Dict[str, Any],
+        return_overlay: bool,
+    ) -> Tuple[bool, EngineResult]:
         ref_w, ref_h = self._ref_size(det)
-        if not k["stable"] or st.last_bbox is None:
-            res: DetectionResult = det.infer(frame, {"return_overlay": return_overlay})
+        if not knobs["stable"] or st.last_bbox is None:
+            res = det.infer(frame, DetectionContext(return_overlay=return_overlay))
             if not res.ok:
-                st.miss_count = min(k["miss_m"], st.miss_count + 1)
+                st.miss_count = min(knobs["miss_m"], st.miss_count + 1)
                 return False, self._export(res, det)
-            st.score_ema = res.score if st.score_ema is None else (k["ema_a"] * st.score_ema + (1.0 - k["ema_a"]) * res.score)
-            if st.score_ema >= k["on_th"]:
+            st.score_ema = (
+                res.score if st.score_ema is None else (knobs["ema_a"] * st.score_ema + (1.0 - knobs["ema_a"]) * res.score)
+            )
+            if st.score_ema >= knobs["on_th"]:
                 st.last_bbox = res.bbox
                 st.miss_count = 0
                 return True, self._export(res, det, st.score_ema)
-            else:
-                out = self._export(res, det, st.score_ema)
-                out["ok"] = False
-                return False, out
+            out = self._export(res, det, st.score_ema)
+            out.ok = False
+            return False, out
 
-        roi_frame = mask_to_roi(frame, st.last_bbox, k["roi_fact"], self._ref_size(det))
-        res_roi: DetectionResult = det.infer(roi_frame, {"return_overlay": return_overlay})
+        roi_frame = mask_to_roi(frame, st.last_bbox, knobs["roi_fact"], self._ref_size(det))
+        res_roi = det.infer(roi_frame, DetectionContext(return_overlay=return_overlay))
         if res_roi.ok:
-            st.score_ema = res_roi.score if st.score_ema is None else (k["ema_a"] * st.score_ema + (1.0 - k["ema_a"]) * res_roi.score)
-            if st.score_ema >= k["off_th"]:
+            st.score_ema = (
+                res_roi.score if st.score_ema is None else (knobs["ema_a"] * st.score_ema + (1.0 - knobs["ema_a"]) * res_roi.score)
+            )
+            if st.score_ema >= knobs["off_th"]:
                 st.last_bbox = res_roi.bbox
                 st.miss_count = 0
                 return True, self._export(res_roi, det, st.score_ema)
-            else:
-                st.miss_count += 1
+            st.miss_count += 1
         else:
             st.miss_count += 1
 
-        if st.miss_count >= k["miss_m"]:
+        if st.miss_count >= knobs["miss_m"]:
             st.last_bbox = None
             st.score_ema = None
-            res_global: DetectionResult = det.infer(frame, {"return_overlay": return_overlay})
+            res_global = det.infer(frame, DetectionContext(return_overlay=return_overlay))
             ok = bool(res_global.ok)
             if ok:
                 st.last_bbox = res_global.bbox
                 st.score_ema = res_global.score
                 st.miss_count = 0
             return ok, self._export(res_global, det)
-        else:
-            if st.last_bbox is not None:
-                return True, {"ok": True, "bbox": st.last_bbox, "score": float(st.score_ema or 0.0), "space": (ref_w, ref_h)}
-            return False, {"ok": False, "space": (ref_w, ref_h)}
+        if st.last_bbox is not None:
+            return True, EngineResult(ok=True, bbox=st.last_bbox, score=float(st.score_ema or 0.0), space=(ref_w, ref_h))
+        return False, EngineResult(ok=False, space=(ref_w, ref_h))
 
     # ---- public API ----
     def process(self, frame: np.ndarray) -> EngineResult:
+        """Run the detection pipeline on a frame.
+
+        Args:
+            frame: BGR image to analyse.
+
+        Returns:
+            EngineResult with detection information.
+        """
         with self._lock:
-            k = self._knobs(self.config)
-            self._ensure_detectors(k)
+            knobs = self._knobs(self.config)
+            self._ensure_detectors(knobs)
             return_overlay = bool(self.config.get("return_overlay", False))
-            ok_big, out_big = self._step(self._det_big, self._st_big, frame, k, return_overlay)
+            ok_big, out_big = self._step(self._det_big, self._st_big, frame, knobs, return_overlay)
             if ok_big:
                 res = out_big
             else:
-                ok_small, out_small = self._step(self._det_small, self._st_small, frame, k, return_overlay)
+                ok_small, out_small = self._step(self._det_small, self._st_small, frame, knobs, return_overlay)
                 if ok_small:
                     res = out_small
                 else:
-                    sb = float(out_big.get("score", 0.0))
-                    ss = float(out_small.get("score", 0.0))
+                    sb = float(out_big.score or 0.0)
+                    ss = float(out_small.score or 0.0)
                     res = out_big if sb >= ss else out_small
             self._last_result = res
 
@@ -204,6 +223,11 @@ class VisionEngine:
         return res
 
     def update_dynamic(self, params: DynamicParams) -> None:
+        """Update dynamic parameters at runtime.
+
+        Args:
+            params: Parameter update specification.
+        """
         with self._lock:
             which = params.which
             self.dynamic[which] = dict(params.params)
@@ -213,6 +237,7 @@ class VisionEngine:
                 self._adj_small.update(**params.params)
 
     def reload_config(self) -> None:
+        """Reload detector configuration from current settings."""
         with self._lock:
             self._det_big = None
             self._det_small = None
@@ -220,15 +245,17 @@ class VisionEngine:
             self._adj_small = None
             self._st_big = self._StableState()
             self._st_small = self._StableState()
-            k = self._knobs(self.config)
-            self._ensure_detectors(k)
+            knobs = self._knobs(self.config)
+            self._ensure_detectors(knobs)
 
     def get_last_result(self) -> Optional[EngineResult]:
+        """Return the most recent result produced by :meth:`process`."""
         with self._lock:
             return self._last_result
 
     # utility for logger/tests
     def get_detectors(self) -> Tuple[Optional[ContourDetector], Optional[ContourDetector]]:
+        """Return internal detectors for inspection or testing."""
         with self._lock:
             return self._det_big, self._det_small
 

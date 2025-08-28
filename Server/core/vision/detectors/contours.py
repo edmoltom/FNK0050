@@ -53,7 +53,7 @@ from ..imgproc import (
 )
 from ..overlays import draw_detector
 from ..dynamics import CannyConfig
-from .base import Detector, DetectionResult
+from .base import Detector, DetectionResult, DetectionContext
 
 NDArray = np.ndarray
 
@@ -203,7 +203,7 @@ class ContourDetector(Detector):
         self.proc = ProcConfig()
         self.morph_cfg = MorphConfig()
         self.geo = GeoFilters()
-        self.w = Weights()
+        self.weights = Weights()
         self.premorph = PreMorphPatches()
         self.color = ColorGateConfig()
         if adjuster is None:
@@ -225,7 +225,7 @@ class ContourDetector(Detector):
             self.geo = g if isinstance(g, GeoFilters) else GeoFilters(**g)
         if "w" in cfg:
             w = cfg["w"]
-            self.w = w if isinstance(w, Weights) else Weights(**w)
+            self.weights = w if isinstance(w, Weights) else Weights(**w)
         if "premorph" in cfg:
             pm = cfg["premorph"]
             self.premorph = pm if isinstance(pm, PreMorphPatches) else PreMorphPatches(**pm)
@@ -239,7 +239,7 @@ class ContourDetector(Detector):
             "canny": asdict(self.adjuster.cfg),
             "morph": asdict(self.morph_cfg),
             "geo": asdict(self.geo),
-            "weights": asdict(self.w),
+            "weights": asdict(self.weights),
             "premorph": asdict(self.premorph),
             "color_gate": asdict(self.color),
         }
@@ -248,13 +248,13 @@ class ContourDetector(Detector):
     def infer(
         self,
         img_or_path: Union[str, NDArray],
-        ctx: Optional[Dict[str, Any]] = None,
+        ctx: Optional[DetectionContext] = None,
     ) -> DetectionResult:
-        ctx = dict(ctx or {})
-        save_dir: Optional[str] = ctx.get("save_dir")
-        stamp: Optional[str] = ctx.get("stamp")
-        save_profile: bool = bool(ctx.get("save_profile", True))
-        return_overlay: bool = bool(ctx.get("return_overlay", True))
+        ctx = ctx or DetectionContext()
+        save_dir = ctx.save_dir
+        stamp = ctx.stamp
+        save_profile = bool(ctx.save_profile)
+        return_overlay = bool(ctx.return_overlay)
 
         img = self._load_image(img_or_path)
         if img is None:
@@ -292,13 +292,15 @@ class ContourDetector(Detector):
             else:
                 color_used = True
             if save_dir is not None:
-                cv2.imwrite(os.path.join(save_dir, f"{stamp}_color_mask.png"),
-                            color_mask if color_mask is not None else np.zeros_like(edges))
+                cv2.imwrite(
+                    os.path.join(save_dir, f"{stamp}_color_mask.png"),
+                    color_mask if color_mask is not None else np.zeros_like(edges),
+                )
 
         # ----- Pre-morph patches -----
-        H, W = edges.shape[:2]
+        height, width = edges.shape[:2]
         edges2 = edges.copy()
-        crop = int(max(0, min(BOTTOM_MARGIN_MAX, self.premorph.bottom_margin_pct)) * H / 100.0)
+        crop = int(max(0, min(BOTTOM_MARGIN_MAX, self.premorph.bottom_margin_pct)) * height / 100.0)
         if crop > 0:
             edges2[-crop:, :] = 0
 
@@ -325,7 +327,7 @@ class ContourDetector(Detector):
             cv2.imwrite(os.path.join(save_dir, f"{stamp}_edges_patched.png"), edges2)
 
         # ----- Main selection -----
-        best, e_used = _try_with_margins(edges2, self.proc, self.morph_cfg, self.geo, self.w)
+        best, e_used = _try_with_margins(edges2, self.proc, self.morph_cfg, self.geo, self.weights)
         if save_dir is not None:
             cv2.imwrite(os.path.join(save_dir, f"{stamp}_edges_used.png"), e_used)
 
@@ -411,7 +413,7 @@ class ContourDetector(Detector):
         save_profile: bool = True,
         return_overlay: bool = True,
     ) -> DetectionResult:
-        ctx = dict(
+        ctx = DetectionContext(
             save_dir=save_dir,
             stamp=stamp,
             save_profile=save_profile,

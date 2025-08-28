@@ -60,10 +60,9 @@ def set_dynamic(params: DynamicParams) -> None:
 def get_last_result() -> EngineResult:
     """Return the last result computed by the engine.
 
-    If the engine has not yet processed any frame, an empty result with
-    ``{"ok": False}`` is returned instead of ``None`` to maintain a stable
-    return type.
+    Returns:
+        EngineResult: Last result or an empty negative result if none.
     """
     engine = _require_engine()
     result = engine.get_last_result()
-    return result or {"ok": False}
+    return result or EngineResult(ok=False)
