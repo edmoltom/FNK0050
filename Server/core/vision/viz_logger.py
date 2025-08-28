@@ -3,7 +3,8 @@ from typing import Optional, Tuple
 import numpy as np
 
 from .engine import VisionEngine
-from .detectors.contour_detector import ContourDetector, DetectionResult
+from .detectors.contours import ContourDetector
+from .detectors.base import DetectionResult
 
 def _ref_size(det: ContourDetector) -> Tuple[int,int]:
     return det.proc.proc_w, det.proc.proc_h
@@ -46,8 +47,12 @@ class VisionLogger:
         if (self.idx % self.stride) != 0:
             return  # no hacer nada este frame
 
-        res = det.detect(frame_bgr, save_dir=self.run_dir, stamp=stamp,
-                         save_profile=True, return_overlay=False)
+        res = det.infer(frame_bgr, {
+            "save_dir": self.run_dir,
+            "stamp": stamp,
+            "save_profile": True,
+            "return_overlay": False,
+        })
 
         x=y=w=h=0
         if res.bbox: x,y,w,h = res.bbox
@@ -86,9 +91,14 @@ class VisionLogger:
         save_dir = self.run_dir if (self.idx % self.stride == 0) else None
 
         # Ejecutamos el detector elegido sobre el frame completo para logging.
-        res: DetectionResult = det.detect(
-            frame_bgr, save_dir=save_dir, stamp=stamp,
-            save_profile=True, return_overlay=True
+        res: DetectionResult = det.infer(
+            frame_bgr,
+            {
+                "save_dir": save_dir,
+                "stamp": stamp,
+                "save_profile": True,
+                "return_overlay": True,
+            },
         )
 
         # Escribir CSV

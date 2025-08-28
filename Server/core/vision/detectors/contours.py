@@ -53,6 +53,7 @@ from ..imgproc import (
     _draw_overlay,
 )
 from ..dynamic_adjuster import CannyConfig
+from .base import Detector, DetectionResult
 
 NDArray = np.ndarray
 
@@ -191,48 +192,46 @@ def configs_from_profile(data: Dict[str, Any]) -> Tuple[Dict[str, Any], CannyCon
     )
     return det_cfg, canny
 
-@dataclass
-class DetectionResult:
-    ok: bool
-    used_rescue: bool
-    life_canny_pct: float
-    bbox: Optional[Tuple[int, int, int, int]] = None
-    score: Optional[float] = None
-    fill: Optional[float] = None
-    bbox_ratio: Optional[float] = None
-    chosen_ck: Optional[int] = None
-    chosen_dk: Optional[int] = None
-    center: Optional[Tuple[int, int]] = None
-    overlay: Optional[NDArray] = None
-    t1: Optional[float] = None
-    t2: Optional[int] = None
-    color_cover_pct: Optional[float] = None
-    color_used: Optional[bool] = None
 
 # ----------------------- detector -----------------------
-class ContourDetector:
-    "Contour pipeline + pre-morph patches + optional color-gate + JSON profiles."
-    def __init__(
-        self,
-        proc: ProcConfig = ProcConfig(),
-        morph: MorphConfig = MorphConfig(),
-        geo: GeoFilters = GeoFilters(),
-        w: Weights = Weights(),
-        premorph: PreMorphPatches = PreMorphPatches(),
-        color: ColorGateConfig = ColorGateConfig(),
-        adjuster: Optional["DynamicAdjuster"] = None,
-    ) -> None:
-        self.proc = proc
-        self.morph_cfg = morph
-        self.geo = geo
-        self.w = w
-        self.premorph = premorph
-        self.color = color
-        # DynamicAdjuster injected; if None, use default
+class ContourDetector(Detector):
+    """Contour pipeline + pre-morph patches + optional color-gate + JSON profiles."""
+
+    name = "contours"
+
+    def __init__(self, adjuster: Optional["DynamicAdjuster"] = None) -> None:
+        self.proc = ProcConfig()
+        self.morph_cfg = MorphConfig()
+        self.geo = GeoFilters()
+        self.w = Weights()
+        self.premorph = PreMorphPatches()
+        self.color = ColorGateConfig()
         if adjuster is None:
             from ..dynamic_adjuster import DynamicAdjuster, CannyConfig
             adjuster = DynamicAdjuster(CannyConfig())
         self.adjuster = adjuster
+
+    def configure(self, cfg: Dict[str, Any]) -> None:
+        if cfg is None:
+            return
+        if "proc" in cfg:
+            p = cfg["proc"]
+            self.proc = p if isinstance(p, ProcConfig) else ProcConfig(**p)
+        if "morph" in cfg:
+            m = cfg["morph"]
+            self.morph_cfg = m if isinstance(m, MorphConfig) else MorphConfig(**m)
+        if "geo" in cfg:
+            g = cfg["geo"]
+            self.geo = g if isinstance(g, GeoFilters) else GeoFilters(**g)
+        if "w" in cfg:
+            w = cfg["w"]
+            self.w = w if isinstance(w, Weights) else Weights(**w)
+        if "premorph" in cfg:
+            pm = cfg["premorph"]
+            self.premorph = pm if isinstance(pm, PreMorphPatches) else PreMorphPatches(**pm)
+        if "color" in cfg:
+            c = cfg["color"]
+            self.color = c if isinstance(c, ColorGateConfig) else ColorGateConfig(**c)
 
     def to_profile_dict(self) -> Dict[str, Any]:
         return {
@@ -246,14 +245,17 @@ class ContourDetector:
         }
 
     # ----------------------------- Public API -----------------------------
-    def detect(
+    def infer(
         self,
         img_or_path: Union[str, NDArray],
-        save_dir: Optional[str] = None,
-        stamp: Optional[str] = None,
-        save_profile: bool = True,
-        return_overlay: bool = True,
+        ctx: Optional[Dict[str, Any]] = None,
     ) -> DetectionResult:
+        ctx = dict(ctx or {})
+        save_dir: Optional[str] = ctx.get("save_dir")
+        stamp: Optional[str] = ctx.get("stamp")
+        save_profile: bool = bool(ctx.get("save_profile", True))
+        return_overlay: bool = bool(ctx.get("return_overlay", True))
+
         img = self._load_image(img_or_path)
         if img is None:
             raise FileNotFoundError(str(img_or_path))
@@ -384,6 +386,23 @@ class ContourDetector:
 
         return result
 
+    # Legacy API ------------------------------------------------------------
+    def detect(
+        self,
+        img_or_path: Union[str, NDArray],
+        save_dir: Optional[str] = None,
+        stamp: Optional[str] = None,
+        save_profile: bool = True,
+        return_overlay: bool = True,
+    ) -> DetectionResult:
+        ctx = dict(
+            save_dir=save_dir,
+            stamp=stamp,
+            save_profile=save_profile,
+            return_overlay=return_overlay,
+        )
+        return self.infer(img_or_path, ctx)
+
     # --------------------------- Internals ---------------------------
     def _load_image(self, img_or_path: Union[str, NDArray]) -> Optional[NDArray]:
         if isinstance(img_or_path, str):
@@ -403,7 +422,8 @@ def run_file(image_path: str, profile: Optional[str] = None, out_dir: Optional[s
         load_profile("cli", profile)
         cfg_dict = get_config("cli")
         det_cfg, canny_cfg = configs_from_profile(cfg_dict)
-        det = ContourDetector(adjuster=DynamicAdjuster(canny_cfg), **det_cfg)
+        det = ContourDetector(adjuster=DynamicAdjuster(canny_cfg))
+        det.configure(det_cfg)
     else:
         det = ContourDetector()
     stamp = time.strftime("%Y%m%d_%H%M%S")

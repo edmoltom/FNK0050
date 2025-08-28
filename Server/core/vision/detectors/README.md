@@ -1,6 +1,6 @@
 # Vision Pipeline — ContourDetector + Temporal API
 
-Resumen conciso del pipeline y tuning. Paridad con `contour_detector.py` y `api.py`.
+Resumen conciso del pipeline y tuning. Paridad con `contours.py` y `api.py`.
 
 ## Pipeline
 1) **Preprocesado** → resize (proc_w,h), gris, blur impar.  
@@ -23,9 +23,9 @@ Resumen conciso del pipeline y tuning. Paridad con `contour_detector.py` y `api.
 
 ## Uso
 ```python
-from core.vision.detectors.contour_detector import ContourDetector
-det = ContourDetector.from_profile("profile_big_solid.json")
-res = det.detect(frame_bgr, return_overlay=True)
+from core.vision.detectors.contours import ContourDetector
+det = ContourDetector()
+res = det.infer(frame_bgr, {"return_overlay": True})
 
 from core.vision.api import process_frame
 out = process_frame(frame_bgr, return_overlay=True, config={"roi_factor":1.8, "ema":0.7})
