@@ -85,9 +85,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROFILE_DIR = os.path.join(BASE_DIR, "profiles")
 _DEFAULT_BIG = os.path.join(_PROFILE_DIR, "profile_big.json")
 _DEFAULT_SMALL = os.path.join(_PROFILE_DIR, "profile_small.json")
-DEFAULT_CONFIG_PATH = os.path.abspath(
-    os.path.join(BASE_DIR, "..", "..", "..", "configs", "vision.yaml")
-)
+DEFAULT_CONFIG_PATH = os.path.join(BASE_DIR, "config", "vision.yaml")
 
 
 @dataclass
