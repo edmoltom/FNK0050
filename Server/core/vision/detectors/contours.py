@@ -434,14 +434,20 @@ class ContourDetector(Detector):
 # ----------------------- CLI helper -----------------------
 def run_file(image_path: str, profile: Optional[str] = None, out_dir: Optional[str] = "results"):
     if profile:
-        from ..profile_manager import load_profile, get_config
+        from ..config import load_config
         from ..dynamics import DynamicAdjuster
 
-        load_profile("cli", profile)
-        cfg_dict = get_config("cli")
-        det_cfg, canny_cfg = configs_from_profile(cfg_dict)
-        det = ContourDetector(adjuster=DynamicAdjuster(canny_cfg))
-        det.configure(det_cfg)
+        cfg = load_config(profile)
+        det_cfg = cfg.detectors.big
+        det = ContourDetector(adjuster=DynamicAdjuster(det_cfg.canny))
+        det.configure({
+            "proc": det_cfg.proc,
+            "morph": det_cfg.morph,
+            "geo": det_cfg.geo,
+            "w": det_cfg.w,
+            "premorph": det_cfg.premorph,
+            "color": det_cfg.color,
+        })
     else:
         det = ContourDetector()
     stamp = time.strftime("%Y%m%d_%H%M%S")

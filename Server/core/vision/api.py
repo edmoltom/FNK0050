@@ -20,9 +20,11 @@ from __future__ import annotations
 
 from typing import Optional
 
-import yaml
+from dataclasses import asdict
 
 from .engine import VisionEngine, DynamicParams, EngineResult
+from .config import load_config, merge_with_defaults
+from .logger import VizLogger
 
 _engine: Optional[VisionEngine] = None
 
@@ -45,9 +47,9 @@ def create_engine_from_config(path: str = "configs/vision.yaml") -> VisionEngine
         the working directory.
     """
     global _engine
-    with open(path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f) or {}
-    _engine = VisionEngine(config)
+    cfg = merge_with_defaults(load_config(path))
+    logger = VizLogger(**asdict(cfg.logging))
+    _engine = VisionEngine(cfg, logger=logger)
     return _engine
 
 

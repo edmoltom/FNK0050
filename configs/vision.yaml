@@ -1,0 +1,77 @@
+# Default vision configuration file.
+#
+# All values are commented out to serve as documentation of the available
+# options and their defaults.  Uncomment and adjust as needed.
+
+engine:
+  # stable: true
+  # on_th: 0.55
+  # off_th: 0.45
+  # stick_k: 5
+  # miss_m: 8
+  # roi_factor: 1.8
+  # ema: 0.7
+  # return_overlay: false
+
+detectors:
+  big:
+    # Defaults mirror ``core/vision/profiles/profile_big.json``
+    # proc:
+    #   proc_w: 160
+    #   proc_h: 120
+    #   blur_k: 5
+    #   border_margin: 6
+    # canny:
+    #   t1_init: 50.0
+    #   t2_ratio: 2.5
+    #   life_min: 5.0
+    #   life_max: 10.0
+    #   rescue_life_min: 3.0
+    #   kp: 4.0
+    #   max_iter: 25
+    # morph:
+    #   close_min: 3
+    #   close_max: 21
+    #   dil_min: 3
+    #   dil_max: 15
+    #   steps: 10
+    # geo:
+    #   ar_min: 0.4
+    #   ar_max: 2.2
+    #   bbox_hard_cap: 0.5
+    #   bbox_min: 0.18
+    #   bbox_max: 0.35
+    #   fill_min: 0.6
+    #   fill_max: 0.95
+    #   min_area_frac: 0.03
+    # w:
+    #   area: 0.35
+    #   fill: 0.15
+    #   solidity: 0.2
+    #   circular: 0.1
+    #   rect: 0.15
+    #   ar: 0.1
+    #   center_bias: 0.25
+    #   dist: 0.2
+    # premorph:
+    #   bottom_margin_pct: 20
+    #   min_blob_px: 100
+    #   fill_from_edges: true
+    # color:
+    #   enabled: true
+    #   mode: lab_bg
+    #   ab_thresh: 18
+    #   hsv_lo: [10, 60, 40]
+    #   hsv_hi: [30, 255, 255]
+    #   combine: OR
+    #   min_cover_pct: 0.5
+    #   max_cover_pct: 60.0
+  small:
+    # Defaults mirror ``core/vision/profiles/profile_small.json``
+    # (values omitted for brevity; see file for details)
+
+logging:
+  # output_dir: runs/vision
+  # stride: 5
+  # save_raw: false
+
