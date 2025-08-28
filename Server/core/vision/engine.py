@@ -1,7 +1,7 @@
 import os
 import threading
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, Tuple, TypedDict
+from typing import Dict, Any, Optional, Tuple, TypedDict, TYPE_CHECKING
 
 import numpy as np
 
@@ -19,6 +19,9 @@ from .config_defaults import (
     DEFAULT_ROI_FACTOR,
     DEFAULT_EMA_ALPHA,
 )
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .logger import VizLogger
 
 
 class EngineResult(TypedDict, total=False):
@@ -50,7 +53,12 @@ class VisionEngine:
 
     BASE = os.path.dirname(os.path.abspath(__file__))
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None, adjuster_cls=DynamicAdjuster) -> None:
+    def __init__(
+        self,
+        config: Optional[Dict[str, Any]] = None,
+        adjuster_cls=DynamicAdjuster,
+        logger: Optional["VizLogger"] = None,
+    ) -> None:
         self._lock = threading.Lock()
         self.config: Dict[str, Any] = dict(config or {})
         self.dynamic: Dict[str, Dict[str, Any]] = {"big": {}, "small": {}}
@@ -63,6 +71,8 @@ class VisionEngine:
         self._last_result: Optional[EngineResult] = None
         # Allow dependency injection of the dynamic adjuster
         self._adj_cls = adjuster_cls
+        # Optional logger that receives every processed frame
+        self.logger: Optional["VizLogger"] = logger
 
     # ---- internal helpers ----
     def _knobs(self, config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -175,17 +185,23 @@ class VisionEngine:
             return_overlay = bool(self.config.get("return_overlay", False))
             ok_big, out_big = self._step(self._det_big, self._st_big, frame, k, return_overlay)
             if ok_big:
-                self._last_result = out_big
-                return out_big
-            ok_small, out_small = self._step(self._det_small, self._st_small, frame, k, return_overlay)
-            if ok_small:
-                self._last_result = out_small
-                return out_small
-            sb = float(out_big.get("score", 0.0))
-            ss = float(out_small.get("score", 0.0))
-            res = out_big if sb >= ss else out_small
+                res = out_big
+            else:
+                ok_small, out_small = self._step(self._det_small, self._st_small, frame, k, return_overlay)
+                if ok_small:
+                    res = out_small
+                else:
+                    sb = float(out_big.get("score", 0.0))
+                    ss = float(out_small.get("score", 0.0))
+                    res = out_big if sb >= ss else out_small
             self._last_result = res
-            return res
+
+        if self.logger is not None:
+            try:
+                self.logger.log(frame, res, res.get("overlay"))
+            except Exception:
+                pass
+        return res
 
     def update_dynamic(self, params: DynamicParams) -> None:
         with self._lock:
@@ -215,3 +231,7 @@ class VisionEngine:
     def get_detectors(self) -> Tuple[Optional[ContourDetector], Optional[ContourDetector]]:
         with self._lock:
             return self._det_big, self._det_small
+
+    def set_logger(self, logger: Optional["VizLogger"]) -> None:
+        """Attach or replace the logger used for dumping results."""
+        self.logger = logger
