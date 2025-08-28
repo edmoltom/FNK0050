@@ -1,7 +1,8 @@
 from picamera2 import Picamera2
 from core.vision.engine import VisionEngine
 from core.vision.logger import VizLogger
-from core.vision.config_defaults import CAMERA_RESOLUTION, REF_SIZE
+from core.vision.config_defaults import CAMERA_RESOLUTION
+from core.vision.overlays import draw_engine
 
 import cv2
 import base64
@@ -72,29 +73,6 @@ class VisionInterface:
         self._ensure_camera_started()
         return self.picam2.capture_array()
 
-    # -------- Internal helpers --------
-
-    def _get_reference_resolution(self, res: dict, frame_shape):
-        """
-        Try to infer the coordinate space used by the pipeline results.
-        Fallbacks: config['ref_size'] or REF_SIZE.
-        """
-        # Try common keys
-        if isinstance(res.get("space"), (tuple, list)) and len(res["space"]) == 2:
-            ref_w, ref_h = res["space"]
-        elif isinstance(res.get("space"), dict) and "width" in res["space"] and "height" in res["space"]:
-            ref_w, ref_h = res["space"]["width"], res["space"]["height"]
-        elif isinstance(res.get("input_size"), (tuple, list)) and len(res["input_size"]) == 2:
-            ref_w, ref_h = res["input_size"]
-        else:
-            ref_w, ref_h = self._config.get("ref_size", REF_SIZE)
-
-        # Guard rails
-        if not (isinstance(ref_w, (int, float)) and isinstance(ref_h, (int, float)) and ref_w > 0 and ref_h > 0):
-            ref_w, ref_h = REF_SIZE
-
-        return float(ref_w), float(ref_h)
-
     def _apply_pipeline(self):
         """
         @brief Run the vision pipeline and draw overlays on the frame.
@@ -105,30 +83,7 @@ class VisionInterface:
 
         # Try passing config; fall back if pipeline doesn't accept it
         res = self._engine.process(frame)
-
-        if res and res.get("ok"):
-            # Compute scaling from the pipeline's coordinate space to current frame
-            ref_w, ref_h = self._get_reference_resolution(res, frame.shape)
-            sx = frame.shape[1] / ref_w
-            sy = frame.shape[0] / ref_h
-
-            # Draw bbox if present
-            if "bbox" in res and isinstance(res["bbox"], (tuple, list)) and len(res["bbox"]) == 4:
-                x, y, w, h = res["bbox"]
-                x2, y2, w2, h2 = int(x * sx), int(y * sy), int(w * sx), int(h * sy)
-                cv2.rectangle(frame, (x2, y2), (x2 + w2, y2 + h2), (0, 255, 0), 2)
-
-            # Draw center if present
-            if "center" in res and isinstance(res["center"], (tuple, list)) and len(res["center"]) == 2:
-                cx, cy = res["center"]
-                cv2.circle(frame, (int(cx * sx), int(cy * sy)), 4, (0, 255, 0), -1)
-
-            # Score label
-            if "score" in res:
-                label_y = max(18, (y2 if 'y2' in locals() else 10) - 6)
-                cv2.putText(frame, f"sc={res['score']:.2f}", (10, label_y),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
+        frame = draw_engine(frame, res)
         return frame
 
     # -------- Public streaming API --------

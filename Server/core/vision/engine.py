@@ -198,7 +198,7 @@ class VisionEngine:
 
         if self.logger is not None:
             try:
-                self.logger.log(frame, res, res.get("overlay"))
+                self.logger.log(frame, res)
             except Exception:
                 pass
         return res
