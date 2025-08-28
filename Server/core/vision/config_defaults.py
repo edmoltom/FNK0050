@@ -1,6 +1,6 @@
 """Shared default values and thresholds for vision modules."""
 
-# Camera defaults
+# Vision interface defaults
 CAMERA_RESOLUTION = (640, 480)
 REF_SIZE = (160, 120)
 BLUR_KERNEL = 5

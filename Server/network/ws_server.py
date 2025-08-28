@@ -4,10 +4,10 @@ import json
 import time
 import websockets
 
-from core.Camera import Camera
+from core.VisionInterface import VisionInterface
 from core.vision import api as vision_api
 
-camera = Camera()
+camera = VisionInterface()
 camera.start_periodic_capture(interval=1.0)  # sigue autoarrancando; si prefieres lazy, quita esta línea
 
 

@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 class StreamWidget(QWidget):
     def __init__(self, ws_client):
         super().__init__()
-        self.setWindowTitle("Robot Camera Stream")
+        self.setWindowTitle("Robot Vision Stream")
         self.layout = QVBoxLayout()
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
