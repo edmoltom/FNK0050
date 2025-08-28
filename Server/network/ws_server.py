@@ -6,8 +6,12 @@ import websockets
 
 from core.VisionInterface import VisionInterface
 from core.vision import api as vision_api
+from core.vision.engine import DynamicParams
 
-camera = VisionInterface()
+# Instantiate the vision engine through the façade and wire it into the
+# camera interface.  This replaces the previous implicit global engine.
+engine = vision_api.create_engine_from_config()
+camera = VisionInterface(engine)
 camera.start_periodic_capture(interval=1.0)  # sigue autoarrancando; si prefieres lazy, quita esta línea
 
 
@@ -65,16 +69,10 @@ async def handler(websocket):
                 camera.set_processing_config(config)
                 response = {"status": "ok", "type": "text", "data": "processing config updated"}
 
-            elif cmd == "load_profile":
-                which = data.get("which", "big")
-                path = data.get("path")
-                vision_api.load_profile(which, path)
-                response = {"status": "ok", "type": "text", "data": f"profile {which} loaded"}
-
             elif cmd == "dynamic":
                 which = data.get("which", "big")
                 params = data.get("params", {})
-                vision_api.update_dynamic(which, params)
+                vision_api.set_dynamic(DynamicParams(which, params))
                 response = {"status": "ok", "type": "text", "data": "dynamic params updated"}
 
             else:
