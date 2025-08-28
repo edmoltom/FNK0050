@@ -85,6 +85,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROFILE_DIR = os.path.join(BASE_DIR, "profiles")
 _DEFAULT_BIG = os.path.join(_PROFILE_DIR, "profile_big.json")
 _DEFAULT_SMALL = os.path.join(_PROFILE_DIR, "profile_small.json")
+DEFAULT_CONFIG_PATH = os.path.abspath(
+    os.path.join(BASE_DIR, "..", "..", "..", "configs", "vision.yaml")
+)
 
 
 @dataclass
@@ -329,8 +332,19 @@ def merge_with_defaults(cfg: Optional[VisionConfig] = None) -> VisionConfig:
     return _merge(base, cfg)
 
 
-def load_config(path: str) -> VisionConfig:
-    """Load a YAML configuration file and return a ``VisionConfig`` instance."""
+def load_config(path: Optional[str] = None) -> VisionConfig:
+    """Load a YAML configuration file and return a ``VisionConfig`` instance.
+
+    Parameters
+    ----------
+    path:
+        Optional path to the configuration file. If ``None`` or a relative
+        path, the file is resolved relative to ``DEFAULT_CONFIG_PATH``.
+    """
+    if path is None:
+        path = DEFAULT_CONFIG_PATH
+    elif not os.path.isabs(path):
+        path = os.path.join(os.path.dirname(DEFAULT_CONFIG_PATH), path)
 
     with open(path, "r", encoding="utf-8") as fh:
         text = fh.read()
