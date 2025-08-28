@@ -1,32 +1,69 @@
-"""Backward compatibility wrappers for the vision engine."""
+"""Lightweight façade for the :mod:`core.vision` engine.
 
-from typing import Any, Dict, Optional, Tuple
-import numpy as np
+This module provides a minimal interface around :class:`~core.vision.engine.VisionEngine`
+so that the rest of the application does not need to manage engine instances
+explicitly.  It replaces the previous global orchestration logic with three
+simple helpers:
 
-from .engine import VisionEngine, DynamicParams
+``create_engine_from_config``
+    Instantiate a :class:`VisionEngine` from a YAML configuration file and
+    store it for subsequent calls.
 
-_engine = VisionEngine()
+``set_dynamic``
+    Forward dynamic parameter updates to the internal engine.
 
+``get_last_result``
+    Retrieve the most recent :class:`~core.vision.engine.EngineResult` produced
+    by the engine.
+"""
+from __future__ import annotations
 
-def process_frame(frame: np.ndarray, return_overlay: bool = True, config: Optional[Dict[str, Any]] = None):
-    """Compatibility layer calling :class:`VisionEngine`."""
-    if config is not None:
-        _engine.config = dict(config)
-        _engine.config["return_overlay"] = return_overlay
-        _engine.reload_config()
-    else:
-        _engine.config["return_overlay"] = return_overlay
-    return _engine.process(frame)
+from typing import Optional
 
+import yaml
 
-def update_dynamic(which: str, params: Dict[str, Any]) -> None:
-    _engine.update_dynamic(DynamicParams(which, params))
+from .engine import VisionEngine, DynamicParams, EngineResult
 
-
-def reload_config() -> None:
-    _engine.reload_config()
+_engine: Optional[VisionEngine] = None
 
 
-def get_detectors() -> Tuple[Any, Any]:
-    return _engine.get_detectors()
+def _require_engine() -> VisionEngine:
+    """Return the currently active engine or raise if none was created."""
+    if _engine is None:  # pragma: no cover - defensive branch
+        raise RuntimeError("Vision engine not initialised; call create_engine_from_config().")
+    return _engine
 
+
+def create_engine_from_config(path: str = "configs/vision.yaml") -> VisionEngine:
+    """Create and store a :class:`VisionEngine` from the given YAML file.
+
+    Parameters
+    ----------
+    path:
+        Location of the YAML configuration file. The default mirrors the
+        previous behaviour of looking for ``configs/vision.yaml`` relative to
+        the working directory.
+    """
+    global _engine
+    with open(path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f) or {}
+    _engine = VisionEngine(config)
+    return _engine
+
+
+def set_dynamic(params: DynamicParams) -> None:
+    """Update the engine's dynamic parameters."""
+    engine = _require_engine()
+    engine.update_dynamic(params)
+
+
+def get_last_result() -> EngineResult:
+    """Return the last result computed by the engine.
+
+    If the engine has not yet processed any frame, an empty result with
+    ``{"ok": False}`` is returned instead of ``None`` to maintain a stable
+    return type.
+    """
+    engine = _require_engine()
+    result = engine.get_last_result()
+    return result or {"ok": False}

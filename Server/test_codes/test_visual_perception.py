@@ -1,8 +1,11 @@
-from VisionInterface import VisionInterface
+from core.VisionInterface import VisionInterface
+from core.vision import api as vision_api
+
 import base64, datetime, os, time
 
 def main():
-    cam = VisionInterface()
+    engine = vision_api.create_engine_from_config()
+    cam = VisionInterface(engine)
     os.makedirs("logs", exist_ok=True)
     ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"logs/{ts}.jpg"
