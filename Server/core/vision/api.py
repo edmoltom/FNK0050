@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from .engine import VisionEngine, EngineResult
+from .viz_logger import VisionLogger, create_logger_from_env as _create_logger_from_env
 
 _ENGINE: Optional[VisionEngine] = None
 
@@ -62,3 +63,8 @@ def get_last_result() -> Optional[EngineResult]:
 def get_detectors():
     """Return underlying detectors for inspection in tests."""
     return _engine().get_detectors()
+
+
+def create_logger_from_env() -> Optional[VisionLogger]:
+    """Create a VisionLogger instance using environment configuration."""
+    return _create_logger_from_env()
