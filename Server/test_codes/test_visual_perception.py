@@ -1,5 +1,11 @@
-from VisionInterface import VisionInterface
-import base64, datetime, os, time
+import os
+import sys
+import base64, datetime, time
+
+# Ensure the Server package is on the Python path when run directly
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+from core.VisionInterface import VisionInterface
 
 def main():
     cam = VisionInterface()
