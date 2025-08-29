@@ -3,8 +3,12 @@
 import logging
 from typing import Tuple
 
-import cv2
 import numpy as np
+
+try:
+    from picamera2 import Picamera2
+except ImportError:  # pragma: no cover - handled gracefully when unavailable
+    Picamera2 = None
 
 from .config_defaults import CAMERA_RESOLUTION
 
@@ -16,7 +20,7 @@ class Camera:
 
     def __init__(self, resolution: Tuple[int, int] = CAMERA_RESOLUTION):
         self.resolution = resolution
-        self._cap = None
+        self._picam2 = None
 
     def start(self) -> None:
         """Open the camera device.
@@ -24,21 +28,31 @@ class Camera:
         Logs an error if the device cannot be opened. The camera remains
         ``None`` when unavailable so callers can detect the condition.
         """
-        if self._cap is None:
-            self._cap = cv2.VideoCapture(0)
-            if not self._cap.isOpened():
-                logger.error("Failed to open camera device 0")
-                self._cap.release()
-                self._cap = None
+        if self._picam2 is None:
+            if Picamera2 is None:
+                logger.error("Picamera2 library not available")
                 return
-            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
-            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
+            try:
+                self._picam2 = Picamera2()
+                config = self._picam2.create_still_configuration(
+                    main={"size": self.resolution}
+                )
+                self._picam2.configure(config)
+                self._picam2.start()
+            except Exception:
+                logger.error("Failed to open camera device", exc_info=True)
+                self._picam2 = None
 
     def stop(self) -> None:
         """Release the camera device."""
-        if self._cap is not None:
-            self._cap.release()
-            self._cap = None
+        if self._picam2 is not None:
+            try:
+                self._picam2.stop()
+                self._picam2.close()
+            except Exception:
+                logger.exception("Error while releasing camera device")
+            finally:
+                self._picam2 = None
 
     def capture_rgb(self) -> np.ndarray:
         """Capture a single frame in RGB format.
@@ -48,15 +62,20 @@ class Camera:
         This allows callers to distinguish between legitimate black frames and
         camera errors by inspecting the logs.
         """
-        if self._cap is None:
+        if self._picam2 is None:
             self.start()
-        if self._cap is None or not self._cap.isOpened():
+        if self._picam2 is None:
             logger.warning("Camera unavailable; returning blank frame")
             w, h = self.resolution
             return np.zeros((h, w, 3), dtype=np.uint8)
-        ret, frame = self._cap.read()
-        if not ret:
-            logger.warning("Failed to read frame; returning blank frame")
+        try:
+            frame = self._picam2.capture_array()
+        except Exception:
+            logger.warning("Failed to read frame; returning blank frame", exc_info=True)
             w, h = self.resolution
             return np.zeros((h, w, 3), dtype=np.uint8)
-        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        if frame.shape[-1] >= 3:
+            # Convert from BGR to RGB without OpenCV
+            frame = frame[..., :3][..., ::-1]
+        return frame
