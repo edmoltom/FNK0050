@@ -1,197 +1,176 @@
-from picamera2 import Picamera2
-from core.vision.api import process_frame
-from core.vision.viz_logger import VisionLogger
-from core.vision.config_defaults import CAMERA_RESOLUTION, REF_SIZE
-
-import cv2
 import base64
+import os
 import threading
 import time
-import os
+from typing import Optional
+
+import cv2
+
+from core.vision import api
+from core.vision.camera import Camera
+from core.vision.config_defaults import REF_SIZE
+from core.vision.viz_logger import VisionLogger
 
 
 class VisionInterface:
-    """
-    @brief VisionInterface wrapper using Picamera2 with a periodic vision pipeline.
-    @details
-    Captures frames at resolution defined in ``CAMERA_RESOLUTION``, runs a detection pipeline, draws overlays,
-    and exposes the last processed frame as a base64-encoded JPEG string.
-    The camera is started once on start_periodic_capture() and stopped on stop.
-    """
+    """Vision interface backed by :class:`Camera` and vision ``api``."""
 
-    def __init__(self):
-        """
-        @brief Initialize the vision interface and default state.
-        """
-        self.picam2 = Picamera2()
-        self.picam2.configure(
-            self.picam2.create_still_configuration(
-                main={"size": CAMERA_RESOLUTION}
-            )
-        )
-        self._config = {}              # Optional processing config (set via set_processing_config)
-        self._last_encoded_image = None
+    def __init__(self) -> None:
+        self.camera = Camera()
+        self._config: dict = {}
+        self._last_encoded_image: Optional[str] = None
         self._streaming = False
-        self._thread = None
+        self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
-        self._camera_started = False
-        
+        self._mode: Optional[str] = None
+
         self._logger = None
         if os.getenv("VISION_LOG", "0") == "1":
             stride = int(os.getenv("VISION_LOG_STRIDE", "5"))
             self._logger = VisionLogger(stride=stride, api_config={"stable": True})
 
-    def set_processing_config(self, config: dict):
-        """
-        @brief Set runtime configuration for the processing pipeline.
-        @param config Arbitrary dict consumed by the downstream pipeline.
-        """
-        self._config = dict(config or {})
+    # -------- Configuration API --------
 
-    def _ensure_camera_started(self):
-        if not self._camera_started:
-            self.picam2.start()
-            self._camera_started = True
+    def set_processing_config(self, cfg: dict) -> None:
+        """Store runtime configuration for the processing pipeline."""
+        self._config = dict(cfg or {})
 
-    def _ensure_camera_stopped(self):
-        if self._camera_started:
-            self.picam2.stop()
-            self._camera_started = False
+    def set_mode(self, mode: str) -> None:
+        """Select detection mode: ``"object"`` or ``"face"``."""
+        if mode not in {"object", "face"}:
+            raise ValueError("mode must be 'object' or 'face'")
+        self._mode = mode
+        api.select_detector(mode)
 
-    def capture_array(self):
-        """
-        @brief Capture a single RGB frame as a NumPy array.
-        @return RGB image (H, W, 3).
-        @note The camera must be started beforehand.
-        """
-        self._ensure_camera_started()
-        return self.picam2.capture_array()
+    # -------- Camera control --------
+
+    def start(self) -> None:
+        """Start the underlying camera."""
+        self.camera.start()
+
+    def stop(self) -> None:
+        """Stop streaming (if active) and release the camera."""
+        self._streaming = False
+        if self._thread:
+            self._thread.join()
+            self._thread = None
+        self.camera.stop()
+        if self._logger:
+            self._logger.close()
 
     # -------- Internal helpers --------
 
     def _get_reference_resolution(self, res: dict, frame_shape):
-        """
-        Try to infer the coordinate space used by the pipeline results.
-        Fallbacks: config['ref_size'] or REF_SIZE.
-        """
-        # Try common keys
         if isinstance(res.get("space"), (tuple, list)) and len(res["space"]) == 2:
             ref_w, ref_h = res["space"]
-        elif isinstance(res.get("space"), dict) and "width" in res["space"] and "height" in res["space"]:
+        elif (
+            isinstance(res.get("space"), dict)
+            and "width" in res["space"]
+            and "height" in res["space"]
+        ):
             ref_w, ref_h = res["space"]["width"], res["space"]["height"]
         elif isinstance(res.get("input_size"), (tuple, list)) and len(res["input_size"]) == 2:
             ref_w, ref_h = res["input_size"]
         else:
             ref_w, ref_h = self._config.get("ref_size", REF_SIZE)
 
-        # Guard rails
-        if not (isinstance(ref_w, (int, float)) and isinstance(ref_h, (int, float)) and ref_w > 0 and ref_h > 0):
+        if not (
+            isinstance(ref_w, (int, float))
+            and isinstance(ref_h, (int, float))
+            and ref_w > 0
+            and ref_h > 0
+        ):
             ref_w, ref_h = REF_SIZE
-
         return float(ref_w), float(ref_h)
 
     def _apply_pipeline(self):
-        """
-        @brief Run the vision pipeline and draw overlays on the frame.
-        @return BGR image with overlays.
-        """
-        frame_rgb = self.capture_array()                       # Picam2 → RGB
-        frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)     # OpenCV uses BGR
-
-        # Try passing config; fall back if pipeline doesn't accept it
+        frame_rgb = self.camera.capture_rgb()
+        frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
         try:
-            res = process_frame(frame, return_overlay=False, config=self._config)
+            res = api.process_frame(frame, return_overlay=False, config=self._config)
         except TypeError:
-            res = process_frame(frame, return_overlay=False)
-
+            res = api.process_frame(frame, return_overlay=False)
         if self._logger:
             self._logger.log_only(frame, out=res)
-
         if res and res.get("ok"):
-            # Compute scaling from the pipeline's coordinate space to current frame
             ref_w, ref_h = self._get_reference_resolution(res, frame.shape)
             sx = frame.shape[1] / ref_w
             sy = frame.shape[0] / ref_h
-
-            # Draw bbox if present
-            if "bbox" in res and isinstance(res["bbox"], (tuple, list)) and len(res["bbox"]) == 4:
+            if (
+                "bbox" in res
+                and isinstance(res["bbox"], (tuple, list))
+                and len(res["bbox"]) == 4
+            ):
                 x, y, w, h = res["bbox"]
                 x2, y2, w2, h2 = int(x * sx), int(y * sy), int(w * sx), int(h * sy)
                 cv2.rectangle(frame, (x2, y2), (x2 + w2, y2 + h2), (0, 255, 0), 2)
-
-            # Draw center if present
-            if "center" in res and isinstance(res["center"], (tuple, list)) and len(res["center"]) == 2:
+            if (
+                "center" in res
+                and isinstance(res["center"], (tuple, list))
+                and len(res["center"]) == 2
+            ):
                 cx, cy = res["center"]
                 cv2.circle(frame, (int(cx * sx), int(cy * sy)), 4, (0, 255, 0), -1)
-
-            # Score label
             if "score" in res:
-                label_y = max(18, (y2 if 'y2' in locals() else 10) - 6)
-                cv2.putText(frame, f"sc={res['score']:.2f}", (10, label_y),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
+                label_y = max(18, (locals().get("y2", 10)) - 6)
+                cv2.putText(
+                    frame,
+                    f"sc={res['score']:.2f}",
+                    (10, label_y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 255, 0),
+                    2,
+                )
         return frame
 
-    # -------- Public streaming API --------
+    # -------- Public API --------
 
-    def start_periodic_capture(self, interval=1.0):
-        """
-        @brief Start a background thread that captures and processes frames periodically.
-        @param interval Desired seconds between captures (processing time compensated).
-        @note Stores the last processed frame as base64 JPEG in _last_encoded_image.
-        """
+    def start_stream(self, interval_sec: float = 1.0) -> None:
+        """Start periodic capture and processing in a background thread."""
         if self._streaming:
             print("[VisionInterface] Streaming already running.")
             return
         self._streaming = True
-        self._ensure_camera_started()
+        self.camera.start()
 
         def _capture_loop():
-            period = max(0.0, float(interval))
+            period = max(0.0, float(interval_sec))
             next_tick = time.monotonic()
             while self._streaming:
                 start = next_tick
                 next_tick = start + period
-
                 try:
                     frame = self._apply_pipeline()
-                    ok, buffer = cv2.imencode('.jpg', frame)
+                    ok, buffer = cv2.imencode(".jpg", frame)
                     if ok:
                         encoded = base64.b64encode(buffer).decode("utf-8")
                         with self._lock:
                             self._last_encoded_image = encoded
                 except Exception as e:
                     print(f"[VisionInterface] Error in periodic capture: {e}")
-
-                # Compensate processing time to keep cadence
                 sleep_s = next_tick - time.monotonic()
                 if sleep_s > 0:
                     time.sleep(sleep_s)
                 else:
-                    # We're lagging; skip sleep to catch up next loop
                     next_tick = time.monotonic()
 
         self._thread = threading.Thread(target=_capture_loop, daemon=True)
         self._thread.start()
-        print("[VisionInterface] Started periodic capture.")
+        print("[VisionInterface] Started stream thread.")
 
-    def stop_periodic_capture(self):
-        """
-        @brief Stop the background thread and wait for clean shutdown.
-        """
-        self._streaming = False
-        if self._thread:
-            self._thread.join()
-            self._thread = None
-        self._ensure_camera_stopped()
-        if self._logger:
-            self._logger.close()
-        print("[VisionInterface] Stopped periodic capture.")
+    def snapshot(self) -> Optional[str]:
+        """Capture, process and return a single frame as base64 JPEG."""
+        frame = self._apply_pipeline()
+        ok, buffer = cv2.imencode(".jpg", frame)
+        if not ok:
+            return None
+        encoded = base64.b64encode(buffer).decode("utf-8")
+        with self._lock:
+            self._last_encoded_image = encoded
+        return encoded
 
-    def get_last_processed_encoded(self):
-        """
-        @brief Get the last processed frame as a base64-encoded JPEG.
-        @return str or None.
-        """
+    def get_last_processed_encoded(self) -> Optional[str]:
+        """Return the last processed frame as base64-encoded JPEG."""
         with self._lock:
             return self._last_encoded_image

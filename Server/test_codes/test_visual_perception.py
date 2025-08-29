@@ -7,13 +7,14 @@ def main():
     ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"logs/{ts}.jpg"
 
-    cam.start_periodic_capture(interval=0.2)
+    cam.start()
+    cam.start_stream(interval_sec=0.2)
     deadline = time.time() + 3.0
     encoded = None
     while time.time() < deadline and not encoded:
         encoded = cam.get_last_processed_encoded()
         time.sleep(0.05)
-    cam.stop_periodic_capture()
+    cam.stop()
 
     if not encoded:
         raise RuntimeError("No se obtuvo imagen procesada a tiempo.")
