@@ -143,7 +143,7 @@ class VisionInterface:
         if self._streaming:
             print("[VisionInterface] Streaming already running.")
             return
-        if getattr(self.camera, "_cap", None) is None or not self.camera._cap.isOpened():
+        if not self.camera.is_running():
             self.camera.start()
         self._streaming = True
 
