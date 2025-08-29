@@ -34,6 +34,11 @@ def update_dynamic(which: str, params: Dict[str, Any]) -> None:
     _engine().update_dynamic(which, params)
 
 
+def select_detector(mode: str) -> None:
+    """Select detector mode."""
+    _engine().select_detector(mode)
+
+
 def process_frame(
     frame: np.ndarray,
     return_overlay: bool = True,

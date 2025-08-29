@@ -58,6 +58,7 @@ class VisionEngine:
         self._st_big = _StableState()
         self._st_small = _StableState()
         self._last_result: Optional[EngineResult] = None
+        self._mode: str = "object"
 
     # ----------------- internal helpers -----------------
     def _knobs(self, config: Optional[Dict[str, Any]]):
@@ -128,6 +129,11 @@ class VisionEngine:
                 self._adj_big.update(**params)
             elif which == "small" and self._adj_small is not None:
                 self._adj_small.update(**params)
+
+    def select_detector(self, mode: str) -> None:
+        """Select which detector mode to use."""
+        with self._lock:
+            self._mode = mode
 
     def get_detectors(self):
         with self._lock:
