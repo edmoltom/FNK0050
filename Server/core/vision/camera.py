@@ -54,6 +54,10 @@ class Camera:
             finally:
                 self._picam2 = None
 
+    def is_running(self) -> bool:
+        """Return ``True`` if the camera has been started."""
+        return self._picam2 is not None
+
     def capture_rgb(self) -> np.ndarray:
         """Capture a single frame in RGB format.
 
