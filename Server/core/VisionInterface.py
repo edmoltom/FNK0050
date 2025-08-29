@@ -127,12 +127,14 @@ class VisionInterface:
     # -------- Public API --------
 
     def start_stream(self, interval_sec: float = 1.0) -> None:
-        """Start periodic capture and processing in a background thread."""
+        """Start periodic capture and processing in a background thread.
+
+        The camera must be started explicitly beforehand via :meth:`start`.
+        """
         if self._streaming:
             print("[VisionInterface] Streaming already running.")
             return
         self._streaming = True
-        self.camera.start()
 
         def _capture_loop():
             period = max(0.0, float(interval_sec))
