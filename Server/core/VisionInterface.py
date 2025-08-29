@@ -7,7 +7,7 @@ from typing import Optional
 import cv2
 
 from core.vision import api
-from core.vision.camera import Camera
+from core.vision.camera import Camera, CameraCaptureError
 from core.vision.config_defaults import REF_SIZE
 from core.vision.viz_logger import VisionLogger
 
@@ -15,14 +15,15 @@ from core.vision.viz_logger import VisionLogger
 class VisionInterface:
     """Vision interface backed by :class:`Camera` and vision ``api``."""
 
-    def __init__(self) -> None:
-        self.camera = Camera()
+    def __init__(self, max_capture_failures: int = 3) -> None:
+        self.camera = Camera(max_failures=max_capture_failures)
         self._config: dict = {}
         self._last_encoded_image: Optional[str] = None
         self._streaming = False
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
         self._mode: Optional[str] = None
+        self._last_error: Optional[Exception] = None
 
         self._logger = None
         if os.getenv("VISION_LOG", "0") == "1":
@@ -160,6 +161,11 @@ class VisionInterface:
                         encoded = base64.b64encode(buffer).decode("utf-8")
                         with self._lock:
                             self._last_encoded_image = encoded
+                except CameraCaptureError as e:
+                    print(f"[VisionInterface] Capture error: {e}")
+                    self._last_error = e
+                    self._streaming = False
+                    break
                 except Exception as e:
                     print(f"[VisionInterface] Error in periodic capture: {e}")
                 sleep_s = next_tick - time.monotonic()
@@ -187,3 +193,7 @@ class VisionInterface:
         """Return the last processed frame as base64-encoded JPEG."""
         with self._lock:
             return self._last_encoded_image
+
+    def get_last_error(self) -> Optional[Exception]:
+        """Return the last streaming error, if any."""
+        return self._last_error
