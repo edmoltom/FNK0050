@@ -45,7 +45,13 @@ class VisionInterface:
     # -------- Camera control --------
 
     def start(self) -> None:
-        """Start the underlying camera."""
+        """Start the underlying camera.
+
+        Typically this is not required because :meth:`Camera.capture_rgb`
+        automatically starts the device on first use.  This method is
+        provided to allow callers to open the camera ahead of time or to
+        surface initialization errors explicitly.
+        """
         self.camera.start()
 
     def stop(self) -> None:
@@ -129,11 +135,16 @@ class VisionInterface:
     def start_stream(self, interval_sec: float = 1.0) -> None:
         """Start periodic capture and processing in a background thread.
 
-        The camera must be started explicitly beforehand via :meth:`start`.
+        The camera will be started automatically on the first call to
+        :meth:`Camera.capture_rgb`, so invoking :meth:`start` beforehand is
+        optional.  The method performs a guard start to ensure the device is
+        ready.
         """
         if self._streaming:
             print("[VisionInterface] Streaming already running.")
             return
+        if getattr(self.camera, "_cap", None) is None or not self.camera._cap.isOpened():
+            self.camera.start()
         self._streaming = True
 
         def _capture_loop():
