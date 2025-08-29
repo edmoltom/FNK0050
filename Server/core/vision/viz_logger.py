@@ -1,8 +1,7 @@
 import os, csv, time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable
 import numpy as np
 
-from .api import process_frame, get_detectors
 from .detectors.contour_detector import ContourDetector, DetectionResult
 
 def _ref_size(det: ContourDetector) -> Tuple[int,int]:
@@ -16,7 +15,14 @@ class VisionLogger:
     Guarda artefactos (original, canny, color_mask, edges_patched, mask_final, overlay, etc.)
     cada `stride` frames usando el propio detector.
     """
-    def __init__(self, output_dir: Optional[str] = None, stride: int = 5, api_config: Optional[dict]=None):
+    def __init__(
+        self,
+        output_dir: Optional[str] = None,
+        stride: int = 5,
+        api_config: Optional[dict] = None,
+        process_frame: Optional[Callable] = None,
+        get_detectors: Optional[Callable] = None,
+    ):
         ts = time.strftime("%Y%m%d_%H%M%S")
         self.run_dir = output_dir or os.path.join("runs", "vision", ts)
         os.makedirs(self.run_dir, exist_ok=True)
@@ -31,10 +37,27 @@ class VisionLogger:
         self.stride = max(1,int(stride))
         self.idx = 0
         self.api_cfg = dict(api_config or {})
-        self.det_big, self.det_small = get_detectors()
+        self._process_frame = process_frame
+        self._get_detectors = get_detectors
+        self.det_big: Optional[ContourDetector]
+        self.det_small: Optional[ContourDetector]
+        self.det_big = self.det_small = None
+        self._ensure_api()
+
+    def _ensure_api(self) -> None:
+        """Lazily import vision API helpers and detectors."""
+        if self._process_frame is None or self._get_detectors is None:
+            from . import api as _api
+            if self._process_frame is None:
+                self._process_frame = _api.process_frame
+            if self._get_detectors is None:
+                self._get_detectors = _api.get_detectors
+        if (self.det_big is None or self.det_small is None) and self._get_detectors:
+            self.det_big, self.det_small = self._get_detectors()
 
     def log_only(self, frame_bgr, out=None):
         """Usa el resultado ya calculado (out) y SOLO cada 'stride' guarda artefactos/CSV."""
+        self._ensure_api()
         self.idx += 1
         tag = "big"
         if out and "space" in out:
@@ -64,9 +87,7 @@ class VisionLogger:
         self.csv.flush()
 
     def _which(self, space):
-        # refresco perezoso
-        if self.det_big is None or self.det_small is None:
-            self.det_big, self.det_small = get_detectors()
+        self._ensure_api()
         # si siguen a None (muy raro), fallback seguro
         if self.det_big is None and self.det_small is None:
             return "big", None
@@ -79,8 +100,9 @@ class VisionLogger:
 
     def step(self, frame_bgr: np.ndarray):
         """Procesa un frame, devuelve overlay para visualizar."""
+        self._ensure_api()
         self.idx += 1
-        out = process_frame(frame_bgr, return_overlay=True, config=self.api_cfg)
+        out = self._process_frame(frame_bgr, return_overlay=True, config=self.api_cfg)
         tag, det = self._which(tuple(out.get("space", (0,0))))
         stamp = f"f{self.idx:06d}"
         save_dir = self.run_dir if (self.idx % self.stride == 0) else None

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 import numpy as np
 
 from .engine import VisionEngine, EngineResult
-from .viz_logger import VisionLogger, create_logger_from_env as _create_logger_from_env
+
+if TYPE_CHECKING:  # pragma: no cover - for type checkers only
+    from .viz_logger import VisionLogger
 
 _ENGINE: Optional[VisionEngine] = None
 
@@ -65,6 +67,8 @@ def get_detectors():
     return _engine().get_detectors()
 
 
-def create_logger_from_env() -> Optional[VisionLogger]:
+def create_logger_from_env() -> Optional["VisionLogger"]:
     """Create a VisionLogger instance using environment configuration."""
+    from .viz_logger import create_logger_from_env as _create_logger_from_env
+
     return _create_logger_from_env()
