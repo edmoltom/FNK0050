@@ -8,7 +8,8 @@ from core.VisionInterface import VisionInterface
 from core.vision import api as vision_api
 
 camera = VisionInterface()
-camera.start_periodic_capture(interval=1.0)  # sigue autoarrancando; si prefieres lazy, quita esta línea
+camera.start()
+camera.start_stream(interval_sec=1.0)  # sigue autoarrancando; si prefieres lazy, quita esta línea
 
 
 def get_local_ip():
@@ -43,11 +44,12 @@ async def handler(websocket):
 
             elif cmd == "start":
                 interval = float(data.get("interval", 1.0))
-                camera.start_periodic_capture(interval=interval)
+                camera.start()
+                camera.start_stream(interval_sec=interval)
                 response = {"status": "ok", "type": "text", "data": f"capture started @ {interval}s"}
 
             elif cmd == "stop":
-                camera.stop_periodic_capture()
+                camera.stop()
                 response = {"status": "ok", "type": "text", "data": "capture stopped"}
 
             elif cmd == "capture":
@@ -96,7 +98,7 @@ async def start_ws_server_async():
             print("Server stopped with Ctrl+C.")
         finally:
             # parada limpia de la cámara
-            camera.stop_periodic_capture()
+            camera.stop()
 
 
 def start_ws_server():
