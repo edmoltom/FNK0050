@@ -1,13 +1,16 @@
 import base64
 import threading
 import time
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import cv2
 
-from core.vision import api, VisionLogger
+from core.vision import api
 from core.vision.camera import Camera, CameraCaptureError
 from core.vision.overlays import draw_result
+
+if TYPE_CHECKING:
+    from core.vision.viz_logger import VisionLogger
 
 
 class VisionInterface:
@@ -17,7 +20,7 @@ class VisionInterface:
         self,
         max_capture_failures: int = 3,
         camera: Optional[Camera] = None,
-        logger: Optional[VisionLogger] = None,
+        logger: Optional['VisionLogger'] = None,
     ) -> None:
         self.camera = camera or Camera(max_failures=max_capture_failures)
         self._config: dict = {}
@@ -28,7 +31,7 @@ class VisionInterface:
         self._mode: Optional[str] = None
         self._last_error: Optional[Exception] = None
 
-        self._logger: Optional[VisionLogger] = logger or api.create_logger_from_env()
+        self._logger: Optional['VisionLogger'] = logger or api.create_logger_from_env()
 
     # -------- Configuration API --------
 
