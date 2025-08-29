@@ -1,22 +1,28 @@
 import base64
-import os
 import threading
 import time
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import cv2
 
 from core.vision import api
 from core.vision.camera import Camera, CameraCaptureError
-from core.vision.config_defaults import REF_SIZE
-from core.vision.viz_logger import VisionLogger
+from core.vision.overlays import draw_result
+
+if TYPE_CHECKING:
+    from core.vision.viz_logger import VisionLogger
 
 
 class VisionInterface:
     """Vision interface backed by :class:`Camera` and vision ``api``."""
 
-    def __init__(self, max_capture_failures: int = 3) -> None:
-        self.camera = Camera(max_failures=max_capture_failures)
+    def __init__(
+        self,
+        max_capture_failures: int = 3,
+        camera: Optional[Camera] = None,
+        logger: Optional['VisionLogger'] = None,
+    ) -> None:
+        self.camera = camera or Camera(max_failures=max_capture_failures)
         self._config: dict = {}
         self._last_encoded_image: Optional[str] = None
         self._streaming = False
@@ -25,10 +31,7 @@ class VisionInterface:
         self._mode: Optional[str] = None
         self._last_error: Optional[Exception] = None
 
-        self._logger = None
-        if os.getenv("VISION_LOG", "0") == "1":
-            stride = int(os.getenv("VISION_LOG_STRIDE", "5"))
-            self._logger = VisionLogger(stride=stride, api_config={"stable": True})
+        self._logger: Optional['VisionLogger'] = logger or api.create_logger_from_env()
 
     # -------- Configuration API --------
 
@@ -67,29 +70,6 @@ class VisionInterface:
 
     # -------- Internal helpers --------
 
-    def _get_reference_resolution(self, res: dict, frame_shape):
-        if isinstance(res.get("space"), (tuple, list)) and len(res["space"]) == 2:
-            ref_w, ref_h = res["space"]
-        elif (
-            isinstance(res.get("space"), dict)
-            and "width" in res["space"]
-            and "height" in res["space"]
-        ):
-            ref_w, ref_h = res["space"]["width"], res["space"]["height"]
-        elif isinstance(res.get("input_size"), (tuple, list)) and len(res["input_size"]) == 2:
-            ref_w, ref_h = res["input_size"]
-        else:
-            ref_w, ref_h = self._config.get("ref_size", REF_SIZE)
-
-        if not (
-            isinstance(ref_w, (int, float))
-            and isinstance(ref_h, (int, float))
-            and ref_w > 0
-            and ref_h > 0
-        ):
-            ref_w, ref_h = REF_SIZE
-        return float(ref_w), float(ref_h)
-
     def _apply_pipeline(self):
         frame_rgb = self.camera.capture_rgb()
         frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
@@ -99,36 +79,8 @@ class VisionInterface:
             res = api.process_frame(frame, return_overlay=False)
         if self._logger:
             self._logger.log_only(frame, out=res)
-        if res and res.get("ok"):
-            ref_w, ref_h = self._get_reference_resolution(res, frame.shape)
-            sx = frame.shape[1] / ref_w
-            sy = frame.shape[0] / ref_h
-            if (
-                "bbox" in res
-                and isinstance(res["bbox"], (tuple, list))
-                and len(res["bbox"]) == 4
-            ):
-                x, y, w, h = res["bbox"]
-                x2, y2, w2, h2 = int(x * sx), int(y * sy), int(w * sx), int(h * sy)
-                cv2.rectangle(frame, (x2, y2), (x2 + w2, y2 + h2), (0, 255, 0), 2)
-            if (
-                "center" in res
-                and isinstance(res["center"], (tuple, list))
-                and len(res["center"]) == 2
-            ):
-                cx, cy = res["center"]
-                cv2.circle(frame, (int(cx * sx), int(cy * sy)), 4, (0, 255, 0), -1)
-            if "score" in res:
-                label_y = max(18, (locals().get("y2", 10)) - 6)
-                cv2.putText(
-                    frame,
-                    f"sc={res['score']:.2f}",
-                    (10, label_y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (0, 255, 0),
-                    2,
-                )
+        result = api.get_last_result()
+        frame = draw_result(frame, result)
         return frame
 
     # -------- Public API --------
