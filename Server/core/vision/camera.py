@@ -15,12 +15,22 @@ from .config_defaults import CAMERA_RESOLUTION
 logger = logging.getLogger(__name__)
 
 
+class CameraCaptureError(RuntimeError):
+    """Raised when the camera cannot provide frames."""
+
+
 class Camera:
     """Simple camera wrapper providing RGB frames."""
 
-    def __init__(self, resolution: Tuple[int, int] = CAMERA_RESOLUTION):
+    def __init__(
+        self,
+        resolution: Tuple[int, int] = CAMERA_RESOLUTION,
+        max_failures: int = 3,
+    ):
         self.resolution = resolution
         self._picam2 = None
+        self._max_failures = max(1, int(max_failures))
+        self._consec_failures = 0
 
     def start(self) -> None:
         """Open the camera device.
@@ -69,13 +79,20 @@ class Camera:
         if self._picam2 is None:
             self.start()
         if self._picam2 is None:
+            self._consec_failures += 1
             logger.warning("Camera unavailable; returning blank frame")
+            if self._consec_failures >= self._max_failures:
+                raise CameraCaptureError("Camera unavailable")
             w, h = self.resolution
             return np.zeros((h, w, 3), dtype=np.uint8)
         try:
             frame = self._picam2.capture_array()
-        except Exception:
+            self._consec_failures = 0
+        except Exception as exc:
+            self._consec_failures += 1
             logger.warning("Failed to read frame; returning blank frame", exc_info=True)
+            if self._consec_failures >= self._max_failures:
+                raise CameraCaptureError("Failed to read frame") from exc
             w, h = self.resolution
             return np.zeros((h, w, 3), dtype=np.uint8)
 
