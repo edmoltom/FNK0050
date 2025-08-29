@@ -1,15 +1,13 @@
 import base64
-import os
 import threading
 import time
 from typing import Optional
 
 import cv2
 
-from core.vision import api
+from core.vision import api, create_logger_from_env, VisionLogger
 from core.vision.camera import Camera, CameraCaptureError
 from core.vision.config_defaults import REF_SIZE
-from core.vision.viz_logger import VisionLogger
 
 
 class VisionInterface:
@@ -25,10 +23,7 @@ class VisionInterface:
         self._mode: Optional[str] = None
         self._last_error: Optional[Exception] = None
 
-        self._logger = None
-        if os.getenv("VISION_LOG", "0") == "1":
-            stride = int(os.getenv("VISION_LOG_STRIDE", "5"))
-            self._logger = VisionLogger(stride=stride, api_config={"stable": True})
+        self._logger: Optional[VisionLogger] = create_logger_from_env()
 
     # -------- Configuration API --------
 
