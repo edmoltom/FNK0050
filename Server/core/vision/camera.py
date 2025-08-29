@@ -96,7 +96,4 @@ class Camera:
             w, h = self.resolution
             return np.zeros((h, w, 3), dtype=np.uint8)
 
-        if frame.shape[-1] >= 3:
-            # Convert from BGR to RGB without OpenCV
-            frame = frame[..., :3][..., ::-1]
         return frame
