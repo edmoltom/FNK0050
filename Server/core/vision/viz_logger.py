@@ -112,6 +112,31 @@ class VisionLogger:
         try: self.csv.close()
         except: pass
 
+
+def create_logger_from_env() -> Optional["VisionLogger"]:
+    """Create a :class:`VisionLogger` from environment variables.
+
+    The function inspects the following variables:
+
+    - ``VISION_LOG``: enable logging when set to ``"1"``.
+    - ``VISION_LOG_STRIDE``: optional integer stride between logged frames.
+    - ``VISION_LOG_DIR``: optional output directory for logged artefacts.
+
+    Returns ``None`` when logging is disabled.
+    """
+
+    if os.getenv("VISION_LOG", "0") != "1":
+        return None
+
+    stride_env = os.getenv("VISION_LOG_STRIDE", "5")
+    try:
+        stride = int(stride_env)
+    except ValueError:
+        stride = 5
+
+    output_dir = os.getenv("VISION_LOG_DIR")
+    return VisionLogger(output_dir=output_dir, stride=stride, api_config={"stable": True})
+
 # Uso rápido (bucle de cámara):
 if __name__ == "__main__":
     import cv2
