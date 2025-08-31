@@ -57,8 +57,12 @@ def process_frame(
     return res.data
 
 
+# VisionLogger fetches the latest detection result through this helper.
 def get_last_result() -> Optional[EngineResult]:
-    """Return the last EngineResult or ``None``."""
+    """Return the most recent EngineResult produced by ``process_frame()``.
+
+    Returns ``None`` if no frame has been processed.
+    """
     return _engine().get_last_result()
 
 
