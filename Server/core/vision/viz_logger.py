@@ -1,8 +1,11 @@
 import os, csv, time
 from typing import Optional, Tuple, Callable
 import numpy as np
+import cv2
 
-from .detectors.contour_detector import ContourDetector, DetectionResult
+from .engine import EngineResult
+from .overlays import draw_result
+from .detectors.contour_detector import ContourDetector
 
 def _ref_size(det: ContourDetector) -> Tuple[int,int]:
     return det.proc.proc_w, det.proc.proc_h
@@ -55,36 +58,56 @@ class VisionLogger:
         if (self.det_big is None or self.det_small is None) and self._get_detectors:
             self.det_big, self.det_small = self._get_detectors()
 
-    def log_only(self, frame_bgr, out=None):
-        """Usa el resultado ya calculado (out) y SOLO cada 'stride' guarda artefactos/CSV."""
+    def log(self, frame_bgr: np.ndarray, result: EngineResult) -> None:
+        """Log detection ``result`` for ``frame_bgr`` and save artefacts."""
         self._ensure_api()
         self.idx += 1
-        tag = "big"
-        if out and "space" in out:
-            tag, det = self._which(tuple(out["space"]))
-        else:
-            tag, det = "big", self.det_big
+        space = tuple(result.data.get("space", (0, 0)))
+        tag, _det = self._which(space)
+        ref_w, ref_h = space
         stamp = f"f{self.idx:06d}"
-
-        if (self.idx % self.stride) != 0:
-            return  # no hacer nada este frame
-
-        res = det.detect(frame_bgr, save_dir=self.run_dir, stamp=stamp,
-                         save_profile=True, return_overlay=False)
-
-        x=y=w=h=0
-        if res.bbox: x,y,w,h = res.bbox
-        self.w.writerow([
-            self.idx, f"{time.time():.3f}", tag,
-            det.proc.proc_w, det.proc.proc_h,
-            f"{(res.t1 or 0.0):.1f}", int(res.t2 or 0),
-            f"{res.life_canny_pct:.2f}", int(bool(res.used_rescue)),
-            f"{(res.color_cover_pct or 0.0):.2f}", int(bool(res.color_used)),
-            int(res.chosen_ck or 0), int(res.chosen_dk or 0),
-            x,y,w,h,
-            f"{(res.score or 0.0):.4f}", f"{(res.fill or 0.0):.4f}", f"{(res.bbox_ratio or 0.0):.4f}",
-        ])
+        data = result.data
+        x, y, w, h = data.get("bbox", (0, 0, 0, 0))
+        row = [
+            self.idx,
+            f"{result.timestamp:.3f}",
+            tag,
+            ref_w,
+            ref_h,
+            data.get("t1", 0),
+            data.get("t2", 0),
+            data.get("life", 0),
+            data.get("rescue", data.get("used_rescue", 0)),
+            data.get("color_cover_pct", data.get("color_cover", 0)),
+            data.get("color_used", 0),
+            data.get("ck", data.get("chosen_ck", 0)),
+            data.get("dk", data.get("chosen_dk", 0)),
+            x,
+            y,
+            w,
+            h,
+            data.get("score", 0),
+            data.get("fill", 0),
+            data.get("bbox_ratio", 0),
+        ]
+        self.w.writerow(row)
         self.csv.flush()
+
+        if self.idx % self.stride == 0:
+            cv2.imwrite(os.path.join(self.run_dir, f"{stamp}_orig.jpg"), frame_bgr)
+
+        overlay = data.get("overlay")
+        if overlay is None:
+            overlay = draw_result(frame_bgr.copy(), result)
+        cv2.imwrite(os.path.join(self.run_dir, f"{stamp}_overlay.jpg"), overlay)
+
+    def log_only(self, frame_bgr, out=None):
+        """Backward-compatible alias forwarding to :meth:`log`."""
+        if isinstance(out, EngineResult):
+            result = out
+        else:
+            result = EngineResult(out or {}, time.time())
+        self.log(frame_bgr, result)
 
     def _which(self, space):
         self._ensure_api()
@@ -99,36 +122,13 @@ class VisionLogger:
         return "big", (self.det_big or self.det_small)
 
     def step(self, frame_bgr: np.ndarray):
-        """Procesa un frame, devuelve overlay para visualizar."""
+        """Procesa un frame y devuelve overlay para visualizar."""
         self._ensure_api()
-        self.idx += 1
-        out = self._process_frame(frame_bgr, return_overlay=True, config=self.api_cfg)
-        tag, det = self._which(tuple(out.get("space", (0,0))))
-        stamp = f"f{self.idx:06d}"
-        save_dir = self.run_dir if (self.idx % self.stride == 0) else None
-
-        # Ejecutamos el detector elegido sobre el frame completo para logging.
-        res: DetectionResult = det.detect(
-            frame_bgr, save_dir=save_dir, stamp=stamp,
-            save_profile=True, return_overlay=True
-        )
-
-        # Escribir CSV
-        x=y=w=h=0
-        if res.bbox: x,y,w,h = res.bbox
-        self.w.writerow([
-            self.idx, f"{time.time():.3f}", tag,
-            det.proc.proc_w, det.proc.proc_h,
-            f"{(res.t1 or 0.0):.1f}", int(res.t2 or 0),
-            f"{res.life_canny_pct:.2f}", int(bool(res.used_rescue)),
-            f"{(res.color_cover_pct or 0.0):.2f}", int(bool(res.color_used)),
-            int(res.chosen_ck or 0), int(res.chosen_dk or 0),
-            x,y,w,h,
-            f"{(res.score or 0.0):.4f}", f"{(res.fill or 0.0):.4f}", f"{(res.bbox_ratio or 0.0):.4f}",
-        ])
-        self.csv.flush()
-        # Preferimos overlay del API si vino, si no, el del detector
-        return out.get("overlay", res.overlay)
+        self._process_frame(frame_bgr, return_overlay=True, config=self.api_cfg)
+        from . import api as _api
+        result = _api.get_last_result() or EngineResult({}, time.time())
+        self.log(frame_bgr, result)
+        return result.data.get("overlay") or draw_result(frame_bgr.copy(), result)
 
     def close(self):
         try: self.csv.close()
