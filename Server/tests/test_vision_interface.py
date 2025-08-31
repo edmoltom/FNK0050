@@ -1,0 +1,76 @@
+import os
+import sys
+import time
+import types
+from unittest.mock import MagicMock, patch
+
+# Provide a minimal cv2 stub for tests if OpenCV is unavailable
+cv2_stub = types.SimpleNamespace(
+    COLOR_RGB2BGR=0,
+    cvtColor=lambda frame, code: frame,
+    imencode=lambda ext, frame: (True, b"data"),
+)
+numpy_stub = types.SimpleNamespace(ndarray=object)
+sys.modules.setdefault("cv2", cv2_stub)
+sys.modules.setdefault("numpy", numpy_stub)
+
+# Ensure the Server package (containing core) is on path
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+from core.VisionInterface import VisionInterface
+from core.vision.engine import EngineResult
+
+
+def _dummy_result():
+    return EngineResult({"ok": True, "bbox": (1, 1, 2, 2), "space": (10, 10)}, time.time())
+
+
+def test_snapshot_runs_pipeline_once_and_logs():
+    frame = object()
+    camera = MagicMock()
+    camera.capture_rgb.return_value = frame
+    logger = MagicMock()
+    result = _dummy_result()
+
+    with patch("core.VisionInterface.api.process_frame") as process, \
+         patch("core.VisionInterface.api.get_last_result", return_value=result) as get_last, \
+         patch("core.VisionInterface.draw_result", side_effect=lambda f, r: f) as draw:
+        vi = VisionInterface(camera=camera, logger=logger)
+        encoded = vi.snapshot()
+
+        assert encoded is not None
+        process.assert_called_once()
+        args, kwargs = process.call_args
+        assert kwargs["return_overlay"] is True
+        assert kwargs["config"] == vi._config
+        assert get_last.call_count == 2
+        logger.log.assert_called_once()
+        draw.assert_called_once()
+
+
+def test_start_stream_runs_pipeline_once_and_logs():
+    frame = object()
+    camera = MagicMock()
+    camera.capture_rgb.return_value = frame
+    logger = MagicMock()
+    result = _dummy_result()
+
+    with patch("core.VisionInterface.api.process_frame") as process, \
+         patch("core.VisionInterface.api.get_last_result", return_value=result) as get_last, \
+         patch("core.VisionInterface.draw_result", side_effect=lambda f, r: f) as draw:
+        vi = VisionInterface(camera=camera, logger=logger)
+        vi.start_stream(interval_sec=10)
+
+        deadline = time.time() + 2
+        while vi.get_last_processed_encoded() is None and time.time() < deadline:
+            time.sleep(0.01)
+        vi.stop()
+
+        assert vi.get_last_processed_encoded() is not None
+        process.assert_called_once()
+        args, kwargs = process.call_args
+        assert kwargs["return_overlay"] is True
+        assert kwargs["config"] == vi._config
+        assert get_last.call_count == 2
+        logger.log.assert_called_once()
+        draw.assert_called_once()

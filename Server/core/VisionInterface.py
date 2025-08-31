@@ -73,14 +73,10 @@ class VisionInterface:
     def _apply_pipeline(self):
         frame_rgb = self.camera.capture_rgb()
         frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-        try:
-            res = api.process_frame(frame, return_overlay=False, config=self._config)
-        except TypeError:
-            res = api.process_frame(frame, return_overlay=False)
+        api.process_frame(frame, return_overlay=True, config=self._config)
         if self._logger:
-            self._logger.log_only(frame, out=res)
-        result = api.get_last_result()
-        frame = draw_result(frame, result)
+            self._logger.log(frame, result=api.get_last_result())
+        frame = draw_result(frame, api.get_last_result())
         return frame
 
     # -------- Public API --------
