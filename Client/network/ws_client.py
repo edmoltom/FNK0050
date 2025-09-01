@@ -13,6 +13,7 @@ class WebSocketClient:
         self.thread = threading.Thread(target=self._start_loop, daemon=True)
         self.connected = False
         self.lock = threading.Lock()
+        self.receive_task = None
         self.thread.start()
 
     def _start_loop(self):
@@ -44,6 +45,47 @@ class WebSocketClient:
     def send_command(self, command):
         future = asyncio.run_coroutine_threadsafe(self._send_command(command), self.loop)
         return future.result(timeout=5)
+
+    async def _receive_stream(self, callback):
+        try:
+            async for message in self.websocket:
+                try:
+                    msg = json.loads(message)
+                except Exception:
+                    continue
+                if msg.get("type") == "image":
+                    callback(msg.get("frame"))
+        except asyncio.CancelledError:
+            pass
+
+    async def _start_stream(self, callback):
+        if not self.connected:
+            await self._connect()
+        if not self.connected:
+            return
+        await self.websocket.send(json.dumps({"cmd": "stream_start"}))
+        self.receive_task = asyncio.create_task(self._receive_stream(callback))
+
+    def start_stream(self, callback):
+        asyncio.run_coroutine_threadsafe(self._start_stream(callback), self.loop)
+
+    async def _stop_stream(self):
+        if not self.connected or not self.websocket:
+            return
+        try:
+            await self.websocket.send(json.dumps({"cmd": "stream_stop"}))
+        except Exception:
+            pass
+        if self.receive_task:
+            self.receive_task.cancel()
+            try:
+                await self.receive_task
+            except asyncio.CancelledError:
+                pass
+            self.receive_task = None
+
+    def stop_stream(self):
+        asyncio.run_coroutine_threadsafe(self._stop_stream(), self.loop)
 
     def close(self):
         if self.websocket:
