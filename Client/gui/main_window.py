@@ -18,6 +18,10 @@ class ImageStreamViewer(QMainWindow):
 
         self.setCentralWidget(widget)
 
+    def closeEvent(self, event):
+        self.ws_client.stop_stream()
+        super().closeEvent(event)
+
 def start_gui():
     app = QApplication(sys.argv)
     window = ImageStreamViewer()
