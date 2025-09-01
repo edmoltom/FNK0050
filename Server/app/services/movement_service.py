@@ -26,3 +26,7 @@ class MovementService:
             self._controller.stop()
         except Exception:
             pass
+
+    def walk(self, vx: float, vy: float, omega: float) -> None:
+        """Delegate walking velocity commands to the controller."""
+        self._controller.walk(vx, vy, omega)

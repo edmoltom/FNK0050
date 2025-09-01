@@ -11,10 +11,10 @@ class VisionService:
     def __init__(self, vision: VisionInterface) -> None:
         self._vision = vision
 
-    def start(self) -> None:
-        """Begin periodic capture."""
+    def start(self, interval_sec: float = 1.0) -> None:
+        """Begin periodic capture with optional interval."""
         # Start background streaming to continually process frames.
-        self._vision.start_stream()
+        self._vision.start_stream(interval_sec=interval_sec)
 
     def update(self) -> None:
         """Hook for periodic tasks; currently a no-op."""
@@ -23,3 +23,11 @@ class VisionService:
     def stop(self) -> None:
         """Stop any active streaming and release resources."""
         self._vision.stop()
+
+    def get_last_processed_encoded(self):
+        """Expose last processed frame."""
+        return self._vision.get_last_processed_encoded()
+
+    def set_processing_config(self, config: dict) -> None:
+        """Forward runtime processing configuration."""
+        self._vision.set_processing_config(config)

@@ -1,15 +1,14 @@
 import asyncio
 import socket
 import json
-import time
 import websockets
 
-from core.VisionInterface import VisionInterface
-from core.vision import api as vision_api
+from app.application import Application
+from app.controllers.robot_controller import RobotController
 
-camera = VisionInterface()
-camera.start()
-camera.start_stream(interval_sec=1.0)  # sigue autoarrancando; si prefieres lazy, quita esta línea
+# Wire application services with the controller
+_app = Application()
+_controller = RobotController(_app.movement_service, _app.vision_service)
 
 
 def get_local_ip():
@@ -22,66 +21,12 @@ def get_local_ip():
     except Exception:
         return "127.0.0.1"
 
-
-async def wait_for_frame(timeout=3.0, poll=0.05):
-    """Wait until timeout for the camera to have a processed frame."""
-    deadline = time.monotonic() + float(timeout)
-    img_str = camera.get_last_processed_encoded()
-    while img_str is None and time.monotonic() < deadline:
-        await asyncio.sleep(poll)
-        img_str = camera.get_last_processed_encoded()
-    return img_str
-
-
 async def handler(websocket):
     print("[WS] New client connected")
     async for message in websocket:
         try:
             data = json.loads(message)
-            cmd = data.get("cmd")
-            if cmd == "ping":
-                response = {"status": "ok", "type": "text", "data": "pong"}
-
-            elif cmd == "start":
-                interval = float(data.get("interval", 1.0))
-                camera.start()
-                camera.start_stream(interval_sec=interval)
-                response = {"status": "ok", "type": "text", "data": f"capture started @ {interval}s"}
-
-            elif cmd == "stop":
-                camera.stop()
-                response = {"status": "ok", "type": "text", "data": "capture stopped"}
-
-            elif cmd == "capture":
-                # intenta devolver frame; si aún no hay, espera un poco
-                img_str = await wait_for_frame(timeout=float(data.get("timeout", 2.0)))
-                if img_str is None:
-                    response = {"status": "wait", "type": "text", "data": "no frame yet"}
-                else:
-                    response = {"status": "ok", "type": "image", "data": img_str}
-
-            elif cmd == "process":
-                # filtra solo claves conocidas; pasa al pipeline vía set_processing_config
-                allowed = {"blur", "edges", "contours", "ref_size"}
-                config = {k: v for k, v in data.items() if k in allowed}
-                camera.set_processing_config(config)
-                response = {"status": "ok", "type": "text", "data": "processing config updated"}
-
-            elif cmd == "load_profile":
-                which = data.get("which", "big")
-                path = data.get("path")
-                vision_api.load_profile(which, path)
-                response = {"status": "ok", "type": "text", "data": f"profile {which} loaded"}
-
-            elif cmd == "dynamic":
-                which = data.get("which", "big")
-                params = data.get("params", {})
-                vision_api.update_dynamic(which, params)
-                response = {"status": "ok", "type": "text", "data": "dynamic params updated"}
-
-            else:
-                response = {"status": "error", "type": "text", "data": f"unknown command: {cmd}"}
-
+            response = await _controller.handle(data)
             await websocket.send(json.dumps(response))
 
         except Exception as e:
@@ -97,8 +42,9 @@ async def start_ws_server_async():
         except asyncio.CancelledError:
             print("Server stopped with Ctrl+C.")
         finally:
-            # parada limpia de la cámara
-            camera.stop()
+            # parada limpia de los servicios
+            _app.vision_service.stop()
+            _app.movement_service.stop()
 
 
 def start_ws_server():
