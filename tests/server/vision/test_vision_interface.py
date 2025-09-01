@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 import types
@@ -14,11 +13,8 @@ numpy_stub = types.SimpleNamespace(ndarray=object)
 sys.modules.setdefault("cv2", cv2_stub)
 sys.modules.setdefault("numpy", numpy_stub)
 
-# Ensure the Server package (containing core) is on path
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-
-from core.VisionInterface import VisionInterface
-from core.vision.engine import EngineResult
+from Server.core.VisionInterface import VisionInterface
+from Server.core.vision.engine import EngineResult
 
 
 def _dummy_result():
@@ -32,9 +28,9 @@ def test_snapshot_runs_pipeline_once_and_logs():
     logger = MagicMock()
     result = _dummy_result()
 
-    with patch("core.VisionInterface.api.process_frame") as process, \
-         patch("core.VisionInterface.api.get_last_result", return_value=result) as get_last, \
-         patch("core.VisionInterface.draw_result", side_effect=lambda f, r: f) as draw:
+    with patch("Server.core.VisionInterface.api.process_frame") as process, \
+         patch("Server.core.VisionInterface.api.get_last_result", return_value=result) as get_last, \
+         patch("Server.core.VisionInterface.draw_result", side_effect=lambda f, r: f) as draw:
         vi = VisionInterface(camera=camera, logger=logger)
         encoded = vi.snapshot()
 
@@ -55,9 +51,9 @@ def test_start_stream_runs_pipeline_once_and_logs():
     logger = MagicMock()
     result = _dummy_result()
 
-    with patch("core.VisionInterface.api.process_frame") as process, \
-         patch("core.VisionInterface.api.get_last_result", return_value=result) as get_last, \
-         patch("core.VisionInterface.draw_result", side_effect=lambda f, r: f) as draw:
+    with patch("Server.core.VisionInterface.api.process_frame") as process, \
+         patch("Server.core.VisionInterface.api.get_last_result", return_value=result) as get_last, \
+         patch("Server.core.VisionInterface.draw_result", side_effect=lambda f, r: f) as draw:
         vi = VisionInterface(camera=camera, logger=logger)
         vi.start_stream(interval_sec=10)
 
@@ -74,3 +70,5 @@ def test_start_stream_runs_pipeline_once_and_logs():
         assert get_last.call_count == 2
         logger.log.assert_called_once()
         draw.assert_called_once()
+
+
