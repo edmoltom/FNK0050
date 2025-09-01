@@ -2,8 +2,12 @@ from __future__ import annotations
 
 """Main application coordinating high-level subsystems."""
 
+import logging
+
 from core.VisionInterface import VisionInterface
 from core.MovementControl import MovementControl
+from core.vision.viz_logger import create_logger as create_vision_logger
+from core.movement.logger import MovementLogger
 
 from .config import AppConfig, load_config
 from .services.vision_service import VisionService
@@ -16,9 +20,15 @@ class Application:
     def __init__(self, config: AppConfig | None = None) -> None:
         self.config = config or load_config()
 
+        # Configure global logging level
+        if self.config.logging.enable:
+            level = getattr(logging, self.config.logging.level.upper(), logging.INFO)
+            logging.basicConfig(level=level)
+
         self.vision_service: VisionService | None = None
         if self.config.vision.enable:
-            self.vision = VisionInterface()
+            vision_logger = create_vision_logger(enable=self.config.logging.vision)
+            self.vision = VisionInterface(logger=vision_logger)
             self.vision.set_mode(self.config.vision.profile)
             self.vision.set_processing_config(
                 {
@@ -32,7 +42,8 @@ class Application:
 
         self.movement_service: MovementService | None = None
         if self.config.movement.enable:
-            self.movement = MovementControl()
+            mv_logger = MovementLogger() if self.config.logging.movement else None
+            self.movement = MovementControl(logger=mv_logger)
             self.movement_service = MovementService(self.movement)
         else:
             self.movement = None

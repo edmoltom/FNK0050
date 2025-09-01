@@ -136,7 +136,7 @@ class MovementController:
         self.hardware = hardware or Hardware(imu=imu, odom=odom)
         self.gait = GaitRunner(gait or self.hardware.cpg)
         self.cpg = self.gait.cpg
-        self.logger = logger or MovementLogger()
+        self.logger = logger
         self.config = config or {}
         self.head_channel = int(self.config.get("head_channel", 15))
         self.head_min_deg = float(self.config.get("head_min_deg", 20.0))
@@ -215,7 +215,7 @@ class MovementController:
             try:
                 self.update_angles_from_points()
                 self.hardware.apply_angles(self.angle)
-                if self.logger.active:
+                if self.logger and self.logger.active:
                     self.logger.log_state(time.time(), self.hardware.imu, self.point, self.hardware.odom)
             except Exception as e:
                 print("Exception during run():", e)

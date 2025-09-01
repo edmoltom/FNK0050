@@ -1,0 +1,13 @@
+[vision]
+enable = true
+profile = "object"
+threshold = 0.5
+model_path = "models/default.pt"
+log = true     # vision-specific logging
+
+[movement]
+enable = true
+log = false
+
+[logging]
+level = "INFO" # global log level
