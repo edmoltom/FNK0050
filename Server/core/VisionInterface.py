@@ -31,7 +31,7 @@ class VisionInterface:
         self._mode: Optional[str] = None
         self._last_error: Optional[Exception] = None
 
-        self._logger: Optional['VisionLogger'] = logger or api.create_logger_from_env()
+        self._logger: Optional['VisionLogger'] = logger
 
     # -------- Configuration API --------
 

@@ -71,8 +71,8 @@ def get_detectors():
     return _engine().get_detectors()
 
 
-def create_logger_from_env() -> Optional["VisionLogger"]:
-    """Create a VisionLogger instance using environment configuration."""
-    from .viz_logger import create_logger_from_env as _create_logger_from_env
+def create_logger(*, enable: bool) -> Optional["VisionLogger"]:
+    """Create a VisionLogger instance controlled by ``enable``."""
+    from .viz_logger import create_logger as _create_logger
 
-    return _create_logger_from_env()
+    return _create_logger(enable=enable)
