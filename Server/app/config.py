@@ -9,6 +9,7 @@ import tomllib
 class VisionConfig:
     """Configuration for the vision subsystem."""
     enable: bool = True
+    stream_interval: float = 0.2
     profile: str = "object"  # e.g. "object" or "face"
     threshold: float = 0.5
     model_path: str = "models/default.pt"
@@ -52,6 +53,9 @@ def load_config() -> AppConfig:
     vision_data = data.get("vision", {})
     vision = VisionConfig(
         enable=vision_data.get("enable", vision_defaults.enable),
+        stream_interval=vision_data.get(
+            "stream_interval", vision_defaults.stream_interval
+        ),
         profile=vision_data.get("profile", vision_defaults.profile),
         threshold=vision_data.get("threshold", vision_defaults.threshold),
         model_path=vision_data.get("model_path", vision_defaults.model_path),
