@@ -1,5 +1,5 @@
 import base64
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
@@ -14,22 +14,17 @@ class StreamWidget(QWidget):
         self.setLayout(self.layout)
 
         self.client = ws_client
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_image)
-        self.timer.start(1000)  # fetch every second
+        self.client.start_stream(self.on_frame)
 
-    def update_image(self):
-        self.fetch_and_display()
-
-    def fetch_and_display(self):
-        response = self.client.send_command({"cmd": "capture"})
-        if response and response.get("status") == "ok":
-            image_data = response.get("data")
-            if image_data:
-                pixmap = self.base64_to_pixmap(image_data)
-                self.image_label.setPixmap(pixmap)
+    def on_frame(self, base64_image):
+        pixmap = self.base64_to_pixmap(base64_image)
+        self.image_label.setPixmap(pixmap)
 
     def base64_to_pixmap(self, base64_str):
         img_bytes = base64.b64decode(base64_str)
         img = QImage.fromData(img_bytes)
         return QPixmap.fromImage(img)
+
+    def closeEvent(self, event):
+        self.client.stop_stream()
+        super().closeEvent(event)
