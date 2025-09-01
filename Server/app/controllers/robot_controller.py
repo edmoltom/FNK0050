@@ -40,6 +40,15 @@ class RobotController:
             self._vision.stop()
             return {"status": "ok", "type": "text", "data": "capture stopped"}
 
+        if cmd == "stream_start":
+            # start the vision streaming generator
+            self._vision.stream()
+            return {"status": "ok", "type": "text", "data": "streaming started"}
+
+        if cmd == "stream_stop":
+            self._vision.stop()
+            return {"status": "ok", "type": "text", "data": "streaming stopped"}
+
         if cmd == "capture":
             img_str = await self._wait_for_frame(timeout=float(data.get("timeout", 2.0)))
             if img_str is None:
