@@ -10,5 +10,17 @@ log = true     # vision-specific logging
 enable = true
 log = false
 
+[voice]
+enable = true
+log = false
+
+[led]
+enable = true
+log = false
+
+[hearing]
+enable = true
+log = false
+
 [logging]
 level = "INFO" # global log level

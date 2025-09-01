@@ -22,6 +22,27 @@ class MovementConfig:
 
 
 @dataclass
+class VoiceConfig:
+    """Configuration for the voice subsystem."""
+
+    enable: bool = True
+
+
+@dataclass
+class LedConfig:
+    """Configuration for the LED subsystem."""
+
+    enable: bool = True
+
+
+@dataclass
+class HearingConfig:
+    """Configuration for the hearing subsystem."""
+
+    enable: bool = True
+
+
+@dataclass
 class LoggingConfig:
     """Global logging configuration."""
 
@@ -29,6 +50,9 @@ class LoggingConfig:
     level: str = "INFO"
     vision: bool = True
     movement: bool = False
+    voice: bool = False
+    led: bool = False
+    hearing: bool = False
 
 
 @dataclass
@@ -36,6 +60,9 @@ class AppConfig:
     """Top-level application configuration."""
     vision: VisionConfig = field(default_factory=VisionConfig)
     movement: MovementConfig = field(default_factory=MovementConfig)
+    voice: VoiceConfig = field(default_factory=VoiceConfig)
+    led: LedConfig = field(default_factory=LedConfig)
+    hearing: HearingConfig = field(default_factory=HearingConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     api_key: str = ""
 
@@ -67,6 +94,24 @@ def load_config() -> AppConfig:
         enable=movement_data.get("enable", movement_defaults.enable),
     )
 
+    voice_defaults = VoiceConfig()
+    voice_data = data.get("voice", {})
+    voice = VoiceConfig(
+        enable=voice_data.get("enable", voice_defaults.enable),
+    )
+
+    led_defaults = LedConfig()
+    led_data = data.get("led", {})
+    led = LedConfig(
+        enable=led_data.get("enable", led_defaults.enable),
+    )
+
+    hearing_defaults = HearingConfig()
+    hearing_data = data.get("hearing", {})
+    hearing = HearingConfig(
+        enable=hearing_data.get("enable", hearing_defaults.enable),
+    )
+
     logging_defaults = LoggingConfig()
     logging_data = data.get("logging", {})
     logging_cfg = LoggingConfig(
@@ -74,6 +119,9 @@ def load_config() -> AppConfig:
         level=logging_data.get("level", logging_defaults.level),
         vision=vision_data.get("log", logging_defaults.vision),
         movement=movement_data.get("log", logging_defaults.movement),
+        voice=voice_data.get("log", logging_defaults.voice),
+        led=led_data.get("log", logging_defaults.led),
+        hearing=hearing_data.get("log", logging_defaults.hearing),
     )
 
     api_key = data.get("api_key", "")
@@ -81,6 +129,9 @@ def load_config() -> AppConfig:
     return AppConfig(
         vision=vision,
         movement=movement,
+        voice=voice,
+        led=led,
+        hearing=hearing,
         logging=logging_cfg,
         api_key=api_key,
     )
