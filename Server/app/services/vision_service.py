@@ -2,6 +2,9 @@ from __future__ import annotations
 
 """Orchestration helpers for the vision subsystem."""
 
+import time
+from typing import Generator, Optional
+
 from core.VisionInterface import VisionInterface
 
 
@@ -27,6 +30,15 @@ class VisionService:
     def get_last_processed_encoded(self):
         """Expose last processed frame."""
         return self._vision.get_last_processed_encoded()
+
+    def stream(self) -> Generator[Optional[str], None, None]:
+        """Yield processed frames as they become available."""
+        # ensure underlying vision subsystem is streaming
+        if not getattr(self._vision, "_streaming", False):
+            self._vision.start_stream()
+        while getattr(self._vision, "_streaming", False):
+            yield self._vision.get_last_processed_encoded()
+            time.sleep(0.05)
 
     def set_processing_config(self, config: dict) -> None:
         """Forward runtime processing configuration."""
