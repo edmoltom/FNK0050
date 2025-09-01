@@ -29,13 +29,15 @@ async def _vision_stream(websocket: websockets.WebSocketServerProtocol) -> None:
     """Continuously push vision frames to a websocket client."""
     interval = getattr(getattr(_app.config, "vision", _app.config), "stream_interval", 0.0)
     try:
-        stream = _controller._vision.stream() if _controller._vision else iter(())
+        stream = (
+            _controller._vision.stream(interval_sec=interval)
+            if _controller._vision
+            else iter(())
+        )
         while websocket in _streaming_clients:
             frame = next(stream, None)
             if frame:
                 await websocket.send(json.dumps({"type": "image", "data": frame}))
-            if interval:
-                await asyncio.sleep(float(interval))
     except websockets.ConnectionClosed:
         pass
     finally:

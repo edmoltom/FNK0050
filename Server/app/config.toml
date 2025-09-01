@@ -1,5 +1,6 @@
 [vision]
 enable = true
+stream_interval = 0.2
 profile = "object"
 threshold = 0.5
 model_path = "models/default.pt"

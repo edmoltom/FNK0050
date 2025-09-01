@@ -31,14 +31,14 @@ class VisionService:
         """Expose last processed frame."""
         return self._vision.get_last_processed_encoded()
 
-    def stream(self) -> Generator[Optional[str], None, None]:
+    def stream(self, interval_sec: float = 0.05) -> Generator[Optional[str], None, None]:
         """Yield processed frames as they become available."""
         # ensure underlying vision subsystem is streaming
         if not getattr(self._vision, "_streaming", False):
-            self._vision.start_stream()
+            self._vision.start_stream(interval_sec=interval_sec)
         while getattr(self._vision, "_streaming", False):
             yield self._vision.get_last_processed_encoded()
-            time.sleep(0.05)
+            time.sleep(interval_sec)
 
     def set_processing_config(self, config: dict) -> None:
         """Forward runtime processing configuration."""
