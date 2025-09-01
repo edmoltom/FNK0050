@@ -16,10 +16,23 @@ log = true
 enable = true
 log = false
 
+[voice]
+enable = true
+log = false
+
+[led]
+enable = true
+log = false
+
+[hearing]
+enable = true
+log = false
+
 [logging]
 level = "INFO"
 ```
 
 `Server/run.py` simply loads this file on start-up and no longer requires
 command-line arguments or environment variables. Adjust the values in the TOML
-file to change behaviour or logging preferences.
+file to enable subsystems like voice, LED, or hearing and tune their logging
+preferences alongside vision and movement.
