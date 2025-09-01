@@ -4,12 +4,12 @@ import queue
 import asyncio
 from pathlib import Path
 
-from LedController import LedController
-from core.llm.llm_memory import ConversationMemory
-from core.llm.persona import build_system
-from core.llm.llm_client import query_llm
-from core.voice.tts import TextToSpeech
-from core.hearing.stt import SpeechToText
+from .LedController import LedController
+from .llm.llm_memory import ConversationMemory
+from .llm.persona import build_system
+from .llm.llm_client import query_llm
+from .voice.tts import TextToSpeech
+from .hearing.stt import SpeechToText
 
 mem = ConversationMemory(last_n=3)
 

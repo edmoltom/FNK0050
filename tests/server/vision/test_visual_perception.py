@@ -1,11 +1,18 @@
 import os
-import sys
 import base64, datetime, time
+import sys
+import types
 
-# Ensure the Server package is on the Python path when run directly
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+cv2_stub = types.SimpleNamespace(
+    COLOR_RGB2BGR=0,
+    cvtColor=lambda frame, code: frame,
+    imencode=lambda ext, frame: (True, b"data"),
+)
+numpy_stub = types.SimpleNamespace(ndarray=object)
+sys.modules.setdefault("cv2", cv2_stub)
+sys.modules.setdefault("numpy", numpy_stub)
 
-from core.VisionInterface import VisionInterface
+from Server.core.VisionInterface import VisionInterface
 
 def main():
     cam = VisionInterface()
@@ -30,3 +37,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

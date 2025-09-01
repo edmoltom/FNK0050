@@ -1,9 +1,31 @@
 import asyncio
-import os
 import sys
+import types
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core'))
-from LedController import LedController
+class _SpiDev:
+    def __init__(self):
+        self.mode = 0
+
+    def open(self, bus, device):
+        pass
+
+    def close(self):
+        pass
+
+class _NPArray(list):
+    def ravel(self):
+        return self
+
+spidev_stub = types.SimpleNamespace(SpiDev=_SpiDev)
+numpy_stub = types.SimpleNamespace(
+    array=lambda x: _NPArray(x),
+    zeros=lambda n, dtype=None: [0] * n,
+    uint8=int,
+)
+sys.modules.setdefault("spidev", spidev_stub)
+sys.modules.setdefault("numpy", numpy_stub)
+
+from Server.core.LedController import LedController
 
 async def test_led_no_block():
     ctrl = LedController(brightness=30)

@@ -1,9 +1,9 @@
 import sys
 from pathlib import Path
 import argparse
-from persona import build_system
-from llm_client import query_llm
-from core.voice.tts import TextToSpeech
+from .persona import build_system
+from .llm_client import query_llm
+from ..voice.tts import TextToSpeech
 
 THIS_DIR = Path(__file__).resolve().parent
 # Reuse the TTS engine as a library instead of spawning a subprocess

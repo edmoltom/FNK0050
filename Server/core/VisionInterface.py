@@ -5,12 +5,12 @@ from typing import Optional, TYPE_CHECKING
 
 import cv2
 
-from core.vision import api
-from core.vision.camera import Camera, CameraCaptureError
-from core.vision.overlays import draw_result
+from .vision import api
+from .vision.camera import Camera, CameraCaptureError
+from .vision.overlays import draw_result
 
 if TYPE_CHECKING:
-    from core.vision.viz_logger import VisionLogger
+    from .vision.viz_logger import VisionLogger
 
 
 class VisionInterface:

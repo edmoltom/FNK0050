@@ -2,7 +2,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
-from led.led import Led
+from .led.led import Led
 
 
 class LedController:
