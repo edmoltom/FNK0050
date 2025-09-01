@@ -10,6 +10,9 @@ from app.controllers.robot_controller import RobotController
 _app = Application()
 _controller = RobotController(_app.movement_service, _app.vision_service)
 
+# Track websockets currently receiving vision frames
+_streaming_clients: set[websockets.WebSocketServerProtocol] = set()
+
 
 def get_local_ip():
     try:
@@ -21,16 +24,51 @@ def get_local_ip():
     except Exception:
         return "127.0.0.1"
 
+
+async def _vision_stream(websocket: websockets.WebSocketServerProtocol) -> None:
+    """Continuously push vision frames to a websocket client."""
+    interval = getattr(getattr(_app.config, "vision", _app.config), "stream_interval", 0.0)
+    try:
+        stream = _controller._vision.stream() if _controller._vision else iter(())
+        while websocket in _streaming_clients:
+            frame = next(stream, None)
+            if frame:
+                await websocket.send(json.dumps({"type": "image", "data": frame}))
+            if interval:
+                await asyncio.sleep(float(interval))
+    except websockets.ConnectionClosed:
+        pass
+    finally:
+        _streaming_clients.discard(websocket)
+
+
 async def handler(websocket):
     print("[WS] New client connected")
-    async for message in websocket:
-        try:
-            data = json.loads(message)
-            response = await _controller.handle(data)
-            await websocket.send(json.dumps(response))
+    try:
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+                cmd = data.get("cmd")
 
-        except Exception as e:
-            await websocket.send(json.dumps({"status": "error", "type": "text", "data": str(e)}))
+                if cmd == "stream_start":
+                    if websocket not in _streaming_clients:
+                        _streaming_clients.add(websocket)
+                        asyncio.create_task(_vision_stream(websocket))
+                    response = await _controller.handle(data)
+
+                elif cmd == "stream_stop":
+                    _streaming_clients.discard(websocket)
+                    response = await _controller.handle(data)
+
+                else:
+                    response = await _controller.handle(data)
+
+                await websocket.send(json.dumps(response))
+
+            except Exception as e:
+                await websocket.send(json.dumps({"status": "error", "type": "text", "data": str(e)}))
+    finally:
+        _streaming_clients.discard(websocket)
 
 
 async def start_ws_server_async():
