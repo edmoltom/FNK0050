@@ -2,6 +2,11 @@ import os
 import base64, datetime, time
 import sys
 import types
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "Server"))
+sys.path.insert(0, str(ROOT))
 
 cv2_stub = types.SimpleNamespace(
     COLOR_RGB2BGR=0,
@@ -37,5 +42,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 

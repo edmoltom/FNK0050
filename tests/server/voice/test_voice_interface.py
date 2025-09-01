@@ -2,6 +2,10 @@
 
 import sys
 import types
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT))
 
 
 class _SpiDev:
@@ -93,3 +97,4 @@ def main(prompt: str = None) -> None:
 
 if __name__ == "__main__":
     main()
+

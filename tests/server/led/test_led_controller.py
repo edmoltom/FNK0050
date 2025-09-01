@@ -1,6 +1,11 @@
 import asyncio
 import sys
 import types
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "Server"))
+sys.path.insert(0, str(ROOT))
 
 class _SpiDev:
     def __init__(self):
@@ -42,3 +47,8 @@ async def test_led_no_block():
 
 def main():
     asyncio.run(test_led_no_block())
+
+
+if __name__ == "__main__":
+    main()
+

@@ -1,7 +1,12 @@
 import sys
 import time
 import types
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "Server"))
+sys.path.insert(0, str(ROOT))
 
 # Provide a minimal cv2 stub for tests if OpenCV is unavailable
 cv2_stub = types.SimpleNamespace(
@@ -70,5 +75,12 @@ def test_start_stream_runs_pipeline_once_and_logs():
         assert get_last.call_count == 2
         logger.log.assert_called_once()
         draw.assert_called_once()
+
+def main():
+    import pytest
+    raise SystemExit(pytest.main([__file__]))
+
+if __name__ == "__main__":
+    main()
 
 

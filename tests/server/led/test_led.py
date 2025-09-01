@@ -1,5 +1,11 @@
-# test_codes/test_led.py
+from pathlib import Path
+import sys
 import time
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "Server" / "core"))
+sys.path.insert(0, str(ROOT))
+
 from led.led import Led   # core/led/__init__.py must exist
 
 def main():
@@ -15,3 +21,8 @@ def main():
         led.off()
         led.close()
         print("LED test done.")
+
+
+if __name__ == "__main__":
+    main()
+
