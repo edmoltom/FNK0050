@@ -10,11 +10,13 @@ from core.vision.viz_logger import create_logger as create_vision_logger
 from core.movement.logger import MovementLogger
 
 from .config import AppConfig, load_config
-from .services.vision_service import VisionService
-from .services.movement_service import MovementService
-from .services.voice_service import VoiceService
-from .services.led_service import LedService
-from .services.hearing_service import HearingService
+from .services import (
+    VisionService,
+    MovementService,
+    VoiceService,
+    LedService,
+    HearingService,
+)
 
 
 class Application:
@@ -39,7 +41,9 @@ class Application:
                     "model_path": self.config.vision.model_path,
                 }
             )
-            self.vision_service = VisionService(self.vision)
+            self.vision_service = VisionService(
+                self.vision, enable_logging=self.config.logging.vision
+            )
         else:
             self.vision = None
 
@@ -47,7 +51,9 @@ class Application:
         if self.config.movement.enable:
             mv_logger = MovementLogger() if self.config.logging.movement else None
             self.movement = MovementControl(logger=mv_logger)
-            self.movement_service = MovementService(self.movement)
+            self.movement_service = MovementService(
+                self.movement, enable_logging=self.config.logging.movement
+            )
         else:
             self.movement = None
 
@@ -57,7 +63,9 @@ class Application:
                 from core.VoiceInterface import ConversationManager
 
                 self.voice = ConversationManager()
-                self.voice_service = VoiceService(self.voice)
+                self.voice_service = VoiceService(
+                    self.voice, enable_logging=self.config.logging.voice
+                )
             except Exception as exc:  # pragma: no cover - best effort
                 logging.getLogger(__name__).warning(
                     "Voice subsystem unavailable: %s", exc
@@ -72,7 +80,9 @@ class Application:
                 from core.LedController import LedController
 
                 self.led = LedController()
-                self.led_service = LedService(self.led)
+                self.led_service = LedService(
+                    self.led, enable_logging=self.config.logging.led
+                )
             except Exception as exc:  # pragma: no cover
                 logging.getLogger(__name__).warning(
                     "LED subsystem unavailable: %s", exc
@@ -87,7 +97,9 @@ class Application:
                 from core.hearing.stt import SpeechToText
 
                 self.hearing = SpeechToText()
-                self.hearing_service = HearingService(self.hearing)
+                self.hearing_service = HearingService(
+                    self.hearing, enable_logging=self.config.logging.hearing
+                )
             except Exception as exc:  # pragma: no cover
                 logging.getLogger(__name__).warning(
                     "Hearing subsystem unavailable: %s", exc
