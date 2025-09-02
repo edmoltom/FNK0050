@@ -59,6 +59,8 @@ class VisionEngine:
         self._st_small = _StableState()
         self._last_result: Optional[EngineResult] = None
         self._mode: str = "object"
+        # List of (detector, state) tuples in priority order
+        self._detectors: list[tuple[ContourDetector, _StableState]] = []
 
     # ----------------- internal helpers -----------------
     def _knobs(self, config: Optional[Dict[str, Any]]):
@@ -88,12 +90,14 @@ class VisionEngine:
             cfg, canny = configs_from_profile(get_config("big"))
             self._adj_big = DynamicAdjuster(canny)
             self._det_big = ContourDetector(adjuster=self._adj_big, **cfg)
+            self._detectors.append((self._det_big, self._st_big))
         if self._det_small is None:
             small = self._resolve_profile(k["small_profile"])
             pm_load_profile("small", small)
             cfg, canny = configs_from_profile(get_config("small"))
             self._adj_small = DynamicAdjuster(canny)
             self._det_small = ContourDetector(adjuster=self._adj_small, **cfg)
+            self._detectors.append((self._det_small, self._st_small))
 
     @staticmethod
     def _ref_size(det: ContourDetector) -> Tuple[int, int]:
@@ -103,6 +107,11 @@ class VisionEngine:
         with self._lock:
             self._st_big = _StableState()
             self._st_small = _StableState()
+            self._detectors = []
+            if self._det_big is not None:
+                self._detectors.append((self._det_big, self._st_big))
+            if self._det_small is not None:
+                self._detectors.append((self._det_small, self._st_small))
 
     def load_profile(self, which: str, path: Optional[str] = None) -> None:
         """Reload a profile ('big' or 'small') and reset state."""
@@ -121,6 +130,11 @@ class VisionEngine:
                 self._adj_small = DynamicAdjuster(canny)
                 self._det_small = ContourDetector(adjuster=self._adj_small, **cfg)
                 self._st_small = _StableState()
+            self._detectors = []
+            if self._det_big is not None:
+                self._detectors.append((self._det_big, self._st_big))
+            if self._det_small is not None:
+                self._detectors.append((self._det_small, self._st_small))
 
     def update_dynamic(self, which: str, params: Dict[str, Any]) -> None:
         """Update dynamic adjuster parameters at runtime."""
@@ -208,18 +222,15 @@ class VisionEngine:
         k = self._knobs(config)
         with self._lock:
             self._ensure_detectors(k)
-            ok_big, out_big = self._step(self._det_big, self._st_big, frame, k, return_overlay)
-            if ok_big:
-                out = out_big
-            else:
-                ok_small, out_small = self._step(self._det_small, self._st_small, frame, k, return_overlay)
-                if ok_small:
-                    out = out_small
-                else:
-                    sb = float(out_big.get("score", 0.0))
-                    ss = float(out_small.get("score", 0.0))
-                    out = out_big if sb >= ss else out_small
-            res = EngineResult(out, time.time())
+            best_out = None
+            for det, st in self._detectors:
+                ok, out = self._step(det, st, frame, k, return_overlay)
+                if ok:
+                    best_out = out
+                    break
+                if best_out is None or float(out.get("score", 0.0)) > float(best_out.get("score", 0.0)):
+                    best_out = out
+            res = EngineResult(best_out or {"ok": False}, time.time())
             self._last_result = res
             return res
 
