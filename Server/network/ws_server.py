@@ -44,9 +44,6 @@ def make_handler(svc: VisionService) -> Callable:
                     resp = {"status": "ok" if img else "wait",
                             "type": "image" if img else "text",
                             "data": img or "no frame yet"}
-                elif cmd == "process":
-                    svc.set_processing(data)
-                    resp = {"status": "ok", "type": "text", "data": "processing updated"}
                 else:
                     resp = {"status": "error", "type": "text", "data": f"unknown command: {cmd}"}
 

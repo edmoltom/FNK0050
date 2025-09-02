@@ -1,16 +1,24 @@
 from network.ws_client import WebSocketClient
 import sys
 
-"""
-    Some examples:
-        
-    {"cmd": "procces", "blur": "true/false", "edges": "true/false", "contours": "true/false"   } 
-    e.g. \\ python run.py process blur=true edges=true contours=true
+"""Send arbitrary commands to the WebSocket server.
 
+Examples:
+    {"cmd": "ping"}
+    {"cmd": "start", "interval": "1.0"}
+    {"cmd": "stop"}
+    {"cmd": "capture", "timeout": "2.0"}
+
+Usage:
+    python test_ws_command.py <cmd> [<key=value> ...]
+    valid commands: ``ping``, ``start``, ``stop``, ``capture``
 """
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python test_command_sender.py <cmd> [<key=value> ...]")
+        print(
+            "Usage: python test_ws_command.py <cmd> [<key=value> ...]\n"
+            "Valid commands: ping, start, stop, capture"
+        )
         return
 
     cmd = sys.argv[1]

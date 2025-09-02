@@ -1,5 +1,5 @@
 import math
-from .kalman import KalmanFilter
+from filters.kalman import KalmanFilter
 from mpu6050 import mpu6050
 
 
