@@ -1,3 +1,20 @@
+"""Contour detection pipeline with optional color gating and scoring.
+
+Design notes:
+    preprocess (resize+blur) → auto-canny with rescue → optional color-gate
+    (LAB/HSV) with coverage thresholds → premorph patches (bottom margin,
+    despeckle, fill-from-edges) → iterative morphology (close/dilate) →
+    contour features → scoring → selection → export overlay/metrics.
+
+    Score formula used in ``imgproc._score_contour``::
+
+        score = area*W_AREA + fill*W_FILL + solidity*W_SOLID +
+                circular*W_CIRC + rect*W_RECT + ar*W_AR -
+                (dist * center_bias * W_DIST)
+
+    Key metrics tracked include ``t1``/``t2``/``life``, ``chosen_ck``/``dk``,
+    ``bbox_ratio``, ``fill``, ``color_cover_pct`` and ``used_rescue``.
+"""
 
 import os, json, time
 from dataclasses import dataclass, asdict
@@ -222,6 +239,18 @@ class ContourDetector:
         color: ColorGateConfig = ColorGateConfig(),
         adjuster: Optional["DynamicAdjuster"] = None,
     ) -> None:
+        """Initialize the detector with configuration objects.
+
+        Args:
+            proc: Preprocessing parameters such as working size and blur.
+            morph: Kernel ranges and steps for closing/dilation.
+            geo: Geometric filters applied to candidate contours.
+            w: Weights used in contour scoring.
+            premorph: Patch rules applied before morphology.
+            color: Color-gate parameters.
+            adjuster: Optional dynamic Canny adjuster; default uses
+                :class:`~Server.core.vision.dynamic_adjuster.DynamicAdjuster`.
+        """
         self.proc = proc
         self.morph_cfg = morph
         self.geo = geo
@@ -235,6 +264,7 @@ class ContourDetector:
         self.adjuster = adjuster
 
     def to_profile_dict(self) -> Dict[str, Any]:
+        """Return the current configuration as a JSON-serializable dict."""
         return {
             "proc": asdict(self.proc),
             "canny": asdict(self.adjuster.cfg),
@@ -254,6 +284,22 @@ class ContourDetector:
         save_profile: bool = True,
         return_overlay: bool = True,
     ) -> DetectionResult:
+        """Run the contour detector on an image.
+
+        Args:
+            img_or_path: Image array or path to image file.
+            save_dir: Optional directory to save intermediate artifacts.
+            stamp: Optional file prefix; defaults to timestamp.
+            save_profile: If True, dump a JSON profile snapshot when saving.
+            return_overlay: If True, include overlay image in the result.
+
+        Returns:
+            DetectionResult: Structured information about the best contour and
+            processing statistics.
+
+        Raises:
+            FileNotFoundError: If ``img_or_path`` cannot be loaded.
+        """
         img = self._load_image(img_or_path)
         if img is None:
             raise FileNotFoundError(str(img_or_path))
@@ -395,7 +441,21 @@ class ContourDetector:
         return None
 
 # ----------------------- CLI helper -----------------------
-def run_file(image_path: str, profile: Optional[str] = None, out_dir: Optional[str] = "results"):
+def run_file(
+    image_path: str,
+    profile: Optional[str] = None,
+    out_dir: Optional[str] = "results",
+) -> DetectionResult:
+    """Convenience entry-point for running the detector from CLI.
+
+    Args:
+        image_path: Path to the input image.
+        profile: Optional JSON profile path with parameters.
+        out_dir: Directory to store artifacts.
+
+    Returns:
+        DetectionResult: Result of the detection run.
+    """
     if profile:
         from ..profile_manager import load_profile, get_config
         from ..dynamic_adjuster import DynamicAdjuster

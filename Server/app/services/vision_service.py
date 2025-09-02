@@ -24,4 +24,3 @@ class VisionService:
 
     def snapshot_b64(self) -> Optional[str]:
         return self.vi.snapshot()
-
