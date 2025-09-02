@@ -6,7 +6,10 @@ import logging
 import time
 from typing import Generator, Optional
 
-from core.VisionInterface import VisionInterface
+try:
+    from Server.core.VisionInterface import VisionInterface
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    VisionInterface = object  # type: ignore[misc]
 
 
 class VisionService:

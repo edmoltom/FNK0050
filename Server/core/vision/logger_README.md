@@ -8,7 +8,7 @@ artefacts and per-frame metrics to CSV.
 before launching your application:
 
 ```bash
-VISION_LOG=1 python Server/run.py
+VISION_LOG=1 python run.py
 ```
 
 Optional variables:
@@ -19,7 +19,7 @@ Optional variables:
 Example:
 
 ```bash
-VISION_LOG=1 VISION_LOG_STRIDE=10 VISION_LOG_DIR=/tmp/vision_logs python Server/run.py
+VISION_LOG=1 VISION_LOG_STRIDE=10 VISION_LOG_DIR=/tmp/vision_logs python run.py
 ```
 
 The helper `create_logger_from_env()` in `viz_logger.py` reads these variables

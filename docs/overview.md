@@ -40,7 +40,7 @@ from initializing that module, so no resources are used and any calls to the
 disabled service are ignored. The `[logging]` section controls the global log
 level and which subsystems emit debug information.
 
-`Server/run.py` loads this file at start-up, so no command-line arguments or
+`run.py` loads this file at start-up, so no command-line arguments or
 environment variables are required.
 
 ## Quick Start: Vision and Voice Only
@@ -74,5 +74,5 @@ led = false
 hearing = false
 ```
 
-Start the server with `python Server/run.py` and only vision and voice will be
+Start the server with `python run.py` and only vision and voice will be
 active.

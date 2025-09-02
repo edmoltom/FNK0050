@@ -4,10 +4,22 @@ from __future__ import annotations
 
 import logging
 
-from core.VisionInterface import VisionInterface
-from core.MovementControl import MovementControl
-from core.vision.viz_logger import create_logger as create_vision_logger
-from core.movement.logger import MovementLogger
+try:
+    from Server.core.VisionInterface import VisionInterface
+except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+    VisionInterface = None
+    _vision_import_error = exc
+try:
+    from Server.core.MovementControl import MovementControl
+except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+    MovementControl = None
+    _movement_import_error = exc
+try:
+    from Server.core.vision.viz_logger import create_logger as create_vision_logger
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    def create_vision_logger(*_a, **_k):
+        return None
+from Server.core.movement.logger import MovementLogger
 
 from .config import AppConfig, load_config
 from .services import (
@@ -31,7 +43,7 @@ class Application:
             logging.basicConfig(level=level)
 
         self.vision_service: VisionService | None = None
-        if self.config.vision.enable:
+        if self.config.vision.enable and VisionInterface is not None:
             vision_logger = create_vision_logger(enable=self.config.logging.vision)
             self.vision = VisionInterface(logger=vision_logger)
             self.vision.set_mode(self.config.vision.profile)
@@ -44,23 +56,33 @@ class Application:
             self.vision_service = VisionService(
                 self.vision, enable_logging=self.config.logging.vision
             )
+        elif self.config.vision.enable:
+            logging.getLogger(__name__).warning(
+                "Vision subsystem unavailable: %s", _vision_import_error
+            )
+            self.vision = None
         else:
             self.vision = None
 
         self.movement_service: MovementService | None = None
-        if self.config.movement.enable:
+        if self.config.movement.enable and MovementControl is not None:
             mv_logger = MovementLogger() if self.config.logging.movement else None
             self.movement = MovementControl(logger=mv_logger)
             self.movement_service = MovementService(
                 self.movement, enable_logging=self.config.logging.movement
             )
+        elif self.config.movement.enable:
+            logging.getLogger(__name__).warning(
+                "Movement subsystem unavailable: %s", _movement_import_error
+            )
+            self.movement = None
         else:
             self.movement = None
 
         self.voice_service: VoiceService | None = None
         if self.config.voice.enable:
             try:
-                from core.VoiceInterface import ConversationManager
+                from Server.core.VoiceInterface import ConversationManager
 
                 self.voice = ConversationManager()
                 self.voice_service = VoiceService(
@@ -77,7 +99,7 @@ class Application:
         self.led_service: LedService | None = None
         if self.config.led.enable:
             try:
-                from core.LedController import LedController
+                from Server.core.LedController import LedController
 
                 self.led = LedController()
                 self.led_service = LedService(
@@ -94,7 +116,7 @@ class Application:
         self.hearing_service: HearingService | None = None
         if self.config.hearing.enable:
             try:
-                from core.hearing.stt import SpeechToText
+                from Server.core.hearing.stt import SpeechToText
 
                 self.hearing = SpeechToText()
                 self.hearing_service = HearingService(
