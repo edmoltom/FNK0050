@@ -2,13 +2,19 @@ import asyncio
 import socket
 import json
 import websockets
+from typing import TYPE_CHECKING
 
-from app.application import Application
-from app.controllers.robot_controller import RobotController
+# These imports are only needed for type checking to avoid circular imports at
+# runtime.  The actual ``Application`` instance and ``RobotController`` are
+# provided by the caller via :func:`start_ws_server_async`.
+if TYPE_CHECKING:  # pragma: no cover - optional dependency for typing only
+    from app.application import Application
+    from app.controllers.robot_controller import RobotController
 
-# Wire application services with the controller
-_app = Application()
-_controller = RobotController(_app.movement_service, _app.vision_service)
+# Globals populated when the server is started.  They are used by the request
+# handlers below to access application services.
+_app: "Application | None" = None
+_controller: "RobotController | None" = None
 
 # Track websockets currently receiving vision frames
 _streaming_clients: set[websockets.WebSocketServerProtocol] = set()
@@ -27,6 +33,8 @@ def get_local_ip():
 
 async def _vision_stream(websocket: websockets.WebSocketServerProtocol) -> None:
     """Continuously push vision frames to a websocket client."""
+    if _app is None or _controller is None:
+        return
     interval = getattr(getattr(_app.config, "vision", _app.config), "stream_interval", 0.0)
     try:
         stream = (
@@ -49,6 +57,8 @@ async def handler(websocket):
     try:
         async for message in websocket:
             try:
+                if _controller is None:
+                    raise RuntimeError("Controller not initialised")
                 data = json.loads(message)
                 cmd = data.get("cmd")
 
@@ -73,7 +83,11 @@ async def handler(websocket):
         _streaming_clients.discard(websocket)
 
 
-async def start_ws_server_async():
+async def start_ws_server_async(app: "Application", controller: "RobotController") -> None:
+    """Start the websocket server using the provided application and controller."""
+    global _app, _controller
+    _app = app
+    _controller = controller
     addr = get_local_ip()
     print(f"WebSocket listening in ws://{addr}:8765 ...")
     async with websockets.serve(handler, "0.0.0.0", 8765):
@@ -81,12 +95,9 @@ async def start_ws_server_async():
             await asyncio.Future()  # keep server running
         except asyncio.CancelledError:
             print("Server stopped with Ctrl+C.")
-        finally:
-            # parada limpia de los servicios
-            _app.vision_service.stop()
-            _app.movement_service.stop()
 
 
-def start_ws_server():
-    asyncio.run(start_ws_server_async())
+def start_ws_server(app: "Application", controller: "RobotController") -> None:
+    """Helper to start the server synchronously."""
+    asyncio.run(start_ws_server_async(app, controller))
 

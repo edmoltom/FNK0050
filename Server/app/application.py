@@ -28,6 +28,7 @@ from .services import (
     VoiceService,
     LedService,
     HearingService,
+    NetworkService,
 )
 
 
@@ -130,12 +131,18 @@ class Application:
         else:
             self.hearing = None
 
+        self.network_service: NetworkService | None = None
+        if self.vision_service and self.movement_service:
+            self.network_service = NetworkService(self)
+
     def run(self) -> None:
         """Start subsystems and keep the main loop alive."""
         if self.vision_service:
             self.vision_service.start()
         if self.movement_service:
             self.movement_service.start()
+        if self.network_service:
+            self.network_service.start()
         if self.voice_service:
             self.voice_service.start()
         if self.led_service:
@@ -149,6 +156,8 @@ class Application:
                     self.vision_service.update()
                 if self.movement_service:
                     self.movement_service.update()
+                if self.network_service:
+                    self.network_service.update()
                 if self.voice_service:
                     self.voice_service.update()
                 if self.led_service:
@@ -168,3 +177,5 @@ class Application:
                 self.movement_service.stop()
             if self.vision_service:
                 self.vision_service.stop()
+            if self.network_service:
+                self.network_service.stop()
