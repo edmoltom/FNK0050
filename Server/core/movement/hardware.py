@@ -26,7 +26,7 @@ from .servo import Servo
 from .gait_cpg import CPG
 from sensing.IMU import IMU
 from sensing.odometry import Odometry
-from PID import Incremental_PID
+from control.pid import Incremental_PID
 
 
 class Hardware:
