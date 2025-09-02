@@ -7,7 +7,7 @@ sys.path.extend([str(ROOT / "lib"), str(ROOT / "core")])
 import time
 import threading
 
-from Gamepad import Xbox360
+from peripherals.Gamepad import Xbox360
 from MovementControl import MovementControl
 
 
