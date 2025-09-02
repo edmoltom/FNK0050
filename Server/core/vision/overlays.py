@@ -45,7 +45,7 @@ def draw_result(frame: np.ndarray, result: EngineResult) -> np.ndarray:
     """Draw detection information from ``result`` onto ``frame``.
 
     The drawing logic mirrors the overlay produced by
-    :meth:`VisionInterface._apply_pipeline`.  The input frame is modified
+    :meth:`VisionManager._apply_pipeline`.  The input frame is modified
     in-place and returned for convenience.
     """
     if result is None or not isinstance(result, EngineResult):

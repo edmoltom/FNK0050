@@ -37,15 +37,20 @@ def update_dynamic(which: str, params: Dict[str, Any]) -> None:
     _pipeline().update_dynamic(which, params)
 
 
-def select_detector(mode: str) -> None:
-    """Select vision pipeline mode."""
+def register_pipeline(name: str, pipeline: BasePipeline) -> None:
+    """Register a new pipeline under ``name``."""
+    _PIPELINES[name] = pipeline
+
+
+def select_pipeline(name: str) -> None:
+    """Select vision pipeline by ``name``."""
     global _CURRENT
-    if mode not in _PIPELINES:
-        raise ValueError("mode must be 'object' or 'face'")
-    _CURRENT = mode
+    if name not in _PIPELINES:
+        raise ValueError("unknown pipeline")
+    _CURRENT = name
 
 
-def process_frame(
+def process(
     frame: np.ndarray,
     return_overlay: bool = True,
     config: Optional[Dict[str, Any]] = None,
@@ -59,7 +64,7 @@ def process_frame(
 
 # VisionLogger fetches the latest detection result through this helper.
 def get_last_result() -> Optional[Result]:
-    """Return the most recent Result produced by :func:`process_frame`."""
+    """Return the most recent Result produced by :func:`process`."""
     return _pipeline().get_last_result()
 
 
@@ -73,3 +78,8 @@ def create_logger_from_env() -> Optional["VisionLogger"]:
     from .viz_logger import create_logger_from_env as _create_logger_from_env
 
     return _create_logger_from_env()
+
+
+# Backwards compatibility for older imports
+select_detector = select_pipeline
+process_frame = process

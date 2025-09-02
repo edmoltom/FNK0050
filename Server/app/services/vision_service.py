@@ -1,26 +1,27 @@
 from __future__ import annotations
 from typing import Optional
 
-from core.VisionInterface import VisionInterface
+from core.vision.VisionManager import VisionManager
 
 class VisionService:
-    def __init__(self, vi: Optional[VisionInterface] = None) -> None:
-        self.vi = vi or VisionInterface()
+    def __init__(self, vm: Optional[VisionManager] = None) -> None:
+        self.vm = vm or VisionManager()
         self._running = False
 
     def start(self, interval_sec: float = 1.0) -> None:
         if not self._running:
-            self.vi.start()
-            self.vi.start_stream(interval_sec=interval_sec)
+            self.vm.start()
+            self.vm.start_stream(interval_sec=interval_sec)
             self._running = True
 
     def stop(self) -> None:
         if self._running:
-            self.vi.stop()
+            self.vm.stop()
             self._running = False
 
     def last_b64(self) -> Optional[str]:
-        return self.vi.get_last_processed_encoded()
+        return self.vm.get_last_processed_encoded()
 
     def snapshot_b64(self) -> Optional[str]:
-        return self.vi.snapshot()
+        return self.vm.snapshot()
+

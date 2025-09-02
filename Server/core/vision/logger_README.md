@@ -27,5 +27,5 @@ and returns a configured logger or `None` when logging is disabled.
 
 ## Notes for developers
 `VisionLogger` lazily imports the vision API to avoid circular dependencies.
-`VisionInterface` accepts an existing logger and delegates all logging work to
+`VisionManager` accepts an existing logger and delegates all logging work to
 it via the API's `create_logger_from_env()` helper.
