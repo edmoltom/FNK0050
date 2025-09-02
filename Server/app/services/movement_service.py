@@ -3,7 +3,10 @@ from __future__ import annotations
 """Orchestration helpers for the movement subsystem."""
 
 import logging
-from core.MovementControl import MovementControl
+try:
+    from Server.core.MovementControl import MovementControl
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    MovementControl = object  # type: ignore[misc]
 
 
 class MovementService:
