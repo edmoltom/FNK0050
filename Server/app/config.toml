@@ -4,23 +4,24 @@ stream_interval = 0.2
 profile = "object"
 threshold = 0.5
 model_path = "models/default.pt"
-log = true     # vision-specific logging
 
 [movement]
 enable = true
-log = false
 
 [voice]
 enable = true
-log = false
 
 [led]
 enable = true
-log = false
 
 [hearing]
 enable = true
-log = false
 
 [logging]
+enable = true
 level = "INFO" # global log level
+vision = true
+movement = false
+voice = false
+led = false
+hearing = false

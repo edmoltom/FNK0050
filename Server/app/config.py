@@ -117,11 +117,11 @@ def load_config() -> AppConfig:
     logging_cfg = LoggingConfig(
         enable=logging_data.get("enable", logging_defaults.enable),
         level=logging_data.get("level", logging_defaults.level),
-        vision=vision_data.get("log", logging_defaults.vision),
-        movement=movement_data.get("log", logging_defaults.movement),
-        voice=voice_data.get("log", logging_defaults.voice),
-        led=led_data.get("log", logging_defaults.led),
-        hearing=hearing_data.get("log", logging_defaults.hearing),
+        vision=logging_data.get("vision", logging_defaults.vision),
+        movement=logging_data.get("movement", logging_defaults.movement),
+        voice=logging_data.get("voice", logging_defaults.voice),
+        led=logging_data.get("led", logging_defaults.led),
+        hearing=logging_data.get("hearing", logging_defaults.hearing),
     )
 
     api_key = data.get("api_key", "")
