@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional, Dict, Any
 
-from VisionInterface import VisionInterface
+from ...core.VisionInterface import VisionInterface
 
 class VisionService:
     def __init__(self, vi: Optional[VisionInterface] = None) -> None:
