@@ -13,10 +13,9 @@ import numpy as np
 from .detectors.contour_detector import (
     ContourDetector,
     DetectionResult,
-    configs_from_profile,
 )
-from .profile_manager import load_profile as pm_load_profile, get_config
 from .dynamic_adjuster import DynamicAdjuster
+from .detector_registry import DetectorRegistry
 from .imgproc import mask_to_roi
 from .config_defaults import (
     DEFAULT_STABLE,
@@ -49,8 +48,9 @@ class _StableState:
 class VisionEngine:
     """Instance-based vision engine holding all mutable state."""
 
-    def __init__(self) -> None:
+    def __init__(self, registry: Optional[DetectorRegistry] = None, config: Optional[Dict[str, Any]] = None) -> None:
         self._lock = threading.Lock()
+        self._registry = registry or DetectorRegistry()
         self._det_big: Optional[ContourDetector] = None
         self._det_small: Optional[ContourDetector] = None
         self._adj_big: Optional[DynamicAdjuster] = None
@@ -61,6 +61,7 @@ class VisionEngine:
         self._mode: str = "object"
         # List of (detector, state) tuples in priority order
         self._detectors: list[tuple[ContourDetector, _StableState]] = []
+        self.configure(config)
 
     # ----------------- internal helpers -----------------
     def _knobs(self, config: Optional[Dict[str, Any]]):
@@ -83,21 +84,16 @@ class VisionEngine:
             return p
         return os.path.join(BASE, "profiles", p)
 
-    def _ensure_detectors(self, k) -> None:
-        if self._det_big is None:
-            big = self._resolve_profile(k["big_profile"])
-            pm_load_profile("big", big)
-            cfg, canny = configs_from_profile(get_config("big"))
-            self._adj_big = DynamicAdjuster(canny)
-            self._det_big = ContourDetector(adjuster=self._adj_big, **cfg)
-            self._detectors.append((self._det_big, self._st_big))
-        if self._det_small is None:
-            small = self._resolve_profile(k["small_profile"])
-            pm_load_profile("small", small)
-            cfg, canny = configs_from_profile(get_config("small"))
-            self._adj_small = DynamicAdjuster(canny)
-            self._det_small = ContourDetector(adjuster=self._adj_small, **cfg)
-            self._detectors.append((self._det_small, self._st_small))
+    def configure(self, config: Optional[Dict[str, Any]] = None) -> None:
+        """Configure detectors via the registry using ``config``."""
+        k = self._knobs(config)
+        big = self._resolve_profile(k["big_profile"])
+        small = self._resolve_profile(k["small_profile"])
+        self._det_big = self._registry.register("big", big)
+        self._adj_big = self._registry.get_adjuster("big")
+        self._det_small = self._registry.register("small", small)
+        self._adj_small = self._registry.get_adjuster("small")
+        self.reset_state()
 
     @staticmethod
     def _ref_size(det: ContourDetector) -> Tuple[int, int]:
@@ -107,6 +103,8 @@ class VisionEngine:
         with self._lock:
             self._st_big = _StableState()
             self._st_small = _StableState()
+            self._det_big = self._registry.get_detector("big")
+            self._det_small = self._registry.get_detector("small")
             self._detectors = []
             if self._det_big is not None:
                 self._detectors.append((self._det_big, self._st_big))
@@ -118,17 +116,13 @@ class VisionEngine:
         with self._lock:
             if which == "big":
                 p = self._resolve_profile(path or "profile_big.json")
-                pm_load_profile("big", p)
-                cfg, canny = configs_from_profile(get_config("big"))
-                self._adj_big = DynamicAdjuster(canny)
-                self._det_big = ContourDetector(adjuster=self._adj_big, **cfg)
+                self._det_big = self._registry.register("big", p)
+                self._adj_big = self._registry.get_adjuster("big")
                 self._st_big = _StableState()
             elif which == "small":
                 p = self._resolve_profile(path or "profile_small.json")
-                pm_load_profile("small", p)
-                cfg, canny = configs_from_profile(get_config("small"))
-                self._adj_small = DynamicAdjuster(canny)
-                self._det_small = ContourDetector(adjuster=self._adj_small, **cfg)
+                self._det_small = self._registry.register("small", p)
+                self._adj_small = self._registry.get_adjuster("small")
                 self._st_small = _StableState()
             self._detectors = []
             if self._det_big is not None:
@@ -139,10 +133,9 @@ class VisionEngine:
     def update_dynamic(self, which: str, params: Dict[str, Any]) -> None:
         """Update dynamic adjuster parameters at runtime."""
         with self._lock:
-            if which == "big" and self._adj_big is not None:
-                self._adj_big.update(**params)
-            elif which == "small" and self._adj_small is not None:
-                self._adj_small.update(**params)
+            adj = self._registry.get_adjuster(which)
+            if adj is not None:
+                adj.update(**params)
 
     def select_detector(self, mode: str) -> None:
         """Select which detector mode to use."""
@@ -151,7 +144,7 @@ class VisionEngine:
 
     def get_detectors(self):
         with self._lock:
-            return self._det_big, self._det_small
+            return self._registry.get_detector("big"), self._registry.get_detector("small")
 
     def _export(self, res: DetectionResult, det: ContourDetector, score_override: Optional[float] = None):
         ref = self._ref_size(det)
@@ -221,7 +214,6 @@ class VisionEngine:
         """Process a frame and return an EngineResult."""
         k = self._knobs(config)
         with self._lock:
-            self._ensure_detectors(k)
             best_out = None
             for det, st in self._detectors:
                 ok, out = self._step(det, st, frame, k, return_overlay)
