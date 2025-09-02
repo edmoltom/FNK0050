@@ -2,7 +2,7 @@ from __future__ import annotations
 import asyncio, json, socket, time
 from typing import Callable, Optional
 import websockets
-from app.services.vision_service import VisionService
+from Server.App.services.vision_service import VisionService
 
 async def _wait_for_frame(svc: VisionService, timeout=3.0, poll=0.05) -> Optional[str]:
     deadline = time.monotonic() + float(timeout)

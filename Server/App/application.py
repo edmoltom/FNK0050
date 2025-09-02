@@ -1,8 +1,8 @@
 from __future__ import annotations
 import os, sys, json, time
 from typing import Any, Dict
-from app.services.vision_service import VisionService
-from network.ws_server import start_ws_server
+from .services.vision_service import VisionService
+from ..network.ws_server import start_ws_server
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "app.json")
 
