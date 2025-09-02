@@ -90,7 +90,7 @@ from Server.core.VoiceInterface import ConversationManager
 
 
 def main(prompt: str = None) -> None:
-    """Entry point for run.py"""
+    """Entry point for Server/run.py"""
     print("[INFO] Starting ConversationManager… (Ctrl+C to stop)")
     ConversationManager().run()
 

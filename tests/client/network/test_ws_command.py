@@ -10,7 +10,7 @@ from network.ws_client import WebSocketClient
     Some examples:
 
     {"cmd": "procces", "blur": "true/false", "edges": "true/false", "contours": "true/false"   }
-    e.g. \\ python run.py process blur=true edges=true contours=true
+    e.g. \\ python Server/run.py process blur=true edges=true contours=true
 
 """
 

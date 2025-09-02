@@ -6,7 +6,7 @@
 # is sent to the LLM→TTS bridge (llm_to_tts.py).
 #
 # Usage (from your project root):
-#   python3 run.py --test voice_loop
+#   python3 Server/run.py --test voice_loop
 #
 from pathlib import Path as _Path
 import subprocess as _subprocess, sys as _sys, os as _os, argparse as _argparse
@@ -17,7 +17,7 @@ _LLM_TO_TTS = _PROJECT_ROOT / "core" / "llm" / "llm_to_tts.py"
 # Path to the speech-to-text helper in the hearing module
 _STT_SCRIPT = _PROJECT_ROOT / "core" / "hearing" / "stt.py"
 
-def main():  # entrypoint expected by your run.py
+def main():  # entrypoint expected by your Server/run.py
     ap = _argparse.ArgumentParser(add_help=False)
     ap.add_argument("--llama", default=_os.environ.get("LLAMA_BASE", "http://127.0.0.1:8080"))
     args, _ = ap.parse_known_args()
