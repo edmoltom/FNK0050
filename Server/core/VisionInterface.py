@@ -23,7 +23,6 @@ class VisionInterface:
         logger: Optional['VisionLogger'] = None,
     ) -> None:
         self.camera = camera or Camera(max_failures=max_capture_failures)
-        self._config: dict = {}
         self._last_encoded_image: Optional[str] = None
         self._streaming = False
         self._thread: Optional[threading.Thread] = None
@@ -34,10 +33,6 @@ class VisionInterface:
         self._logger: Optional['VisionLogger'] = logger or api.create_logger_from_env()
 
     # -------- Configuration API --------
-
-    def set_processing_config(self, cfg: dict) -> None:
-        """Store runtime configuration for the processing pipeline."""
-        self._config = dict(cfg or {})
 
     def set_mode(self, mode: str) -> None:
         """Select detection mode: ``"object"`` or ``"face"``."""
@@ -73,7 +68,7 @@ class VisionInterface:
     def _apply_pipeline(self):
         frame_rgb = self.camera.capture_rgb()
         frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-        api.process_frame(frame, return_overlay=True, config=self._config)
+        api.process_frame(frame, return_overlay=True)
         if self._logger:
             self._logger.log(frame, result=api.get_last_result())
         frame = draw_result(frame, api.get_last_result())
