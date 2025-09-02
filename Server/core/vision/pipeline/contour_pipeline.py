@@ -9,7 +9,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
-from ..detectors.contour_detector import ContourDetector, DetectionResult
+from ..detectors.contour_detector import ContourDetector
+from ..detectors.results import DetectionResult
 from ..dynamic_adjuster import DynamicAdjuster
 from ..detector_registry import DetectorRegistry
 from ..imgproc import mask_to_roi
@@ -156,7 +157,7 @@ class ContourPipeline(BasePipeline):
     def _step(self, det: ContourDetector, st: _StableState, frame: np.ndarray, k, return_overlay: bool):
         ref_w, ref_h = self._ref_size(det)
         if not k["stable"] or st.last_bbox is None:
-            res: DetectionResult = det.detect(frame, save_dir=None, return_overlay=return_overlay)
+            res: DetectionResult = det.detect(frame, knobs={"return_overlay": return_overlay})
             if not res.ok:
                 st.miss_count = min(k["miss_m"], st.miss_count + 1)
                 return False, self._export(res, det)
@@ -172,7 +173,7 @@ class ContourPipeline(BasePipeline):
             return False, out
 
         roi_frame = mask_to_roi(frame, st.last_bbox, k["roi_fact"], self._ref_size(det))
-        res_roi: DetectionResult = det.detect(roi_frame, save_dir=None, return_overlay=return_overlay)
+        res_roi: DetectionResult = det.detect(roi_frame, knobs={"return_overlay": return_overlay})
         if res_roi.ok:
             st.score_ema = res_roi.score if st.score_ema is None else (
                 k["ema_a"] * st.score_ema + (1.0 - k["ema_a"]) * res_roi.score
@@ -188,7 +189,7 @@ class ContourPipeline(BasePipeline):
         if st.miss_count >= k["miss_m"]:
             st.last_bbox = None
             st.score_ema = None
-            res_global: DetectionResult = det.detect(frame, save_dir=None, return_overlay=return_overlay)
+            res_global: DetectionResult = det.detect(frame, knobs={"return_overlay": return_overlay})
             ok = bool(res_global.ok)
             if ok:
                 st.last_bbox = res_global.bbox
