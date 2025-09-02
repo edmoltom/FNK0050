@@ -5,7 +5,7 @@ import base64, datetime, time
 # Ensure the Server package is on the Python path when run directly
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from core.vision.VisionManager import VisionManager
+from core.VisionManager import VisionManager
 
 def main():
     cam = VisionManager()

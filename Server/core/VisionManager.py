@@ -5,12 +5,12 @@ from typing import Optional, TYPE_CHECKING
 
 import cv2
 
-from . import api
-from .camera import Camera, CameraCaptureError
-from .overlays import draw_result
+from .vision import api
+from .vision.camera import Camera, CameraCaptureError
+from .vision.overlays import draw_result
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers only
-    from .viz_logger import VisionLogger
+    from .vision.viz_logger import VisionLogger
 
 
 class VisionManager:

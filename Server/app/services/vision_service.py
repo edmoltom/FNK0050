@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional
 
-from core.vision.VisionManager import VisionManager
+from core.VisionManager import VisionManager
 
 class VisionService:
     def __init__(self, vm: Optional[VisionManager] = None) -> None:
