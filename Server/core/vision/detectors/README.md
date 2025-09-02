@@ -27,8 +27,8 @@ from core.vision.detectors.contour_detector import ContourDetector
 det = ContourDetector.from_profile("profile_big_solid.json")
 res = det.detect(frame_bgr, knobs={"return_overlay": True})
 
-from core.vision.api import process_frame
-out = process_frame(frame_bgr, return_overlay=True, config={"roi_factor":1.8, "ema":0.7})
+from core.vision.api import process
+out = process(frame_bgr, return_overlay=True, config={"roi_factor":1.8, "ema":0.7})
 ```
 
 ## Tips rápidos
