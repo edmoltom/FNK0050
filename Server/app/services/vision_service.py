@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from core.VisionInterface import VisionInterface
 
@@ -25,8 +25,3 @@ class VisionService:
     def snapshot_b64(self) -> Optional[str]:
         return self.vi.snapshot()
 
-    def set_processing(self, cfg: Dict[str, Any]) -> None:
-        allowed = {"blur", "edges", "contours", "ref_size"}
-        filtered = {k: v for k, v in (cfg or {}).items() if k in allowed}
-        if filtered:
-            self.vi.set_processing_config(filtered)
