@@ -66,7 +66,7 @@ class Hardware:
 
     # ------------------------------------------------------------------
     def load_calibration(self) -> None:
-        point_file = Path(__file__).resolve().parents[1] / "point.txt"
+        point_file = Path(__file__).resolve().parent / "calibration" / "point.txt"
         self.calibration_point = load_points(point_file)
         self.calibration_angle = [[0.0, 0.0, 0.0] for _ in range(4)]
 
