@@ -1,38 +1,78 @@
-# Configuration Overview
+# Overview
 
-The server now relies on a `config.toml` file located in `Server/app/`. The
-file controls subsystem toggles and logging behaviour. A sample configuration
-is provided and looks like:
+The server relies on a `config.toml` file located in `Server/app/`. This file
+controls which subsystems run and how each one logs information.
+
+## Configuration
 
 ```toml
 [vision]
 enable = true
+stream_interval = 0.2
 profile = "object"
 threshold = 0.5
 model_path = "models/default.pt"
-log = true
 
 [movement]
 enable = true
-log = false
 
 [voice]
 enable = true
-log = false
 
 [led]
 enable = true
-log = false
 
 [hearing]
 enable = true
-log = false
 
 [logging]
+enable = true
 level = "INFO"
+vision = true
+movement = false
+voice = false
+led = false
+hearing = false
 ```
 
-`Server/run.py` simply loads this file on start-up and no longer requires
-command-line arguments or environment variables. Adjust the values in the TOML
-file to enable subsystems like voice, LED, or hearing and tune their logging
-preferences alongside vision and movement.
+Each subsystem has an `enable` flag. Setting it to `false` prevents the server
+from initializing that module, so no resources are used and any calls to the
+disabled service are ignored. The `[logging]` section controls the global log
+level and which subsystems emit debug information.
+
+`Server/run.py` loads this file at start-up, so no command-line arguments or
+environment variables are required.
+
+## Quick Start: Vision and Voice Only
+
+To run only the vision and voice subsystems, disable the others in
+`config.toml`:
+
+```toml
+[vision]
+enable = true
+
+[movement]
+enable = false
+
+[voice]
+enable = true
+
+[led]
+enable = false
+
+[hearing]
+enable = false
+
+[logging]
+enable = true
+level = "INFO"
+vision = true
+voice = true
+movement = false
+led = false
+hearing = false
+```
+
+Start the server with `python Server/run.py` and only vision and voice will be
+active.
