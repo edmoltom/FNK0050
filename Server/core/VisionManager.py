@@ -5,16 +5,16 @@ from typing import Optional, TYPE_CHECKING
 
 import cv2
 
-from core.vision import api
-from core.vision.camera import Camera, CameraCaptureError
-from core.vision.overlays import draw_result
+from .vision import api
+from .vision.camera import Camera, CameraCaptureError
+from .vision.overlays import draw_result
 
-if TYPE_CHECKING:
-    from core.vision.viz_logger import VisionLogger
+if TYPE_CHECKING:  # pragma: no cover - for type checkers only
+    from .vision.viz_logger import VisionLogger
 
 
-class VisionInterface:
-    """Vision interface backed by :class:`Camera` and vision ``api``."""
+class VisionManager:
+    """High-level vision manager backed by :class:`Camera` and vision ``api``."""
 
     def __init__(
         self,
@@ -34,12 +34,18 @@ class VisionInterface:
 
     # -------- Configuration API --------
 
-    def set_mode(self, mode: str) -> None:
-        """Select detection mode: ``"object"`` or ``"face"``."""
-        if mode not in {"object", "face"}:
-            raise ValueError("mode must be 'object' or 'face'")
-        self._mode = mode
-        api.select_detector(mode)
+    def register_pipeline(self, name: str, pipeline) -> None:
+        """Register a new vision ``pipeline`` under ``name``."""
+        api.register_pipeline(name, pipeline)
+
+    def select_pipeline(self, name: str) -> None:
+        """Select the active vision pipeline by ``name``."""
+        self._mode = name
+        api.select_pipeline(name)
+
+    def process(self, frame) -> dict:
+        """Process a BGR ``frame`` using the active pipeline."""
+        return api.process(frame, return_overlay=True)
 
     # -------- Camera control --------
 
@@ -68,7 +74,7 @@ class VisionInterface:
     def _apply_pipeline(self):
         frame_rgb = self.camera.capture_rgb()
         frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-        api.process_frame(frame, return_overlay=True)
+        api.process(frame, return_overlay=True)
         if self._logger:
             self._logger.log(frame, result=api.get_last_result())
         frame = draw_result(frame, api.get_last_result())
@@ -85,7 +91,7 @@ class VisionInterface:
         ready.
         """
         if self._streaming:
-            print("[VisionInterface] Streaming already running.")
+            print("[VisionManager] Streaming already running.")
             return
         if not self.camera.is_running():
             self.camera.start()
@@ -105,12 +111,12 @@ class VisionInterface:
                         with self._lock:
                             self._last_encoded_image = encoded
                 except CameraCaptureError as e:
-                    print(f"[VisionInterface] Capture error: {e}")
+                    print(f"[VisionManager] Capture error: {e}")
                     self._last_error = e
                     self._streaming = False
                     break
                 except Exception as e:
-                    print(f"[VisionInterface] Error in periodic capture: {e}")
+                    print(f"[VisionManager] Error in periodic capture: {e}")
                 sleep_s = next_tick - time.monotonic()
                 if sleep_s > 0:
                     time.sleep(sleep_s)
@@ -119,7 +125,7 @@ class VisionInterface:
 
         self._thread = threading.Thread(target=_capture_loop, daemon=True)
         self._thread.start()
-        print("[VisionInterface] Started stream thread.")
+        print("[VisionManager] Started stream thread.")
 
     def snapshot(self) -> Optional[str]:
         """Capture, process and return a single frame as base64 JPEG."""

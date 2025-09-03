@@ -18,7 +18,8 @@ def main(config_path: str = CONFIG_PATH) -> None:
     vision_cfg = cfg.get("vision", {}) or {}
     ws_cfg = cfg.get("ws", {}) or {}
 
-    svc = VisionService()
+    mode = vision_cfg.get("mode", "object")
+    svc = VisionService(mode=mode)
 
     if enable_vision:
         interval = float(vision_cfg.get("interval_sec", 1.0))

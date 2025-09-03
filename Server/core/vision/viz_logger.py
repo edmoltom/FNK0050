@@ -23,7 +23,7 @@ class VisionLogger:
         output_dir: Optional[str] = None,
         stride: int = 5,
         api_config: Optional[dict] = None,
-        process_frame: Optional[Callable] = None,
+        process: Optional[Callable] = None,
         get_detectors: Optional[Callable] = None,
     ):
         ts = time.strftime("%Y%m%d_%H%M%S")
@@ -40,7 +40,7 @@ class VisionLogger:
         self.stride = max(1,int(stride))
         self.idx = 0
         self.api_cfg = dict(api_config or {})
-        self._process_frame = process_frame
+        self._process = process
         self._get_detectors = get_detectors
         self.det_big: Optional[ContourDetector]
         self.det_small: Optional[ContourDetector]
@@ -49,10 +49,10 @@ class VisionLogger:
 
     def _ensure_api(self) -> None:
         """Lazily import vision API helpers and detectors."""
-        if self._process_frame is None or self._get_detectors is None:
+        if self._process is None or self._get_detectors is None:
             from . import api as _api
-            if self._process_frame is None:
-                self._process_frame = _api.process_frame
+            if self._process is None:
+                self._process = _api.process
             if self._get_detectors is None:
                 self._get_detectors = _api.get_detectors
         if (self.det_big is None or self.det_small is None) and self._get_detectors:
@@ -124,7 +124,7 @@ class VisionLogger:
     def step(self, frame_bgr: np.ndarray):
         """Procesa un frame y devuelve overlay para visualizar."""
         self._ensure_api()
-        self._process_frame(frame_bgr, return_overlay=True, config=self.api_cfg)
+        self._process(frame_bgr, return_overlay=True, config=self.api_cfg)
         from . import api as _api
         result = _api.get_last_result() or EngineResult({}, time.time())
         self.log(frame_bgr, result)

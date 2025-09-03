@@ -70,6 +70,8 @@ from ..imgproc import (
     _draw_overlay,
 )
 from ..dynamic_adjuster import CannyConfig
+from .base_detector import BaseDetector
+from .results import DetectionResult
 
 NDArray = np.ndarray
 
@@ -208,26 +210,8 @@ def configs_from_profile(data: Dict[str, Any]) -> Tuple[Dict[str, Any], CannyCon
     )
     return det_cfg, canny
 
-@dataclass
-class DetectionResult:
-    ok: bool
-    used_rescue: bool
-    life_canny_pct: float
-    bbox: Optional[Tuple[int, int, int, int]] = None
-    score: Optional[float] = None
-    fill: Optional[float] = None
-    bbox_ratio: Optional[float] = None
-    chosen_ck: Optional[int] = None
-    chosen_dk: Optional[int] = None
-    center: Optional[Tuple[int, int]] = None
-    overlay: Optional[NDArray] = None
-    t1: Optional[float] = None
-    t2: Optional[int] = None
-    color_cover_pct: Optional[float] = None
-    color_used: Optional[bool] = None
-
 # ----------------------- detector -----------------------
-class ContourDetector:
+class ContourDetector(BaseDetector):
     "Contour pipeline + pre-morph patches + optional color-gate + JSON profiles."
     def __init__(
         self,
@@ -278,31 +262,35 @@ class ContourDetector:
     # ----------------------------- Public API -----------------------------
     def detect(
         self,
-        img_or_path: Union[str, NDArray],
-        save_dir: Optional[str] = None,
-        stamp: Optional[str] = None,
-        save_profile: bool = True,
-        return_overlay: bool = True,
+        frame: Union[str, NDArray],
+        state: Optional[Dict[str, Any]] = None,
+        knobs: Optional[Dict[str, Any]] = None,
     ) -> DetectionResult:
-        """Run the contour detector on an image.
+        """Run the contour detector on a frame.
 
         Args:
-            img_or_path: Image array or path to image file.
-            save_dir: Optional directory to save intermediate artifacts.
-            stamp: Optional file prefix; defaults to timestamp.
-            save_profile: If True, dump a JSON profile snapshot when saving.
-            return_overlay: If True, include overlay image in the result.
+            frame: Image array or path to image file.
+            state: Mutable state dictionary (unused).
+            knobs: Optional runtime overrides such as ``save_dir`` or
+                ``return_overlay``.
 
         Returns:
             DetectionResult: Structured information about the best contour and
             processing statistics.
 
         Raises:
-            FileNotFoundError: If ``img_or_path`` cannot be loaded.
+            FileNotFoundError: If ``frame`` cannot be loaded.
         """
-        img = self._load_image(img_or_path)
+        if knobs is None:
+            knobs = {}
+        save_dir = knobs.get("save_dir")
+        stamp = knobs.get("stamp")
+        save_profile = knobs.get("save_profile", True)
+        return_overlay = knobs.get("return_overlay", True)
+
+        img = self._load_image(frame)
         if img is None:
-            raise FileNotFoundError(str(img_or_path))
+            raise FileNotFoundError(str(frame))
 
         if save_dir:
             os.makedirs(save_dir, exist_ok=True)
@@ -413,7 +401,7 @@ class ContourDetector:
         if save_dir is not None and save_profile:
             prof = {
                 "algo": "canny(P)->rescue(thresh OR)->color_gate(OR/AND)->premorph(crop+despeckle+fill)->morph+shape_score",
-                "input": {"image": os.path.basename(str(img_or_path)), "proc_size": [self.proc.proc_w, self.proc.proc_h]},
+                "input": {"image": os.path.basename(str(frame)), "proc_size": [self.proc.proc_w, self.proc.proc_h]},
                 "params": self.to_profile_dict(),
                 "metrics": {
                     "life_canny_%": float(result.life_canny_pct),
@@ -467,7 +455,7 @@ def run_file(
     else:
         det = ContourDetector()
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    res = det.detect(image_path, save_dir=out_dir, stamp=stamp)
+    res = det.detect(image_path, knobs={"save_dir": out_dir, "stamp": stamp})
     return res
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ def draw_result(frame: np.ndarray, result: EngineResult) -> np.ndarray:
     """Draw detection information from ``result`` onto ``frame``.
 
     The drawing logic mirrors the overlay produced by
-    :meth:`VisionInterface._apply_pipeline`.  The input frame is modified
+    :meth:`VisionManager._apply_pipeline`.  The input frame is modified
     in-place and returned for convenience.
     """
     if result is None or not isinstance(result, EngineResult):
@@ -53,6 +53,32 @@ def draw_result(frame: np.ndarray, result: EngineResult) -> np.ndarray:
 
     res = result.data or {}
     if not res.get("ok"):
+        return frame
+
+    # Special handling for face detection results --------------------
+    if res.get("type") == "face" and isinstance(res.get("faces"), list):
+        ref_w, ref_h = _get_reference_resolution(res)
+        sx = frame.shape[1] / ref_w
+        sy = frame.shape[0] / ref_h
+        for face in res.get("faces", []):
+            x = face.get("x")
+            y = face.get("y")
+            w = face.get("w")
+            h = face.get("h")
+            if None in (x, y, w, h):
+                continue
+            x2, y2 = int(x * sx), int(y * sy)
+            w2, h2 = int(w * sx), int(h * sy)
+            cv2.rectangle(frame, (x2, y2), (x2 + w2, y2 + h2), (0, 255, 0), 2)
+            cv2.putText(
+                frame,
+                "face",
+                (x2, max(10, y2 - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                1,
+            )
         return frame
 
     ref_w, ref_h = _get_reference_resolution(res)

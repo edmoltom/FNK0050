@@ -5,10 +5,10 @@ import base64, datetime, time
 # Ensure the Server package is on the Python path when run directly
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from core.VisionInterface import VisionInterface
+from core.VisionManager import VisionManager
 
 def main():
-    cam = VisionInterface()
+    cam = VisionManager()
     os.makedirs("logs", exist_ok=True)
     ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"logs/{ts}.jpg"
@@ -30,3 +30,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

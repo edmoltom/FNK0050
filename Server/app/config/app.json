@@ -2,7 +2,8 @@
   "enable_vision": true,
   "enable_ws": true,
   "vision": {
-    "interval_sec": 1.0
+    "interval_sec": 1.0,
+    "mode": "object"
   },
   "ws": {
     "host": "0.0.0.0",
