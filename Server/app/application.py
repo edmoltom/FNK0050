@@ -1,9 +1,9 @@
 from __future__ import annotations
-import os, sys, json, time, threading
+import os, sys, json, time
 from typing import Any, Dict
 from app.services.vision_service import VisionService
+from app.services.movement_service import MovementService
 from network.ws_server import start_ws_server
-from core.MovementControl import MovementControl
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "app.json")
 
@@ -24,8 +24,8 @@ def main(config_path: str = CONFIG_PATH) -> None:
     svc = VisionService(mode=mode)
 
     if enable_movement:
-        mc = MovementControl()
-        threading.Thread(target=mc.start_loop, daemon=True).start()
+        mc = MovementService()
+        mc.start()
         mc.relax()
     else:
         print("[App] Movement disabled in config.")
