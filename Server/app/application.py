@@ -1,10 +1,11 @@
 from __future__ import annotations
-import os, sys, json, time
+import os, sys, json, time, logging
 from typing import Any, Dict
 from app.services.vision_service import VisionService
 from app.services.movement_service import MovementService
 from core.face_tracker import FaceTracker
 from network.ws_server import start_ws_server
+from app.logging_config import setup_logging
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "app.json")
 
@@ -13,6 +14,11 @@ def _load_json(path: str) -> Dict[str, Any]:
         return json.load(f)
 
 def main(config_path: str = CONFIG_PATH) -> None:
+    setup_logging()
+    vision_logger = logging.getLogger("vision")
+    movement_logger = logging.getLogger("movement")
+    ft_logger = logging.getLogger("face_tracker")
+
     cfg = _load_json(config_path)
     latest_face_detection: Dict[str, Any] = {}
 
