@@ -1,8 +1,9 @@
 from __future__ import annotations
-import os, sys, json, time
+import os, sys, json, time, threading
 from typing import Any, Dict
 from app.services.vision_service import VisionService
 from network.ws_server import start_ws_server
+from core.MovementControl import MovementControl
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "app.json")
 
@@ -15,11 +16,19 @@ def main(config_path: str = CONFIG_PATH) -> None:
 
     enable_vision = bool(cfg.get("enable_vision", True))
     enable_ws = bool(cfg.get("enable_ws", True))
+    enable_movement = bool(cfg.get("enable_movement", True))
     vision_cfg = cfg.get("vision", {}) or {}
     ws_cfg = cfg.get("ws", {}) or {}
 
     mode = vision_cfg.get("mode", "object")
     svc = VisionService(mode=mode)
+
+    if enable_movement:
+        mc = MovementControl()
+        threading.Thread(target=mc.start_loop, daemon=True).start()
+        mc.relax()
+    else:
+        print("[App] Movement disabled in config.")
 
     if enable_vision:
         interval = float(vision_cfg.get("interval_sec", 1.0))

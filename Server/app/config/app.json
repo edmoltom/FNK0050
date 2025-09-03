@@ -1,6 +1,7 @@
 {
   "enable_vision": true,
   "enable_ws": true,
+  "enable_movement": true,
   "vision": {
     "interval_sec": 1.0,
     "mode": "object"
