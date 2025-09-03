@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+from pathlib import Path
 import time
 from typing import Any, Dict, Optional, Tuple
 
@@ -24,12 +24,11 @@ class FacePipeline(BasePipeline):
             Optional dictionary overriding default parameters.
         """
 
-        path = os.path.join(
-            cv2.data.haarcascades, "haarcascade_frontalface_default.xml"
-        )
-        if not os.path.exists(path):
+        cascades_dir = Path(__file__).resolve().parents[1] / "cascades"
+        path = cascades_dir / "haarcascade_frontalface_default.xml"
+        if not path.exists():
             raise RuntimeError(f"Haar cascade not found: {path}")
-        self._cascade_path = path
+        self._cascade_path = str(path)
         self._cascade: Optional[cv2.CascadeClassifier] = None
 
         self.cfg: Dict[str, Any] = {
