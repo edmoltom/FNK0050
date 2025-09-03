@@ -11,9 +11,17 @@ from .pipeline import BasePipeline, ContourPipeline, FacePipeline, Result
 if TYPE_CHECKING:  # pragma: no cover - for type checkers only
     from .viz_logger import VisionLogger
 
+_FACE_DEFAULTS: Dict[str, Any] = dict(
+    scale_factor=1.1,
+    min_neighbors=5,
+    min_size=(40, 40),
+    equalize_hist=True,
+    resize_ratio=1.0,
+)
+
 _PIPELINES: Dict[str, BasePipeline] = {
     "object": ContourPipeline(),
-    "face": FacePipeline(),
+    "face": FacePipeline(_FACE_DEFAULTS),
 }
 _CURRENT: str = "object"
 
