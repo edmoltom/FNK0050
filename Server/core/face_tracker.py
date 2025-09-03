@@ -18,8 +18,9 @@ class FaceTracker:
 
     def __init__(self, movement: MovementControl) -> None:
         self.movement = movement
-        self.pid = Incremental_PID(0.04, 0.0, 0.01)
+        self.pid = Incremental_PID(20.0, 0.0, 5.0)
         self.pid.setPoint = 0.0
+        self.pid_scale = 0.1
         self.current_head_deg = movement.head_limits[2]
         self._had_face = False
         self.logger = logging.getLogger("face_tracker")
@@ -65,7 +66,7 @@ class FaceTracker:
         error = (face_center_y - space_h / 2.0) / (space_h / 2.0)
         if abs(error) < 0.05:
             return
-        delta = self.pid.PID_compute(error)
+        delta = self.pid.PID_compute(error) * self.pid_scale
         target = _clamp(self.current_head_deg + delta, min_deg, max_deg)
         self.logger.debug("error=%.3f, delta=%.2f, target=%.1f", error, delta, target)
         self.current_head_deg = target
