@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Callable
 
 from core.VisionManager import VisionManager
 
@@ -9,11 +9,15 @@ class VisionService:
         self._mode = mode
         self._running = False
 
-    def start(self, interval_sec: float = 1.0) -> None:
+    def start(
+        self,
+        interval_sec: float = 1.0,
+        frame_handler: Optional[Callable[[dict], None]] = None,
+    ) -> None:
         if not self._running:
             self.vm.select_pipeline(self._mode)
             self.vm.start()
-            self.vm.start_stream(interval_sec=interval_sec)
+            self.vm.start_stream(interval_sec=interval_sec, on_frame=frame_handler)
             self._running = True
 
     def stop(self) -> None:

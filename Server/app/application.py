@@ -13,6 +13,12 @@ def _load_json(path: str) -> Dict[str, Any]:
 
 def main(config_path: str = CONFIG_PATH) -> None:
     cfg = _load_json(config_path)
+    latest_face_detection: Dict[str, Any] = {}
+
+    def _store_latest_detection(result: Dict[str, Any]) -> None:
+        latest_face_detection.clear()
+        if result:
+            latest_face_detection.update(result)
 
     enable_vision = bool(cfg.get("enable_vision", True))
     enable_ws = bool(cfg.get("enable_ws", True))
@@ -33,7 +39,7 @@ def main(config_path: str = CONFIG_PATH) -> None:
     if enable_vision:
         interval = float(vision_cfg.get("interval_sec", 1.0))
         print(f"[App] Starting vision stream (interval={interval}s)")
-        svc.start(interval_sec=interval)
+        svc.start(interval_sec=interval, frame_handler=_store_latest_detection)
     else:
         print("[App] Vision disabled in config.")
 
