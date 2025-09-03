@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Dict, List, Optional
+import logging
 
 from control.pid import Incremental_PID
 
@@ -20,6 +21,8 @@ class FaceTracker:
         self.pid = Incremental_PID(0.04, 0.0, 0.01)
         self.pid.setPoint = 0.0
         self.current_head_deg = movement.head_limits[2]
+        self._had_face = False
+        self.logger = logging.getLogger("face_tracker")
 
     def _select_largest_face(self, faces: List[Dict[str, float]]) -> Optional[Dict[str, float]]:
         if not faces:
@@ -30,6 +33,9 @@ class FaceTracker:
         """Update head position based on vision ``result`` and timestep ``dt``."""
         min_deg, max_deg, center = self.movement.head_limits
         if not result or not result.get("faces"):
+            if self._had_face:
+                self.logger.info("Lost face detection")
+                self._had_face = False
             diff = center - self.current_head_deg
             if abs(diff) < 0.1:
                 return
@@ -42,7 +48,14 @@ class FaceTracker:
 
         face = self._select_largest_face(result.get("faces", []))
         if not face:
+            if self._had_face:
+                self.logger.info("Lost face detection")
+                self._had_face = False
             return
+
+        if not self._had_face:
+            self.logger.info("Face detected")
+            self._had_face = True
 
         space = result.get("space", (0, 0))
         space_h = float(space[1]) if len(space) > 1 else 0.0
@@ -53,5 +66,8 @@ class FaceTracker:
         if abs(error) < 0.05:
             return
         delta = self.pid.PID_compute(error)
-        self.current_head_deg = _clamp(self.current_head_deg + delta, min_deg, max_deg)
+        target = _clamp(self.current_head_deg + delta, min_deg, max_deg)
+        self.logger.debug("error=%.3f, delta=%.2f, target=%.1f", error, delta, target)
+        self.current_head_deg = target
         self.movement.head_deg(self.current_head_deg, duration_ms=100)
+        self.logger.debug("error=%.3f, delta=%.2f, target=%.1f", error, delta, target)

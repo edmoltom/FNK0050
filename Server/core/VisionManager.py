@@ -1,6 +1,7 @@
 import base64
 import threading
 import time
+import logging
 from typing import Optional, TYPE_CHECKING, Callable
 
 import cv2
@@ -31,6 +32,7 @@ class VisionManager:
         self._last_error: Optional[Exception] = None
 
         self._logger: Optional['VisionLogger'] = logger or api.create_logger_from_env()
+        self._py_logger = logging.getLogger("vision")
 
     # -------- Configuration API --------
 
@@ -109,9 +111,13 @@ class VisionManager:
                 next_tick = start + period
                 try:
                     frame = self._apply_pipeline()
+                    res = api.get_last_result()
+                    if res:
+                        faces = res.data.get("faces", [])
+                        chosen = res.data.get("chosen")
+                        self._py_logger.info("faces=%d, chosen=%s", len(faces), chosen)
                     if on_frame:
                         try:
-                            res = api.get_last_result()
                             on_frame(res.data if res else None)
                         except Exception as cb_exc:
                             print(f"[VisionManager] Frame callback error: {cb_exc}")
