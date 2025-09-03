@@ -85,7 +85,7 @@ class VisionManager:
     def start_stream(
         self,
         interval_sec: float = 1.0,
-        on_frame: Optional[Callable[[dict], None]] = None,
+        on_frame: Optional[Callable[[dict | None], None]] = None,
     ) -> None:
         """Start periodic capture and processing in a background thread.
 
@@ -111,7 +111,8 @@ class VisionManager:
                     frame = self._apply_pipeline()
                     if on_frame:
                         try:
-                            on_frame(api.get_last_result())
+                            res = api.get_last_result()
+                            on_frame(res.data if res else None)
                         except Exception as cb_exc:
                             print(f"[VisionManager] Frame callback error: {cb_exc}")
                     ok, buffer = cv2.imencode(".jpg", frame)

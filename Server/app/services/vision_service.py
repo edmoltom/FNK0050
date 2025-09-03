@@ -12,7 +12,7 @@ class VisionService:
     def start(
         self,
         interval_sec: float = 1.0,
-        frame_handler: Optional[Callable[[dict], None]] = None,
+        frame_handler: Optional[Callable[[dict | None], None]] = None,
     ) -> None:
         if not self._running:
             self.vm.select_pipeline(self._mode)
