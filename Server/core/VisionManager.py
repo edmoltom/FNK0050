@@ -1,7 +1,7 @@
 import base64
 import threading
 import time
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Callable
 
 import cv2
 
@@ -82,7 +82,11 @@ class VisionManager:
 
     # -------- Public API --------
 
-    def start_stream(self, interval_sec: float = 1.0) -> None:
+    def start_stream(
+        self,
+        interval_sec: float = 1.0,
+        on_frame: Optional[Callable[[dict], None]] = None,
+    ) -> None:
         """Start periodic capture and processing in a background thread.
 
         The camera will be started automatically on the first call to
@@ -105,6 +109,11 @@ class VisionManager:
                 next_tick = start + period
                 try:
                     frame = self._apply_pipeline()
+                    if on_frame:
+                        try:
+                            on_frame(api.get_last_result())
+                        except Exception as cb_exc:
+                            print(f"[VisionManager] Frame callback error: {cb_exc}")
                     ok, buffer = cv2.imencode(".jpg", frame)
                     if ok:
                         encoded = base64.b64encode(buffer).decode("utf-8")
