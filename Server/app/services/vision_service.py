@@ -4,12 +4,14 @@ from typing import Optional
 from core.VisionManager import VisionManager
 
 class VisionService:
-    def __init__(self, vm: Optional[VisionManager] = None) -> None:
+    def __init__(self, vm: Optional[VisionManager] = None, mode: str = "object") -> None:
         self.vm = vm or VisionManager()
+        self._mode = mode
         self._running = False
 
     def start(self, interval_sec: float = 1.0) -> None:
         if not self._running:
+            self.vm.select_pipeline(self._mode)
             self.vm.start()
             self.vm.start_stream(interval_sec=interval_sec)
             self._running = True
