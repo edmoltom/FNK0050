@@ -3,6 +3,7 @@ import os, sys, json, time
 from typing import Any, Dict
 from app.services.vision_service import VisionService
 from app.services.movement_service import MovementService
+from core.face_tracker import FaceTracker
 from network.ws_server import start_ws_server
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "app.json")
@@ -29,17 +30,31 @@ def main(config_path: str = CONFIG_PATH) -> None:
     mode = vision_cfg.get("mode", "object")
     svc = VisionService(mode=mode)
 
+    face_tracker: FaceTracker | None = None
     if enable_movement:
         mc = MovementService()
         mc.start()
         mc.relax()
+        face_tracker = FaceTracker(mc.mc)
     else:
         print("[App] Movement disabled in config.")
+
+    prev_time = time.monotonic()
 
     if enable_vision:
         interval = float(vision_cfg.get("interval_sec", 1.0))
         print(f"[App] Starting vision stream (interval={interval}s)")
-        svc.start(interval_sec=interval, frame_handler=_store_latest_detection)
+
+        def _handle_frame(result: Dict[str, Any] | None) -> None:
+            nonlocal prev_time
+            now = time.monotonic()
+            dt = now - prev_time
+            prev_time = now
+            if face_tracker:
+                face_tracker.update(result, dt)
+            _store_latest_detection(result)
+
+        svc.start(interval_sec=interval, frame_handler=_handle_frame)
     else:
         print("[App] Vision disabled in config.")
 
