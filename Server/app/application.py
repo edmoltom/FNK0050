@@ -15,7 +15,7 @@ def main(config_path: str = CONFIG_PATH) -> None:
     cfg = _load_json(config_path)
     latest_face_detection: Dict[str, Any] = {}
 
-    def _store_latest_detection(result: Dict[str, Any]) -> None:
+    def _store_latest_detection(result: Dict[str, Any] | None) -> None:
         latest_face_detection.clear()
         if result:
             latest_face_detection.update(result)
