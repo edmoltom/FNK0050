@@ -68,7 +68,6 @@ class FaceTracker:
             return
         delta = self.pid.PID_compute(error) * self.pid_scale
         target = _clamp(self.current_head_deg + delta, min_deg, max_deg)
-        self.logger.debug("error=%.3f, delta=%.2f, target=%.1f", error, delta, target)
         self.current_head_deg = target
         self.movement.head_deg(self.current_head_deg, duration_ms=100)
         self.logger.debug("error=%.3f, delta=%.2f, target=%.1f", error, delta, target)
