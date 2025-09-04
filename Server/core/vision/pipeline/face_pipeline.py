@@ -36,7 +36,7 @@ class FacePipeline(BasePipeline):
             "min_neighbors": 5,
             "min_size": (40, 40),
             "equalize_hist": True,
-            "resize_ratio": 1.0,
+            "resize_ratio": 0.5,
         }
         if config:
             self.cfg.update(config)
@@ -59,6 +59,7 @@ class FacePipeline(BasePipeline):
         frame: np.ndarray,
         config: Optional[Dict[str, Any]] = None,
         ts: Optional[float] = None,
+        roi: Optional[Tuple[int, int, int, int]] = None,
     ) -> Result:
         """Detect faces in ``frame``.
 
@@ -68,6 +69,8 @@ class FacePipeline(BasePipeline):
             BGR image to process.
         config:
             Optional overrides for detector parameters.
+        roi:
+            Optional region of interest ``(x, y, w, h)`` limiting the search.
         ts:
             Optional timestamp propagated into the result.
         """
@@ -81,10 +84,16 @@ class FacePipeline(BasePipeline):
         if cfg.get("equalize_hist", True):
             gray = cv2.equalizeHist(gray)
 
-        ratio = float(cfg.get("resize_ratio", 1.0))
-        work = gray
+        if roi is not None:
+            x0, y0, w0, h0 = roi
+            gray_roi = gray[y0 : y0 + h0, x0 : x0 + w0]
+        else:
+            gray_roi = gray
+
+        ratio = float(cfg.get("resize_ratio", 0.5))
+        work = gray_roi
         if 0 < ratio < 1.0:
-            work = cv2.resize(gray, None, fx=ratio, fy=ratio)
+            work = cv2.resize(gray_roi, None, fx=ratio, fy=ratio)
 
         cascade = self._get_cascade()
         rects = cascade.detectMultiScale(
@@ -100,6 +109,10 @@ class FacePipeline(BasePipeline):
                 (int(x * inv), int(y * inv), int(w * inv), int(h * inv))
                 for (x, y, w, h) in rects
             ]
+
+        if roi is not None:
+            ox, oy = roi[0], roi[1]
+            rects = [(x + ox, y + oy, w, h) for (x, y, w, h) in rects]
 
         faces = [
             {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
