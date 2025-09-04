@@ -5,7 +5,7 @@ import logging
 
 from control.pid import Incremental_PID
 
-from .MovementControl import MovementControl
+from core.MovementControl import MovementControl
 
 
 def _clamp(val: float, mn: float, mx: float) -> float:
