@@ -8,7 +8,9 @@ import cv2
 
 from .vision import api
 from .vision.camera import Camera, CameraCaptureError
-from .vision.overlays import draw_result
+from .vision.camera_worker import CameraWorker
+from .vision.overlays import draw_result, _get_reference_resolution
+from .vision.profile_manager import get_config
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers only
     from .vision.viz_logger import VisionLogger
@@ -27,6 +29,7 @@ class VisionManager:
         self._last_encoded_image: Optional[str] = None
         self._streaming = False
         self._thread: Optional[threading.Thread] = None
+        self._worker: Optional[CameraWorker] = None
         self._lock = threading.Lock()
         self._mode: Optional[str] = None
         self._last_error: Optional[Exception] = None
@@ -67,7 +70,14 @@ class VisionManager:
         if self._thread:
             self._thread.join()
             self._thread = None
-        self.camera.stop()
+        if self._worker:
+            try:
+                self._worker.stop()
+            finally:
+                self._worker.join(timeout=1.0)
+            self._worker = None
+        else:
+            self.camera.stop()
         if self._logger:
             self._logger.close()
 
@@ -101,31 +111,94 @@ class VisionManager:
             return
         if not self.camera.is_running():
             self.camera.start()
+
+        try:
+            cv2.setNumThreads(1)
+        except Exception:
+            pass
+
+        cfg = get_config("vision")
+        camera_fps = float(cfg.get("camera_fps", 15.0))
+        self._worker = CameraWorker(self.camera, max_fps=camera_fps)
+        self._worker.start()
         self._streaming = True
 
         def _capture_loop():
             period = max(0.0, float(interval_sec))
             next_tick = time.monotonic()
+            last_det = 0.0
+            last_res = None
+            det_times = []
+            enc_times = []
+            fps_samples = []
+            roi_fracs = []
+            last_frame_ts = None
+            log_ts = time.monotonic()
+
             while self._streaming:
-                start = next_tick
-                next_tick = start + period
+                start_tick = next_tick
+                next_tick = start_tick + period
                 try:
-                    frame = self._apply_pipeline()
-                    res = api.get_last_result()
-                    if res:
-                        faces = res.data.get("faces", [])
-                        chosen = res.data.get("chosen")
-                        self._py_logger.info("faces=%d, chosen=%s", len(faces), chosen)
-                    if on_frame:
-                        try:
-                            on_frame(res.data if res else None)
-                        except Exception as cb_exc:
-                            print(f"[VisionManager] Frame callback error: {cb_exc}")
-                    ok, buffer = cv2.imencode(".jpg", frame)
-                    if ok:
-                        encoded = base64.b64encode(buffer).decode("utf-8")
-                        with self._lock:
-                            self._last_encoded_image = encoded
+                    latest = self._worker.get_latest() if self._worker else None
+                    now = time.time()
+                    if latest and now - latest[1] <= 0.2:
+                        frame_rgb, frame_ts = latest
+                        frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+                        now_mono = time.monotonic()
+                        if now_mono - last_det >= 0.2:
+                            t0 = time.perf_counter()
+                            api.process(frame, return_overlay=True)
+                            det_times.append(time.perf_counter() - t0)
+                            last_res = api.get_last_result()
+                            last_det = now_mono
+                            if self._logger:
+                                self._logger.log(frame, result=last_res)
+                            if last_res:
+                                data = last_res.data or {}
+                                ref_w, ref_h = _get_reference_resolution(data)
+                                roi = 0.0
+                                if (
+                                    "bbox" in data
+                                    and isinstance(data["bbox"], (list, tuple))
+                                    and len(data["bbox"]) == 4
+                                ):
+                                    _, _, w, h = data["bbox"]
+                                    roi = (w * h) / (ref_w * ref_h)
+                                elif data.get("faces"):
+                                    area = 0.0
+                                    for face in data.get("faces", []):
+                                        fw = face.get("w")
+                                        fh = face.get("h")
+                                        if fw and fh:
+                                            area += fw * fh
+                                    if ref_w * ref_h > 0:
+                                        roi = area / (ref_w * ref_h)
+                                if roi:
+                                    roi_fracs.append(roi)
+                        frame = draw_result(frame, last_res)
+                        t1 = time.perf_counter()
+                        ok, buffer = cv2.imencode(".jpg", frame)
+                        enc_times.append(time.perf_counter() - t1)
+                        if ok:
+                            encoded = base64.b64encode(buffer).decode("utf-8")
+                            with self._lock:
+                                self._last_encoded_image = encoded
+                        if on_frame:
+                            try:
+                                on_frame(last_res.data if last_res else None)
+                            except Exception as cb_exc:
+                                print(f"[VisionManager] Frame callback error: {cb_exc}")
+                        if last_frame_ts is not None:
+                            dt = frame_ts - last_frame_ts
+                            if dt > 0:
+                                fps_samples.append(1.0 / dt)
+                        last_frame_ts = frame_ts
+                    else:
+                        if on_frame and last_res:
+                            try:
+                                on_frame(last_res.data)
+                            except Exception as cb_exc:
+                                print(f"[VisionManager] Frame callback error: {cb_exc}")
                 except CameraCaptureError as e:
                     print(f"[VisionManager] Capture error: {e}")
                     self._last_error = e
@@ -133,6 +206,24 @@ class VisionManager:
                     break
                 except Exception as e:
                     print(f"[VisionManager] Error in periodic capture: {e}")
+                now_mono2 = time.monotonic()
+                if now_mono2 - log_ts >= 5.0:
+                    avg_det = sum(det_times) / len(det_times) if det_times else 0.0
+                    avg_enc = sum(enc_times) / len(enc_times) if enc_times else 0.0
+                    avg_fps = sum(fps_samples) / len(fps_samples) if fps_samples else 0.0
+                    avg_roi = sum(roi_fracs) / len(roi_fracs) if roi_fracs else 0.0
+                    self._py_logger.info(
+                        "det=%.1fms enc=%.1fms fps=%.2f roi=%.1f%%",
+                        avg_det * 1000,
+                        avg_enc * 1000,
+                        avg_fps,
+                        avg_roi * 100,
+                    )
+                    det_times.clear()
+                    enc_times.clear()
+                    fps_samples.clear()
+                    roi_fracs.clear()
+                    log_ts = now_mono2
                 sleep_s = next_tick - time.monotonic()
                 if sleep_s > 0:
                     time.sleep(sleep_s)
