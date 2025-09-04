@@ -1,8 +1,11 @@
 from __future__ import annotations
-import os, sys, json, time
+import os, sys, json, time, logging
 from typing import Any, Dict
 from app.services.vision_service import VisionService
+from app.services.movement_service import MovementService
+from app.services.face_tracker import FaceTracker
 from network.ws_server import start_ws_server
+from app.logging_config import setup_logging
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "app.json")
 
@@ -11,20 +14,53 @@ def _load_json(path: str) -> Dict[str, Any]:
         return json.load(f)
 
 def main(config_path: str = CONFIG_PATH) -> None:
+    setup_logging()
+    vision_logger = logging.getLogger("vision")
+    movement_logger = logging.getLogger("movement")
+    ft_logger = logging.getLogger("face_tracker")
+
     cfg = _load_json(config_path)
+    latest_face_detection: Dict[str, Any] = {}
+
+    def _store_latest_detection(result: Dict[str, Any] | None) -> None:
+        latest_face_detection.clear()
+        if result:
+            latest_face_detection.update(result)
 
     enable_vision = bool(cfg.get("enable_vision", True))
     enable_ws = bool(cfg.get("enable_ws", True))
+    enable_movement = bool(cfg.get("enable_movement", True))
     vision_cfg = cfg.get("vision", {}) or {}
     ws_cfg = cfg.get("ws", {}) or {}
 
     mode = vision_cfg.get("mode", "object")
     svc = VisionService(mode=mode)
 
+    face_tracker: FaceTracker | None = None
+    if enable_movement:
+        mc = MovementService()
+        mc.start()
+        mc.relax()
+        face_tracker = FaceTracker(mc.mc)
+    else:
+        print("[App] Movement disabled in config.")
+
+    prev_time = time.monotonic()
+
     if enable_vision:
         interval = float(vision_cfg.get("interval_sec", 1.0))
         print(f"[App] Starting vision stream (interval={interval}s)")
-        svc.start(interval_sec=interval)
+
+        def _handle_frame(result: Dict[str, Any] | None) -> None:
+            nonlocal prev_time
+            now = time.monotonic()
+            dt = now - prev_time
+            prev_time = now
+            if face_tracker:
+                face_tracker.update(result, dt)
+            _store_latest_detection(result)
+
+        svc.start(interval_sec=interval, frame_handler=_handle_frame)
     else:
         print("[App] Vision disabled in config.")
 

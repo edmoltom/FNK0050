@@ -15,3 +15,10 @@ Part of the code comes from the [official Freenove repository] (https://github.c
 
 ## Project status
 This project is in its early stages; documentation and code will grow as learning progresses.
+
+## Logging
+
+The server application records runtime information to a rotating log file
+`robot.log` in the project root. The file keeps up to three 1&nbsp;MB
+rotations. Run the application normally and inspect the file with tools like
+`tail -f robot.log` to monitor activity.
