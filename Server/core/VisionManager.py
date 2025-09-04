@@ -2,7 +2,7 @@ import base64
 import threading
 import time
 import logging
-from typing import Optional, TYPE_CHECKING, Callable
+from typing import Optional, TYPE_CHECKING, Callable, Tuple
 
 import cv2
 
@@ -33,6 +33,7 @@ class VisionManager:
         self._lock = threading.Lock()
         self._mode: Optional[str] = None
         self._last_error: Optional[Exception] = None
+        self._roi: Optional[Tuple[int, int, int, int]] = None
 
         self._logger: Optional['VisionLogger'] = logger or api.create_logger_from_env()
         self._py_logger = logging.getLogger("vision")
@@ -48,9 +49,17 @@ class VisionManager:
         self._mode = name
         api.select_pipeline(name)
 
+    def set_roi(self, roi: Optional[Tuple[int, int, int, int]]) -> None:
+        """Set ROI ``(x, y, w, h)`` for subsequent detections."""
+        with self._lock:
+            self._roi = roi
+
     def process(self, frame) -> dict:
         """Process a BGR ``frame`` using the active pipeline."""
-        return api.process(frame, return_overlay=True)
+        with self._lock:
+            roi = self._roi
+        cfg = {"roi": roi} if roi else None
+        return api.process(frame, return_overlay=True, config=cfg)
 
     # -------- Camera control --------
 
@@ -86,7 +95,10 @@ class VisionManager:
     def _apply_pipeline(self):
         frame_rgb = self.camera.capture_rgb()
         frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-        api.process(frame, return_overlay=True)
+        with self._lock:
+            roi = self._roi
+        cfg = {"roi": roi} if roi else None
+        api.process(frame, return_overlay=True, config=cfg)
         if self._logger:
             self._logger.log(frame, result=api.get_last_result())
         frame = draw_result(frame, api.get_last_result())
@@ -147,7 +159,9 @@ class VisionManager:
                         now_mono = time.monotonic()
                         if now_mono - last_det >= 0.2:
                             t0 = time.perf_counter()
-                            api.process(frame, return_overlay=True)
+                            with self._lock:
+                                roi_cfg = {"roi": self._roi} if self._roi else None
+                            api.process(frame, return_overlay=True, config=roi_cfg)
                             det_times.append(time.perf_counter() - t0)
                             last_res = api.get_last_result()
                             last_det = now_mono
