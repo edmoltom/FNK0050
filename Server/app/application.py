@@ -41,7 +41,7 @@ def main(config_path: str = CONFIG_PATH) -> None:
         mc = MovementService()
         mc.start()
         mc.relax()
-        face_tracker = FaceTracker(mc.mc)
+        face_tracker = FaceTracker(mc.mc, svc.vm)
     else:
         print("[App] Movement disabled in config.")
 
