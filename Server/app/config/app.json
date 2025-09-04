@@ -5,7 +5,7 @@
   "vision": {
     "interval_sec": 0.1,
     "camera_fps": 15,
-    "mode": "object",
+    "mode": "face",
     "face": {
       "resize_ratio": 0.5,
       "min_size": [40, 40],
