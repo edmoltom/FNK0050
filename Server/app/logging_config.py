@@ -9,7 +9,7 @@ LOG_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "robot.log")
 def setup_logging() -> None:
     """Configure root logging with a rotating file handler."""
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
 
     # Avoid adding multiple handlers if setup_logging is called more than once
     if any(isinstance(h, RotatingFileHandler) for h in logger.handlers):
