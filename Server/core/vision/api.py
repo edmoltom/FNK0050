@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
+import time
 import numpy as np
 
 from .pipeline import BasePipeline, ContourPipeline, FacePipeline, Result
@@ -16,7 +17,7 @@ _FACE_DEFAULTS: Dict[str, Any] = dict(
     min_neighbors=5,
     min_size=(40, 40),
     equalize_hist=True,
-    resize_ratio=1.0,
+    resize_ratio=0.5,
 )
 
 _PIPELINES: Dict[str, BasePipeline] = {
@@ -24,6 +25,9 @@ _PIPELINES: Dict[str, BasePipeline] = {
     "face": FacePipeline(_FACE_DEFAULTS),
 }
 _CURRENT: str = "object"
+
+_last_detection_time: float = 0.0
+_last_result: Optional[Result] = None
 
 
 def _pipeline() -> BasePipeline:
@@ -64,16 +68,25 @@ def process(
     config: Optional[Dict[str, Any]] = None,
 ):
     """Process ``frame`` and return a detection dict."""
+    global _last_detection_time, _last_result
+
+    now = time.time()
+    if _last_result is not None and (now - _last_detection_time) < 0.2:
+        return _last_result.data
+
     cfg = dict(config or {})
     cfg["return_overlay"] = return_overlay
-    res: Result = _pipeline().process(frame, cfg)
+    roi = cfg.pop("roi", None)
+    res: Result = _pipeline().process(frame, cfg, ts=now, roi=roi)
+    _last_detection_time = now
+    _last_result = res
     return res.data
 
 
 # VisionLogger fetches the latest detection result through this helper.
 def get_last_result() -> Optional[Result]:
     """Return the most recent Result produced by :func:`process`."""
-    return _pipeline().get_last_result()
+    return _last_result
 
 
 def get_detectors():

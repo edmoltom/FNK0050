@@ -34,14 +34,16 @@ def main(config_path: str = CONFIG_PATH) -> None:
     ws_cfg = cfg.get("ws", {}) or {}
 
     mode = vision_cfg.get("mode", "object")
-    svc = VisionService(mode=mode)
+    camera_fps = float(vision_cfg.get("camera_fps", 15.0))
+    face_cfg = vision_cfg.get("face", {}) or {}
+    svc = VisionService(mode=mode, camera_fps=camera_fps, face_cfg=face_cfg)
 
     face_tracker: FaceTracker | None = None
     if enable_movement:
         mc = MovementService()
         mc.start()
         mc.relax()
-        face_tracker = FaceTracker(mc.mc)
+        face_tracker = FaceTracker(mc.mc, svc.vm)
     else:
         print("[App] Movement disabled in config.")
 
