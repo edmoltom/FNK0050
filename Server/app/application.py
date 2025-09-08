@@ -3,7 +3,7 @@ import os, sys, json, time, logging
 from typing import Any, Dict
 from app.services.vision_service import VisionService
 from app.services.movement_service import MovementService
-from app.services.face_tracker import FaceTracker
+from app.controllers.face_tracker import FaceTracker
 from network.ws_server import start_ws_server
 from app.logging_config import setup_logging
 
