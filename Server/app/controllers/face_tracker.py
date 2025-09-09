@@ -108,9 +108,9 @@ class FaceTracker:
             scale = min(1.0, abs(ex) * self.k_turn)
             pulse = int(_clamp(self.base_pulse_ms * scale, self.min_pulse_ms, self.max_pulse_ms))
             if ex > 0:
-                self.movement.turn_right(pulse, scale)
+                self.movement.turn_right(duration_ms=pulse, speed=scale)
             else:
-                self.movement.turn_left(pulse, scale)
+                self.movement.turn_left(duration_ms=pulse, speed=scale)
             self._turn_cooldown = pulse / 1000.0
         face_center_y = y + h / 2.0
         if self._ema_center is None:
