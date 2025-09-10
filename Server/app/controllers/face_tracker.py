@@ -29,6 +29,13 @@ class FaceTracker:
         self._miss_count = 0
         self._locked = False
         self.logger = logging.getLogger("face_tracker")
+        self.turn_enabled = True
+        self.deadband_x = 0.12
+        self.k_turn = 0.8
+        self.min_pulse_ms = 60
+        self.max_pulse_ms = 180
+        self.base_pulse_ms = 120
+        self._turn_cooldown = 0.0
 
     def _select_largest_face(self, faces: List[Dict[str, float]]) -> Optional[Dict[str, float]]:
         if not faces:
@@ -53,16 +60,24 @@ class FaceTracker:
                 self.logger.info("Face lock released")
             diff = center - self.current_head_deg
             if abs(diff) < 0.1:
+                self.movement.stop()
+                if self._turn_cooldown > 0.0:
+                    self._turn_cooldown = max(0.0, self._turn_cooldown - dt)
                 return
             max_step = 30.0 * dt
             step = _clamp(diff, -max_step, max_step)
             self.current_head_deg += step
             self.current_head_deg = _clamp(self.current_head_deg, min_deg, max_deg)
             self.movement.head_deg(self.current_head_deg, duration_ms=100)
+            self.movement.stop()
+            if self._turn_cooldown > 0.0:
+                self._turn_cooldown = max(0.0, self._turn_cooldown - dt)
             return
 
         face = self._select_largest_face(faces)
         if not face:
+            if self._turn_cooldown > 0.0:
+                self._turn_cooldown = max(0.0, self._turn_cooldown - dt)
             return
 
         self._miss_count = 0
@@ -79,12 +94,24 @@ class FaceTracker:
         space_w = float(space[0]) if len(space) > 0 else 0.0
         space_h = float(space[1]) if len(space) > 1 else 0.0
         if space_h <= 0:
+            if self._turn_cooldown > 0.0:
+                self._turn_cooldown = max(0.0, self._turn_cooldown - dt)
             return
 
         x = float(face.get("x", 0.0))
         y = float(face.get("y", 0.0))
         w = float(face.get("w", 0.0))
         h = float(face.get("h", 0.0))
+        face_center_x = x + w / 2.0
+        ex = (face_center_x - space_w / 2.0) / (space_w / 2.0) if space_w > 0 else 0.0
+        if self.turn_enabled and abs(ex) > self.deadband_x and self._turn_cooldown <= 0:
+            scale = min(1.0, abs(ex) * self.k_turn)
+            pulse = int(_clamp(self.base_pulse_ms * scale, self.min_pulse_ms, self.max_pulse_ms))
+            if ex > 0:
+                self.movement.turn_right(duration_ms=pulse, speed=scale)
+            else:
+                self.movement.turn_left(duration_ms=pulse, speed=scale)
+            self._turn_cooldown = pulse / 1000.0
         face_center_y = y + h / 2.0
         if self._ema_center is None:
             self._ema_center = face_center_y
@@ -110,3 +137,5 @@ class FaceTracker:
                 self.vision.set_roi((roi_x, roi_y, roi_w, roi_h))
             else:
                 self.vision.set_roi(None)
+        if self._turn_cooldown > 0.0:
+            self._turn_cooldown = max(0.0, self._turn_cooldown - dt)

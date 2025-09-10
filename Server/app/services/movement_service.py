@@ -28,5 +28,13 @@ class MovementService:
     def relax(self) -> None:
         self.mc.relax()
 
+    def turn_left(self, duration_ms: int, speed: float) -> None:
+        """Delegate a left in-place turn to :class:`MovementControl`."""
+        self.mc.turn_left(duration_ms, speed)
+
+    def turn_right(self, duration_ms: int, speed: float) -> None:
+        """Delegate a right in-place turn to :class:`MovementControl`."""
+        self.mc.turn_right(duration_ms, speed)
+
     def __getattr__(self, name: str) -> Any:  # pragma: no cover - simple delegation
         return getattr(self.mc, name)

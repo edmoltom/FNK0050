@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+
 from movement.controller import (
     AttitudeCmd,
     HeadCmd,
@@ -55,6 +57,18 @@ class MovementControl:
         \param yaw_rate Desired yaw rate.
         """
         self.controller.queue.put(TurnCmd(yaw_rate))
+
+    def _turn_in_place(self, direction: str, duration_ms: int, speed: float) -> None:
+        yaw_rate = speed if direction == "left" else -speed
+        self.controller.queue.put(TurnCmd(yaw_rate))
+        threading.Timer(duration_ms / 1000.0,
+                        lambda: self.controller.queue.put(StopCmd())).start()
+
+    def turn_left(self, duration_ms: int, speed: float) -> None:
+        self._turn_in_place("left", duration_ms, speed)
+
+    def turn_right(self, duration_ms: int, speed: float) -> None:
+        self._turn_in_place("right", duration_ms, speed)
 
     def set_height(self, z: float) -> None:
         """\brief Set body height.
