@@ -1,6 +1,7 @@
 """Camera utilities for vision subsystem."""
 
 import logging
+import time
 from typing import Tuple
 
 import numpy as np
@@ -44,11 +45,19 @@ class Camera:
                 return
             try:
                 self._picam2 = Picamera2()
-                config = self._picam2.create_still_configuration(
-                    main={"size": self.resolution}
+                config = self._picam2.create_video_configuration(
+                    main={"size": self.resolution, "format": "RGB888"}
                 )
                 self._picam2.configure(config)
                 self._picam2.start()
+                time.sleep(0.5)
+
+                self._picam2.set_controls({
+                    "AeEnable": False,
+                    "AwbEnable": False,        # si prefieres, déjalo True
+                    "ExposureTime": 5000,      # 5 ms → mucho menos blur
+                    "AnalogueGain": 4.0        # súbelo si queda oscuro (6–8)
+                })
             except Exception:
                 logger.error("Failed to open camera device", exc_info=True)
                 self._picam2 = None

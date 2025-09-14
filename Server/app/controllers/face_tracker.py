@@ -53,23 +53,25 @@ class FaceTracker:
             self._ema_center = None
             self._face_count = 0
             self._miss_count += 1
+
             if self._locked and self._miss_count >= 5:
                 self._locked = False
                 if self.vision:
                     self.vision.set_roi(None)
                 self.logger.info("Face lock released")
-            diff = center - self.current_head_deg
-            if abs(diff) < 0.1:
-                self.movement.stop()
-                if self._turn_cooldown > 0.0:
-                    self._turn_cooldown = max(0.0, self._turn_cooldown - dt)
-                return
-            max_step = 30.0 * dt
-            step = _clamp(diff, -max_step, max_step)
-            self.current_head_deg += step
-            self.current_head_deg = _clamp(self.current_head_deg, min_deg, max_deg)
-            self.movement.head_deg(self.current_head_deg, duration_ms=100)
+
+            # Keep head still when face is lost, but stop any body turning.
             self.movement.stop()
+
+            # Optionally recenter very slowly after several seconds without a face.
+            if self._miss_count >= 40:
+                min_deg, max_deg, center = self.movement.head_limits
+                diff = center - self.current_head_deg
+                max_step = 5.0 * dt
+                step = _clamp(diff, -max_step, max_step)
+                self.current_head_deg = _clamp(self.current_head_deg + step, min_deg, max_deg)
+                self.movement.head_deg(self.current_head_deg, duration_ms=150)
+
             if self._turn_cooldown > 0.0:
                 self._turn_cooldown = max(0.0, self._turn_cooldown - dt)
             return
@@ -108,9 +110,9 @@ class FaceTracker:
             scale = min(1.0, abs(ex) * self.k_turn)
             pulse = int(_clamp(self.base_pulse_ms * scale, self.min_pulse_ms, self.max_pulse_ms))
             if ex > 0:
-                self.movement.turn_right(duration_ms=pulse, speed=scale)
+                self.movement.turn_right(duration_ms=pulse, speed=1.0)
             else:
-                self.movement.turn_left(duration_ms=pulse, speed=scale)
+                self.movement.turn_left(duration_ms=pulse, speed=1.0)
             self._turn_cooldown = pulse / 1000.0
         face_center_y = y + h / 2.0
         if self._ema_center is None:
