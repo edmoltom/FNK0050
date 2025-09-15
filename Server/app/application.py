@@ -60,7 +60,7 @@ def main(config_path: str = CONFIG_PATH) -> None:
             dt = now - prev_time
             prev_time = now
             if fsm:
-                fsm.on_frame(result, dt)
+                fsm.on_frame(result or {}, dt)
             _store_latest_detection(result)
 
         svc.start(interval_sec=interval, frame_handler=_handle_frame)
