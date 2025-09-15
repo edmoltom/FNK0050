@@ -34,6 +34,7 @@ class SocialFSM:
 
         self.logger = logging.getLogger("social_fsm")
         self.audio = None
+        self._drift_until = None
 
     def _set_state(self, new_state: str) -> None:
         if new_state == self.state:
@@ -46,6 +47,7 @@ class SocialFSM:
             self._on_interact()
         if new_state != "INTERACT":
             self.lock_frames = 0
+            self._drift_until = None
 
     def on_frame(self, result: Dict | None, dt: float) -> None:
         self.tracker.update(result, dt)
@@ -75,9 +77,9 @@ class SocialFSM:
                 return
             if abs(ex) > self.deadband_x:
                 self.lock_frames = 0
-                if not hasattr(self, "_drift_until"):
+                if self._drift_until is None:
                     self._drift_until = now + 0.4
-                if now >= self._drift_until:
+                if self._drift_until is not None and now >= self._drift_until:
                     self._set_state("ALIGNING")
             else:
                 self._drift_until = None
