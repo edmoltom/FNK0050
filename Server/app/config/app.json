@@ -22,7 +22,8 @@
       "deadband_x": 0.12,
       "lock_frames_needed": 3,
       "miss_release": 5,
-      "interact_ms": 1500
+      "interact_ms": 1500,
+      "relax_timeout": 30
     }
   }
 }

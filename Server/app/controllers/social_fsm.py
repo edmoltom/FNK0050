@@ -18,6 +18,7 @@ class SocialFSM:
         self.lock_frames_needed = int(behavior_cfg.get("lock_frames_needed", 3))
         self.miss_release = int(behavior_cfg.get("miss_release", 5))
         self.interact_ms = int(behavior_cfg.get("interact_ms", 1500))
+        self.relax_timeout = float(behavior_cfg.get("relax_timeout", 30.0))
 
         self.vision = vision
         self.movement = movement
@@ -27,6 +28,7 @@ class SocialFSM:
         self.miss_frames = 0
         self.lock_frames = 0
         self.interact_until = 0.0
+        self.last_active = time.monotonic()
 
         self.logger = logging.getLogger("social_fsm")
         self.audio = None
@@ -55,13 +57,16 @@ class SocialFSM:
                 space_w = float(space[0])
         ex = self._ex_from_face(face, space_w) if face else 0.0
 
+        now = time.monotonic()
         if face:
             self.miss_frames = 0
+            self.last_active = now
         else:
             self.miss_frames += 1
             self.lock_frames = 0
-
-        now = time.monotonic()
+            if now - self.last_active > self.relax_timeout:
+                self.movement.relax()
+                self.last_active = now
         if self.state == "INTERACT":
             if self.miss_frames >= self.miss_release or now >= self.interact_until:
                 self._set_state("IDLE")
@@ -96,6 +101,7 @@ class SocialFSM:
         return (face_center_x - space_w / 2.0) / (space_w / 2.0) if space_w > 0 else 0.0
 
     def _on_interact(self) -> None:
+        self.last_active = time.monotonic()
         if getattr(self, "audio", None):
             try:
                 self.audio.play("meow1.wav")
