@@ -88,6 +88,8 @@ def test_config_values_override_defaults():
                 "lock_frames_needed": 10,
                 "miss_release": 7,
                 "interact_ms": 2000,
+                "min_score": 0.75,
+                "cooldown_ms": 1200,
             }
         }
     }
@@ -96,4 +98,21 @@ def test_config_values_override_defaults():
     assert fsm.lock_frames_needed == 10
     assert fsm.miss_release == 7
     assert fsm.interact_ms == 2000
+    assert fsm.min_score == 0.75
+    assert fsm.cooldown == 1.2
+
+
+def test_none_config_values_fallback():
+    cfg = {
+        "behavior": {
+            "social_fsm": {
+                "min_score": None,
+                "cooldown_ms": None,
+            }
+        }
+    }
+    fsm = SocialFSM(VisionService(), MovementService(), cfg)
+    assert fsm.min_score == 0.0
+    assert fsm.cooldown == 0.0
+    fsm.on_frame({"score": None, "faces": []}, 0.1)
 

@@ -18,6 +18,8 @@ class SocialFSM:
         self.lock_frames_needed = int(behavior_cfg.get("lock_frames_needed", 3))
         self.miss_release = int(behavior_cfg.get("miss_release", 5))
         self.interact_ms = int(behavior_cfg.get("interact_ms", 1500))
+        self.min_score = float(behavior_cfg.get("min_score", 0.0) or 0.0)
+        self.cooldown = float(behavior_cfg.get("cooldown_ms", 0) or 0.0) / 1000.0
         self.relax_timeout = float(behavior_cfg.get("relax_timeout", 30.0))
 
         self.vision = vision
@@ -50,13 +52,19 @@ class SocialFSM:
             self._drift_until = None
 
     def on_frame(self, result: Dict | None, dt: float) -> None:
-        self.tracker.update(result, dt)
+        detection = result or None
+        if detection:
+            score = float(detection.get("score") or 0.0)
+            if score < self.min_score:
+                detection = None
 
-        faces = result.get("faces") if result else None
+        self.tracker.update(detection, dt)
+
+        faces = detection.get("faces") if detection else None
         face = self._select_largest_face(faces) if faces else None
         space_w = 0.0
-        if result:
-            space = result.get("space", (0, 0))
+        if detection:
+            space = detection.get("space", (0, 0))
             if len(space) > 0:
                 space_w = float(space[0])
         ex = self._ex_from_face(face, space_w) if face else 0.0
