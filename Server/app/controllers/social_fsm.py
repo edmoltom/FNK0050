@@ -23,6 +23,8 @@ class SocialFSM:
         self.vision = vision
         self.movement = movement
         self.tracker = FaceTracker(movement.mc, vision.vm)
+        # Keep deadband consistent with the tracker so state decisions match
+        self.tracker.deadband_x = self.deadband_x
 
         self.state = "IDLE"
         self.miss_frames = 0
@@ -70,8 +72,16 @@ class SocialFSM:
         if self.state == "INTERACT":
             if self.miss_frames >= self.miss_release or now >= self.interact_until:
                 self._set_state("IDLE")
-            else:
                 return
+            if abs(ex) > self.deadband_x:
+                self.lock_frames = 0
+                if not hasattr(self, "_drift_until"):
+                    self._drift_until = now + 0.4
+                if now >= self._drift_until:
+                    self._set_state("ALIGNING")
+            else:
+                self._drift_until = None
+            return
 
         if not face:
             if self.miss_frames >= self.miss_release:
@@ -86,8 +96,11 @@ class SocialFSM:
             else:
                 self.lock_frames = 0
 
-        if self.state == "IDLE":
+        if self.state == "IDLE" and not getattr(self, "_idle_stopped", False):
             self.movement.stop()
+            self._idle_stopped = True
+        else:
+            self._idle_stopped = False
 
     def _select_largest_face(self, faces: List[Dict[str, float]]) -> Optional[Dict[str, float]]:
         if not faces:
