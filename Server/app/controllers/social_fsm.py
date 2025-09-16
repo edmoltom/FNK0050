@@ -2,10 +2,12 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 import logging
 import time
+from pathlib import Path
 
 from .face_tracker import FaceTracker
 from ..services.movement_service import MovementService
 from ..services.vision_service import VisionService
+from core.voice.sfx import play_sound
 
 
 class SocialFSM:
@@ -125,10 +127,8 @@ class SocialFSM:
 
     def _on_interact(self) -> None:
         self.last_active = time.monotonic()
-        if getattr(self, "audio", None):
-            try:
-                self.audio.play("meow1.wav")
-            except Exception:
-                logging.info("meow")
-        else:
+        sound_file = Path(__file__).resolve().parents[2] / "sounds" / "meow.wav"
+        try:
+            play_sound(sound_file)
+        except Exception:
             logging.info("meow")
