@@ -3,7 +3,7 @@ import os, sys, json, time, logging
 from typing import Any, Dict
 from app.services.vision_service import VisionService
 from app.services.movement_service import MovementService
-from app.controllers.face_tracker import FaceTracker
+from app.controllers.social_fsm import SocialFSM
 from network.ws_server import start_ws_server
 from app.logging_config import setup_logging
 
@@ -17,6 +17,7 @@ def main(config_path: str = CONFIG_PATH) -> None:
     setup_logging()
     vision_logger = logging.getLogger("vision")
     movement_logger = logging.getLogger("movement")
+    fsm_logger = logging.getLogger("social_fsm")
     ft_logger = logging.getLogger("face_tracker")
 
     cfg = _load_json(config_path)
@@ -38,12 +39,12 @@ def main(config_path: str = CONFIG_PATH) -> None:
     face_cfg = vision_cfg.get("face", {}) or {}
     svc = VisionService(mode=mode, camera_fps=camera_fps, face_cfg=face_cfg)
 
-    face_tracker: FaceTracker | None = None
+    fsm: SocialFSM | None = None
     if enable_movement:
         mc = MovementService()
         mc.start()
         mc.relax()
-        face_tracker = FaceTracker(mc.mc, svc.vm)
+        fsm = SocialFSM(svc, mc, cfg)
     else:
         print("[App] Movement disabled in config.")
 
@@ -58,8 +59,8 @@ def main(config_path: str = CONFIG_PATH) -> None:
             now = time.monotonic()
             dt = now - prev_time
             prev_time = now
-            if face_tracker:
-                face_tracker.update(result, dt)
+            if fsm:
+                fsm.on_frame(result or {}, dt)
             _store_latest_detection(result)
 
         svc.start(interval_sec=interval, frame_handler=_handle_frame)

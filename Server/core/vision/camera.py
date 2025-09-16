@@ -46,17 +46,17 @@ class Camera:
             try:
                 self._picam2 = Picamera2()
                 config = self._picam2.create_video_configuration(
-                    main={"size": self.resolution, "format": "RGB888"}
+                    main={"size": self.resolution}
                 )
                 self._picam2.configure(config)
                 self._picam2.start()
                 time.sleep(0.5)
 
                 self._picam2.set_controls({
-                    "AeEnable": False,
-                    "AwbEnable": False,        # si prefieres, déjalo True
-                    "ExposureTime": 5000,      # 5 ms → mucho menos blur
-                    "AnalogueGain": 4.0        # súbelo si queda oscuro (6–8)
+                    #"AeEnable": False,
+                    #"AwbEnable": False, 
+                    "ExposureTime": 30000,      
+                    "AnalogueGain": 20.0        
                 })
             except Exception:
                 logger.error("Failed to open camera device", exc_info=True)
