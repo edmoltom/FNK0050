@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 import logging
 import time
+import random
 from pathlib import Path
 
 from .face_tracker import FaceTracker
@@ -24,6 +25,9 @@ class SocialFSM:
         self.cooldown = float(behavior_cfg.get("cooldown_ms", 0) or 0.0) / 1000.0
         self.relax_timeout = float(behavior_cfg.get("relax_timeout", 30.0))
 
+        self.meow_cooldown_min = float(behavior_cfg.get("meow_cooldown_min", 5.0) or 5.0)
+        self.meow_cooldown_max = float(behavior_cfg.get("meow_cooldown_max", 15.0) or 15.0)
+
         self.vision = vision
         self.movement = movement
         self.tracker = FaceTracker(movement.mc, vision.vm)
@@ -35,6 +39,7 @@ class SocialFSM:
         self.lock_frames = 0
         self.interact_until = 0.0
         self.last_active = time.monotonic()
+        self._next_meow_time = 0.0
 
         self.logger = logging.getLogger("social_fsm")
         self.audio = None
@@ -126,9 +131,14 @@ class SocialFSM:
         return (face_center_x - space_w / 2.0) / (space_w / 2.0) if space_w > 0 else 0.0
 
     def _on_interact(self) -> None:
-        self.last_active = time.monotonic()
+        now = time.monotonic()
+        self.last_active = now
+        if now < self._next_meow_time:
+            return
         sound_file = Path(__file__).resolve().parents[2] / "sounds" / "meow.wav"
         try:
             play_sound(sound_file)
         except Exception:
             logging.info("meow")
+        delay = random.uniform(self.meow_cooldown_min, self.meow_cooldown_max)
+        self._next_meow_time = now + delay
