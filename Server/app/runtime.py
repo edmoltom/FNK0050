@@ -64,6 +64,7 @@ class AppRuntime:
         if vision and self.svcs.enable_vision:
             self._register_frame_handler()
             frame_handler = self.frame_handler
+            vision.set_frame_callback(frame_handler)
 
         vision_started = False
 
