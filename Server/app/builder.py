@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
@@ -65,3 +66,21 @@ class AppBuilder:
             services.fsm = SocialFSM(services.vision, services.movement, cfg)
 
         return services
+
+
+def _load_json(path: str) -> Dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def build(*, config_path: Optional[str] = None, config: Optional[Dict[str, Any]] = None) -> AppServices:
+    """Convenience helper to build :class:`AppServices` from a JSON config."""
+
+    cfg = config
+    if cfg is None and config_path:
+        cfg = _load_json(config_path)
+    elif cfg is None:
+        cfg = {}
+
+    builder = AppBuilder(cfg)
+    return builder.build()
