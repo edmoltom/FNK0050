@@ -15,11 +15,11 @@ for folder in ['app', 'core', 'lib', 'test_codes', 'network']:
 #from test_led_controller import main
 #from test_led import main
 #from test_gamepad import main
-#from test_visual_perception import main  
+#from test_visual_perception import main
 #from test_llm_tts import main
 #from test_voice_loop import main
 #from test_voice_interface import main
-from application import main
+from app.application import main
 
 if __name__ == '__main__':
     main()
