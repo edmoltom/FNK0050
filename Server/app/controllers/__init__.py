@@ -2,7 +2,13 @@
 
 from .face_tracker import FaceTracker
 from .social_fsm import SocialFSM
-from .tracker import AxisYHeadController, ObjectTracker
+from .tracker import AxisXTurnController, AxisYHeadController, ObjectTracker
 
-__all__ = ["FaceTracker", "SocialFSM", "AxisYHeadController", "ObjectTracker"]
+__all__ = [
+    "FaceTracker",
+    "SocialFSM",
+    "AxisXTurnController",
+    "AxisYHeadController",
+    "ObjectTracker",
+]
 
