@@ -21,6 +21,7 @@ class AppServices:
     enable_vision: bool = True
     enable_movement: bool = True
     enable_ws: bool = True
+    ws_cfg: Dict[str, Any] = field(default_factory=dict)
     vision: Optional[VisionService] = None
     movement: Optional[MovementService] = None
     fsm: Optional[SocialFSM] = None
@@ -47,6 +48,8 @@ class AppBuilder:
         services.camera_fps = float(vision_cfg.get("camera_fps", 15.0))
         services.face_cfg = vision_cfg.get("face", {}) or {}
         services.interval_sec = float(vision_cfg.get("interval_sec", 1.0))
+
+        services.ws_cfg = cfg.get("ws", {}) or {}
 
         if services.enable_vision:
             services.vision = VisionService(
