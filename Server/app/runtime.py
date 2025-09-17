@@ -64,6 +64,13 @@ class AppRuntime:
     def _handle_shutdown_signal(self, signum: int, frame: Optional[FrameType]) -> None:
         self.stop()
 
+        try:
+            signal.default_int_handler(signum, frame)  # type: ignore[arg-type]
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception:
+            raise KeyboardInterrupt()
+
     def start(self) -> None:
         """Start the application services and, if enabled, the WS server.
 
