@@ -1,4 +1,5 @@
 from __future__ import annotations
+from __future__ import annotations
 
 import os
 
@@ -19,3 +20,4 @@ def main(config_path: str = CONFIG_PATH) -> None:
 
 if __name__ == "__main__":
     main()
+    
