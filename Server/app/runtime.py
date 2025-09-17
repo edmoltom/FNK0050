@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import signal
+import threading
 import time
+from types import FrameType
 from typing import Any, Callable, Dict, Optional
 
 from .builder import AppServices
@@ -14,6 +17,9 @@ class AppRuntime:
         self.svcs = services
         self._latest_detection: Dict[str, Any] = {}
         self._frame_handler: Optional[Callable[[Dict[str, Any] | None], None]] = None
+        self._shutdown_event = threading.Event()
+        self._running = False
+        self._register_signal_handlers()
 
     @property
     def latest_detection(self) -> Dict[str, Any]:
@@ -45,6 +51,19 @@ class AppRuntime:
 
         self._frame_handler = _handle
 
+    def _register_signal_handlers(self) -> None:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                signal.signal(sig, self._handle_shutdown_signal)
+            except (ValueError, OSError, AttributeError):
+                # Signal handlers can only be registered in the main thread and
+                # may not exist on all platforms. In those scenarios we simply
+                # keep the default behaviour.
+                continue
+
+    def _handle_shutdown_signal(self, signum: int, frame: Optional[FrameType]) -> None:
+        self.stop()
+
     def start(self) -> None:
         """Start the application services and, if enabled, the WS server.
 
@@ -52,6 +71,12 @@ class AppRuntime:
         el comportamiento bloqueante del script original y confiamos en
         ``CTRL+C`` para detener la ejecución.
         """
+
+        if self._running:
+            return
+
+        self._shutdown_event.clear()
+        self._running = True
 
         vision = self.svcs.vision if self.svcs.vision else None
         movement = self.svcs.movement if self.svcs.movement else None
@@ -83,10 +108,37 @@ class AppRuntime:
                 start_ws_server(vision, host=host, port=port)
             elif vision_started:
                 try:
-                    while True:
-                        time.sleep(1.0)
+                    while not self._shutdown_event.wait(timeout=1.0):
+                        pass
                 except KeyboardInterrupt:
                     pass
         finally:
-            if vision_started and vision:
+            self.stop()
+
+    def stop(self) -> None:
+        if not self._running:
+            self._shutdown_event.set()
+        else:
+            self._running = False
+            self._shutdown_event.set()
+
+        vision = self.svcs.vision if self.svcs.vision else None
+        movement = self.svcs.movement if self.svcs.movement else None
+
+        if vision and self.svcs.enable_vision:
+            try:
                 vision.stop()
+            except Exception:
+                pass
+
+        if movement and self.svcs.enable_movement:
+            try:
+                movement.relax()
+            finally:
+                try:
+                    movement.stop()
+                except Exception:
+                    pass
+
+        # Hook reserved for the WebSocket wrapper implementation that will
+        # arrive in the next iteration.
