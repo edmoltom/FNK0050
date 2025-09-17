@@ -78,6 +78,19 @@ class FaceTracker:
     def k_turn(self, value: float) -> None:
         self.tracker.set_turn_gain(value)
 
+    @property
+    def current_head_deg(self) -> float:
+        return self.tracker.y.current_head_deg
+
+    @current_head_deg.setter
+    def current_head_deg(self, value: float) -> None:
+        self.tracker.y.current_head_deg = float(value)
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Compatibility helper forwarding to the turn axis controller."""
+
+        self.tracker.set_turn_enabled(enabled)
+
     def _select_largest_face(self, faces: List[Dict[str, float]]) -> Optional[Dict[str, float]]:
         if not faces:
             return None
