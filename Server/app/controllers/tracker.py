@@ -1,33 +1,27 @@
-"""Generic object tracking helpers used by high level controllers.
-
-This module provides a light-weight :class:`ObjectTracker` abstraction that
-coordinates per-axis head controllers.  Only the vertical axis is currently
-implemented which mirrors the behaviour of :class:`FaceTracker` where an
-exponential moving average (EMA) is used to smooth the target position.
-
-The user story for this change requires clearing the vertical EMA whenever the
-tracker loses all targets so subsequent detections start with a fresh state.
-Keeping the reset logic encapsulated inside :class:`AxisYHeadController`
-prevents external callers from mutating private attributes directly and keeps
-the code aligned with the pattern already used by ``FaceTracker``.
-"""
+"""Generic object tracking helpers used by high level controllers."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
-from typing import Dict, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, Iterable, Optional, Sequence, Tuple
+import logging
+
+from control.pid import Incremental_PID
+
+from core.MovementControl import MovementControl
+from core.VisionManager import VisionManager
 
 
-def _select_largest_box(targets: Sequence[Dict[str, float]]) -> Optional[Dict[str, float]]:
-    """Return the target with the largest area.
+def _clamp(value: float, mn: float, mx: float) -> float:
+    """Clamp ``value`` between ``mn`` and ``mx``."""
 
-    Parameters
-    ----------
-    targets:
-        Iterable of bounding boxes containing ``x``, ``y``, ``w`` and ``h``
-        values.  Missing keys are treated as ``0`` which results in a zero-area
-        box and therefore ignored when there are valid candidates.
-    """
+    return max(mn, min(mx, value))
+
+
+def _select_largest_box(
+    targets: Sequence[Dict[str, float]]
+) -> Optional[Dict[str, float]]:
+    """Return the target with the largest area."""
 
     if not targets:
         return None
@@ -37,53 +31,146 @@ def _select_largest_box(targets: Sequence[Dict[str, float]]) -> Optional[Dict[st
     )
 
 
-class AxisYHeadController:
-    """Vertical head controller with exponential smoothing.
+def _extract_targets(result: Optional[Dict[str, object]]) -> list[Dict[str, float]]:
+    """Extract a list of bounding boxes from ``result``."""
 
-    The controller keeps an EMA of the detected target's vertical centre.  This
-    mirrors the implementation inside :class:`FaceTracker` so both controllers
-    react in the same way when re-acquiring a face.  The EMA is reset via
-    :meth:`reset` which is invoked by :class:`ObjectTracker` whenever no targets
-    are detected.
-    """
+    if not result:
+        return []
+    for key in ("targets", "faces"):
+        raw = result.get(key)
+        if isinstance(raw, Iterable) and not isinstance(raw, (str, bytes)):
+            return [box for box in raw if isinstance(box, dict)]
+    return []
 
-    def __init__(self, *, ema_alpha: float = 0.2) -> None:
-        self.ema_alpha = float(ema_alpha)
-        self._ema_center: Optional[float] = None
 
-    # ------------------------------------------------------------------
+def _extract_space(result: Optional[Dict[str, object]]) -> Optional[Tuple[float, float]]:
+    """Return ``(width, height)`` from ``result`` when available."""
+
+    if not result:
+        return None
+    space = result.get("space")
+    if not isinstance(space, Sequence) or isinstance(space, (str, bytes)):
+        return None
+    if len(space) < 2:
+        return None
+    try:
+        return float(space[0]), float(space[1])
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+
+
+@dataclass
+class AxisXTurnController:
+    """Controller orchestrating horizontal turns when the target drifts."""
+
+    movement: MovementControl
+    logger: logging.Logger = field(
+        default_factory=lambda: logging.getLogger("object_tracker.turn")
+    )
+    deadband_x: float = 0.12
+    k_turn: float = 0.8
+    base_pulse_ms: int = 120
+    min_pulse_ms: int = 60
+    max_pulse_ms: int = 180
+    turn_speed: float = 0.3
+    enabled: bool = True
+    _turn_cooldown: float = field(default=0.0, init=False)
+
+    def tick(self, dt: float) -> None:
+        """Progress the internal cooldown timer."""
+
+        if self._turn_cooldown > 0.0:
+            self._turn_cooldown = max(0.0, self._turn_cooldown - max(0.0, dt))
+
     def reset(self) -> None:
-        """Reset the EMA state so the next detection starts fresh."""
+        """Reset cooldown state."""
+
+        self._turn_cooldown = 0.0
+
+    def update(self, ex: float, dt: float) -> None:
+        """Turn the robot left/right based on horizontal error ``ex``."""
+
+        self.tick(dt)
+        if not self.enabled or self._turn_cooldown > 0.0:
+            return
+        if abs(ex) <= self.deadband_x:
+            return
+
+        scale = min(1.0, abs(ex) * self.k_turn)
+        pulse = int(_clamp(self.base_pulse_ms * scale, self.min_pulse_ms, self.max_pulse_ms))
+        if pulse <= 0:
+            return
+
+        if ex > 0:
+            self.movement.turn_right(duration_ms=pulse, speed=self.turn_speed)
+        else:
+            self.movement.turn_left(duration_ms=pulse, speed=self.turn_speed)
+        self._turn_cooldown = pulse / 1000.0
+
+    # ----- Compatibility helpers -------------------------------------------------
+    def set_enabled(self, enabled: bool) -> None:
+        self.enabled = bool(enabled)
+
+    def set_deadband(self, deadband: float) -> None:
+        self.deadband_x = float(deadband)
+
+    def set_pulses(self, *, base: int, minimum: int, maximum: int) -> None:
+        self.base_pulse_ms = int(base)
+        self.min_pulse_ms = int(minimum)
+        self.max_pulse_ms = int(maximum)
+
+    def set_turn_gain(self, gain: float) -> None:
+        self.k_turn = float(gain)
+
+    def set_turn_speed(self, speed: float) -> None:
+        self.turn_speed = float(speed)
+
+
+@dataclass
+class AxisYHeadController:
+    """Vertical head controller using EMA and PID smoothing."""
+
+    movement: MovementControl
+    logger: logging.Logger = field(
+        default_factory=lambda: logging.getLogger("object_tracker.head")
+    )
+    pid: Incremental_PID = field(default_factory=lambda: Incremental_PID(20.0, 0.0, 5.0))
+    pid_scale: float = 0.1
+    ema_alpha: float = 0.2
+    error_threshold: float = 0.05
+    delta_limit_deg: float = 3.0
+    head_duration_ms: int = 100
+    recenter_speed_deg: float = 5.0
+    recenter_duration_ms: int = 150
+    _ema_center: Optional[float] = field(default=None, init=False)
+    current_head_deg: float = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.pid.setPoint = 0.0
+        self.current_head_deg = self.movement.head_limits[2]
+
+    def reset(self) -> None:
+        """Clear EMA state after losing the target."""
 
         self._ema_center = None
 
-    # ------------------------------------------------------------------
+    def _apply_head_delta(self, delta: float) -> None:
+        min_deg, max_deg, _ = self.movement.head_limits
+        target = _clamp(self.current_head_deg + delta, min_deg, max_deg)
+        if target == self.current_head_deg:
+            return
+        self.current_head_deg = target
+        self.movement.head_deg(self.current_head_deg, duration_ms=self.head_duration_ms)
+
     def update(
         self,
-        target: Optional[Dict[str, float]],
+        target: Dict[str, float],
         space: Tuple[float, float],
+        dt: float,
     ) -> Optional[float]:
-        """Update the EMA with ``target`` information.
+        """Update PID control using ``target`` and ``space`` information."""
 
-        Parameters
-        ----------
-        target:
-            Detected bounding box expressed as a mapping with ``x``, ``y``,
-            ``w`` and ``h`` entries.  When ``None`` the controller simply
-            returns ``None`` and leaves the EMA untouched.  Callers are
-            expected to invoke :meth:`reset` when no detections are present.
-        space:
-            Tuple containing the frame width and height in pixels.
-
-        Returns
-        -------
-        Optional[float]
-            Normalised error of the EMA centre relative to the image centre, or
-            ``None`` when the computation cannot be performed.
-        """
-
-        if not target or len(space) < 2:
-            return None
+        del dt  # Unused but kept for API symmetry with :class:`AxisXTurnController`.
 
         space_h = float(space[1])
         if space_h <= 0.0:
@@ -93,9 +180,6 @@ class AxisYHeadController:
         h = float(target.get("h", 0.0))
         face_center_y = y + h / 2.0
 
-        # Reinitialise the EMA whenever a new face is observed.  This mirrors
-        # ``FaceTracker.update`` where the EMA is set to the first observation
-        # before smoothing subsequent frames.
         if self._ema_center is None:
             self._ema_center = face_center_y
         else:
@@ -105,66 +189,144 @@ class AxisYHeadController:
         mid = space_h / 2.0
         if mid <= 0.0:
             return None
-        return (self._ema_center - mid) / mid
+
+        error = (self._ema_center - mid) / mid
+        if abs(error) < self.error_threshold:
+            return error
+
+        delta = self.pid.PID_compute(error) * self.pid_scale
+        delta = _clamp(delta, -self.delta_limit_deg, self.delta_limit_deg)
+        self._apply_head_delta(delta)
+        self.logger.debug("error=%.3f, delta=%.2f, target=%.1f", error, delta, self.current_head_deg)
+        return error
+
+    def recenter(self, dt: float) -> None:
+        """Slowly recenter the head after prolonged target loss."""
+
+        min_deg, max_deg, center = self.movement.head_limits
+        diff = center - self.current_head_deg
+        if diff == 0.0:
+            return
+        max_step = max(0.0, self.recenter_speed_deg * dt)
+        if max_step <= 0.0:
+            return
+        step = _clamp(diff, -max_step, max_step)
+        new_deg = _clamp(self.current_head_deg + step, min_deg, max_deg)
+        if new_deg == self.current_head_deg:
+            return
+        self.current_head_deg = new_deg
+        self.movement.head_deg(self.current_head_deg, duration_ms=self.recenter_duration_ms)
 
 
+@dataclass
 class ObjectTracker:
-    """High level helper coordinating per-axis head controllers."""
+    """High-level helper coordinating per-axis controllers."""
 
-    def __init__(self, *, y_controller: Optional[AxisYHeadController] = None) -> None:
-        self.y = y_controller or AxisYHeadController()
-        self._hit_count = 0
-        self._miss_count = 0
+    movement: MovementControl
+    vision: VisionManager | None = None
+    logger: logging.Logger = field(
+        default_factory=lambda: logging.getLogger("object_tracker")
+    )
+    lock_frames_needed: int = 3
+    miss_release: int = 5
+    recenter_after: int = 40
+    x: AxisXTurnController = field(init=False)
+    y: AxisYHeadController = field(init=False)
+    _had_target: bool = field(default=False, init=False)
+    _locked: bool = field(default=False, init=False)
+    _face_count: int = field(default=0, init=False)
+    _miss_count: int = field(default=0, init=False)
 
-    # ------------------------------------------------------------------
+    def __post_init__(self) -> None:
+        self.x = AxisXTurnController(self.movement, self.logger)
+        self.y = AxisYHeadController(self.movement, self.logger)
+
+    # ----- Compatibility helpers -------------------------------------------------
+    @property
+    def deadband_x(self) -> float:
+        return self.x.deadband_x
+
+    @deadband_x.setter
+    def deadband_x(self, value: float) -> None:
+        self.x.set_deadband(value)
+
+    def set_turn_enabled(self, enabled: bool) -> None:
+        self.x.set_enabled(enabled)
+
+    def set_turn_gain(self, gain: float) -> None:
+        self.x.set_turn_gain(gain)
+
+    def set_turn_speed(self, speed: float) -> None:
+        self.x.set_turn_speed(speed)
+
+    def set_turn_pulses(self, *, base: int, minimum: int, maximum: int) -> None:
+        self.x.set_pulses(base=base, minimum=minimum, maximum=maximum)
+
+    # ----- Core behaviour --------------------------------------------------------
     def update(self, result: Optional[Dict[str, object]], dt: float) -> None:
-        """Update internal state using the detection ``result``.
+        """Update internal state based on detection ``result``."""
 
-        Parameters
-        ----------
-        result:
-            Dictionary returned by a vision detector.  Expected keys are
-            ``"targets"`` containing a sequence of bounding boxes and ``"space"``
-            describing the frame size.  Missing keys are handled gracefully.
-        dt:
-            Time step since the previous update (currently unused but kept for
-            signature parity with other controllers).
-        """
-
-        del dt  # Unused for now but kept for API compatibility.
-
-        targets: Iterable[Dict[str, float]] | None
-        if result is None:
-            targets = None
-        else:
-            raw = result.get("targets")  # type: ignore[assignment]
-            if isinstance(raw, Iterable) and not isinstance(raw, (bytes, str)):
-                targets = [t for t in raw if isinstance(t, dict)]
-            else:
-                targets = None
+        targets = _extract_targets(result)
 
         if not targets:
-            self._hit_count = 0
+            if self._had_target:
+                self.logger.info("Lost face detection")
+                self._had_target = False
+            self._face_count = 0
             self._miss_count += 1
-            # Clear the vertical EMA so the next detection starts fresh.
             self.y.reset()
+            if self._locked and self._miss_count >= self.miss_release:
+                self._locked = False
+                if self.vision:
+                    self.vision.set_roi(None)
+                self.logger.info("Face lock released")
+            self.movement.stop()
+            self.x.tick(dt)
+            if self._miss_count >= self.recenter_after:
+                self.y.recenter(dt)
             return
-
-        self._miss_count = 0
-        self._hit_count += 1
 
         target = _select_largest_box(targets)
         if target is None:
+            self.x.tick(dt)
             return
 
-        space = result.get("space") if result else None
-        if not isinstance(space, (tuple, list)):
-            return
-        space_tuple: Tuple[float, float]
-        if len(space) >= 2:
-            space_tuple = (float(space[0]), float(space[1]))
-        else:
+        space = _extract_space(result)
+        if not space:
+            self.x.tick(dt)
             return
 
-        self.y.update(target, space_tuple)
+        self._miss_count = 0
+        self._face_count += 1
+        if not self._locked and self._face_count >= self.lock_frames_needed:
+            self._locked = True
+            self.logger.info("Face lock acquired")
+
+        if not self._had_target:
+            self.logger.info("Face detected")
+            self._had_target = True
+
+        space_w, space_h = space
+        x = float(target.get("x", 0.0))
+        y = float(target.get("y", 0.0))
+        w = float(target.get("w", 0.0))
+        h = float(target.get("h", 0.0))
+
+        face_center_x = x + w / 2.0
+        ex = (face_center_x - space_w / 2.0) / (space_w / 2.0) if space_w > 0 else 0.0
+        self.x.update(ex, dt)
+
+        self.y.update(target, (space_w, space_h), dt)
+
+        if self.vision:
+            if self._locked:
+                margin_x = w * 0.2
+                margin_y = h * 0.2
+                roi_x = max(0, int(x - margin_x))
+                roi_y = max(0, int(y - margin_y))
+                roi_w = int(min(space_w - roi_x, w + 2 * margin_x))
+                roi_h = int(min(space_h - roi_y, h + 2 * margin_y))
+                self.vision.set_roi((roi_x, roi_y, roi_w, roi_h))
+            else:
+                self.vision.set_roi(None)
 
