@@ -112,7 +112,10 @@ class AppRuntime:
                 ws_cfg = self.svcs.ws_cfg or {}
                 host = ws_cfg.get("host", "0.0.0.0")
                 port = int(ws_cfg.get("port", 8765))
-                start_ws_server(vision, host=host, port=port)
+                try:
+                    start_ws_server(vision, host=host, port=port)
+                except KeyboardInterrupt:
+                    pass
             elif vision_started:
                 try:
                     while not self._shutdown_event.wait(timeout=1.0):
