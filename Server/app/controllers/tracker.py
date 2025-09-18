@@ -242,6 +242,9 @@ class ObjectTracker:
     _locked: bool = field(default=False, init=False)
     _face_count: int = field(default=0, init=False)
     _miss_count: int = field(default=0, init=False)
+    _lock_frames_needed: int = field(default=3, init=False, repr=False)
+    _miss_release: int = field(default=5, init=False, repr=False)
+    _recenter_after: int = field(default=40, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.x = AxisXTurnController(self.movement, self.logger)
@@ -278,6 +281,30 @@ class ObjectTracker:
             self.x.set_enabled(enable_x)
         if enable_y is not None:
             self.y.enabled = bool(enable_y)
+
+    @property
+    def lock_frames_needed(self) -> int:
+        return self._lock_frames_needed
+
+    @lock_frames_needed.setter
+    def lock_frames_needed(self, value: int) -> None:
+        self._lock_frames_needed = max(0, int(value))
+
+    @property
+    def miss_release(self) -> int:
+        return self._miss_release
+
+    @miss_release.setter
+    def miss_release(self, value: int) -> None:
+        self._miss_release = max(0, int(value))
+
+    @property
+    def recenter_after(self) -> int:
+        return self._recenter_after
+
+    @recenter_after.setter
+    def recenter_after(self, value: int) -> None:
+        self._recenter_after = max(0, int(value))
 
     # ----- Core behaviour --------------------------------------------------------
     def update(self, result: Optional[Dict[str, object]], dt: float) -> None:
