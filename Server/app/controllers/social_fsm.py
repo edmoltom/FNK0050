@@ -33,6 +33,11 @@ class SocialFSM:
         self.tracker = FaceTracker(movement.mc, vision.vm)
         # Keep deadband consistent with the tracker so state decisions match
         self.tracker.deadband_x = self.deadband_x
+        self.tracker.lock_frames_needed = self.lock_frames_needed
+        self.tracker.miss_release = self.miss_release
+        recenter_after = behavior_cfg.get("recenter_after", 40)
+        if recenter_after is not None:
+            self.tracker.recenter_after = int(recenter_after)
 
         self.state = "IDLE"
         self.miss_frames = 0

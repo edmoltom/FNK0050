@@ -95,6 +95,30 @@ class FaceTracker:
         self.tracker.set_turn_gain(value)
 
     @property
+    def lock_frames_needed(self) -> int:
+        return self.tracker.lock_frames_needed
+
+    @lock_frames_needed.setter
+    def lock_frames_needed(self, value: int) -> None:
+        self.tracker.lock_frames_needed = value
+
+    @property
+    def miss_release(self) -> int:
+        return self.tracker.miss_release
+
+    @miss_release.setter
+    def miss_release(self, value: int) -> None:
+        self.tracker.miss_release = value
+
+    @property
+    def recenter_after(self) -> int:
+        return self.tracker.recenter_after
+
+    @recenter_after.setter
+    def recenter_after(self, value: int) -> None:
+        self.tracker.recenter_after = value
+
+    @property
     def current_head_deg(self) -> float:
         return self.tracker.y.current_head_deg
 
