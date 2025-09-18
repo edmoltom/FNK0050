@@ -233,9 +233,6 @@ class ObjectTracker:
     logger: logging.Logger = field(
         default_factory=lambda: logging.getLogger("object_tracker")
     )
-    lock_frames_needed: int = 3
-    miss_release: int = 5
-    recenter_after: int = 40
     x: AxisXTurnController = field(init=False)
     y: AxisYHeadController = field(init=False)
     _had_target: bool = field(default=False, init=False)
@@ -249,6 +246,10 @@ class ObjectTracker:
     def __post_init__(self) -> None:
         self.x = AxisXTurnController(self.movement, self.logger)
         self.y = AxisYHeadController(self.movement, self.logger)
+        # Ensure compatibility defaults mirror the legacy constructor values.
+        self.lock_frames_needed = 3
+        self.miss_release = 5
+        self.recenter_after = 40
 
     # ----- Compatibility helpers -------------------------------------------------
     @property
