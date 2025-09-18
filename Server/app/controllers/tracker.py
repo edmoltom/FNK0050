@@ -142,6 +142,7 @@ class AxisYHeadController:
     head_duration_ms: int = 100
     recenter_speed_deg: float = 5.0
     recenter_duration_ms: int = 150
+    enabled: bool = True
     _ema_center: Optional[float] = field(default=None, init=False)
     current_head_deg: float = field(init=False)
 
@@ -196,12 +197,17 @@ class AxisYHeadController:
 
         delta = self.pid.PID_compute(error) * self.pid_scale
         delta = _clamp(delta, -self.delta_limit_deg, self.delta_limit_deg)
+        if not self.enabled:
+            return error
         self._apply_head_delta(delta)
         self.logger.debug("error=%.3f, delta=%.2f, target=%.1f", error, delta, self.current_head_deg)
         return error
 
     def recenter(self, dt: float) -> None:
         """Slowly recenter the head after prolonged target loss."""
+
+        if not self.enabled:
+            return
 
         min_deg, max_deg, center = self.movement.head_limits
         diff = center - self.current_head_deg
@@ -261,6 +267,17 @@ class ObjectTracker:
 
     def set_turn_pulses(self, *, base: int, minimum: int, maximum: int) -> None:
         self.x.set_pulses(base=base, minimum=minimum, maximum=maximum)
+
+    def set_enabled(
+        self,
+        *,
+        enable_x: bool | None = None,
+        enable_y: bool | None = None,
+    ) -> None:
+        if enable_x is not None:
+            self.x.set_enabled(enable_x)
+        if enable_y is not None:
+            self.y.enabled = bool(enable_y)
 
     # ----- Core behaviour --------------------------------------------------------
     def update(self, result: Optional[Dict[str, object]], dt: float) -> None:

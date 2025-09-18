@@ -35,6 +35,22 @@ class FaceTracker:
         self.tracker.set_turn_enabled(enabled)
 
     @property
+    def enable_x(self) -> bool:
+        return self.tracker.x.enabled
+
+    @enable_x.setter
+    def enable_x(self, enabled: bool) -> None:
+        self.tracker.set_enabled(enable_x=bool(enabled))
+
+    @property
+    def enable_y(self) -> bool:
+        return self.tracker.y.enabled
+
+    @enable_y.setter
+    def enable_y(self, enabled: bool) -> None:
+        self.tracker.set_enabled(enable_y=bool(enabled))
+
+    @property
     def min_pulse_ms(self) -> int:
         return self.tracker.x.min_pulse_ms
 
@@ -86,10 +102,21 @@ class FaceTracker:
     def current_head_deg(self, value: float) -> None:
         self.tracker.y.current_head_deg = float(value)
 
-    def set_enabled(self, enabled: bool) -> None:
-        """Compatibility helper forwarding to the turn axis controller."""
+    def set_enabled(
+        self,
+        enabled: bool | None = None,
+        *,
+        enable_x: bool | None = None,
+        enable_y: bool | None = None,
+    ) -> None:
+        """Toggle axis controllers while supporting the legacy interface."""
 
-        self.tracker.set_turn_enabled(enabled)
+        if enabled is not None:
+            if enable_x is None:
+                enable_x = enabled
+            if enable_y is None:
+                enable_y = enabled
+        self.tracker.set_enabled(enable_x=enable_x, enable_y=enable_y)
 
     def _select_largest_face(self, faces: List[Dict[str, float]]) -> Optional[Dict[str, float]]:
         if not faces:
