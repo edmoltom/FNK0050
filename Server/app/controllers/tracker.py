@@ -142,6 +142,7 @@ class AxisYHeadController:
     head_duration_ms: int = 100
     recenter_speed_deg: float = 5.0
     recenter_duration_ms: int = 150
+    enabled: bool = True
     _ema_center: Optional[float] = field(default=None, init=False)
     current_head_deg: float = field(init=False)
 
@@ -196,12 +197,17 @@ class AxisYHeadController:
 
         delta = self.pid.PID_compute(error) * self.pid_scale
         delta = _clamp(delta, -self.delta_limit_deg, self.delta_limit_deg)
+        if not self.enabled:
+            return error
         self._apply_head_delta(delta)
         self.logger.debug("error=%.3f, delta=%.2f, target=%.1f", error, delta, self.current_head_deg)
         return error
 
     def recenter(self, dt: float) -> None:
         """Slowly recenter the head after prolonged target loss."""
+
+        if not self.enabled:
+            return
 
         min_deg, max_deg, center = self.movement.head_limits
         diff = center - self.current_head_deg
@@ -227,19 +233,23 @@ class ObjectTracker:
     logger: logging.Logger = field(
         default_factory=lambda: logging.getLogger("object_tracker")
     )
-    lock_frames_needed: int = 3
-    miss_release: int = 5
-    recenter_after: int = 40
     x: AxisXTurnController = field(init=False)
     y: AxisYHeadController = field(init=False)
     _had_target: bool = field(default=False, init=False)
     _locked: bool = field(default=False, init=False)
     _face_count: int = field(default=0, init=False)
     _miss_count: int = field(default=0, init=False)
+    _lock_frames_needed: int = field(default=3, init=False, repr=False)
+    _miss_release: int = field(default=5, init=False, repr=False)
+    _recenter_after: int = field(default=40, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.x = AxisXTurnController(self.movement, self.logger)
         self.y = AxisYHeadController(self.movement, self.logger)
+        # Ensure compatibility defaults mirror the legacy constructor values.
+        self.lock_frames_needed = 3
+        self.miss_release = 5
+        self.recenter_after = 40
 
     # ----- Compatibility helpers -------------------------------------------------
     @property
@@ -262,6 +272,41 @@ class ObjectTracker:
     def set_turn_pulses(self, *, base: int, minimum: int, maximum: int) -> None:
         self.x.set_pulses(base=base, minimum=minimum, maximum=maximum)
 
+    def set_enabled(
+        self,
+        *,
+        enable_x: bool | None = None,
+        enable_y: bool | None = None,
+    ) -> None:
+        if enable_x is not None:
+            self.x.set_enabled(enable_x)
+        if enable_y is not None:
+            self.y.enabled = bool(enable_y)
+
+    @property
+    def lock_frames_needed(self) -> int:
+        return self._lock_frames_needed
+
+    @lock_frames_needed.setter
+    def lock_frames_needed(self, value: int) -> None:
+        self._lock_frames_needed = max(0, int(value))
+
+    @property
+    def miss_release(self) -> int:
+        return self._miss_release
+
+    @miss_release.setter
+    def miss_release(self, value: int) -> None:
+        self._miss_release = max(0, int(value))
+
+    @property
+    def recenter_after(self) -> int:
+        return self._recenter_after
+
+    @recenter_after.setter
+    def recenter_after(self, value: int) -> None:
+        self._recenter_after = max(0, int(value))
+
     # ----- Core behaviour --------------------------------------------------------
     def update(self, result: Optional[Dict[str, object]], dt: float) -> None:
         """Update internal state based on detection ``result``."""
@@ -270,7 +315,7 @@ class ObjectTracker:
 
         if not targets:
             if self._had_target:
-                self.logger.info("Lost face detection")
+                self.logger.info("Target lost")
                 self._had_target = False
             self._face_count = 0
             self._miss_count += 1
@@ -279,7 +324,7 @@ class ObjectTracker:
                 self._locked = False
                 if self.vision:
                     self.vision.set_roi(None)
-                self.logger.info("Face lock released")
+                self.logger.info("Target lock released")
             self.movement.stop()
             self.x.tick(dt)
             if self._miss_count >= self.recenter_after:
@@ -300,10 +345,10 @@ class ObjectTracker:
         self._face_count += 1
         if not self._locked and self._face_count >= self.lock_frames_needed:
             self._locked = True
-            self.logger.info("Face lock acquired")
+            self.logger.info("Target lock acquired")
 
         if not self._had_target:
-            self.logger.info("Face detected")
+            self.logger.info("Target detected")
             self._had_target = True
 
         space_w, space_h = space
