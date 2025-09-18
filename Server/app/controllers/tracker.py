@@ -314,7 +314,7 @@ class ObjectTracker:
 
         if not targets:
             if self._had_target:
-                self.logger.info("Lost face detection")
+                self.logger.info("Target lost")
                 self._had_target = False
             self._face_count = 0
             self._miss_count += 1
@@ -323,7 +323,7 @@ class ObjectTracker:
                 self._locked = False
                 if self.vision:
                     self.vision.set_roi(None)
-                self.logger.info("Face lock released")
+                self.logger.info("Target lock released")
             self.movement.stop()
             self.x.tick(dt)
             if self._miss_count >= self.recenter_after:
@@ -344,10 +344,10 @@ class ObjectTracker:
         self._face_count += 1
         if not self._locked and self._face_count >= self.lock_frames_needed:
             self._locked = True
-            self.logger.info("Face lock acquired")
+            self.logger.info("Target lock acquired")
 
         if not self._had_target:
-            self.logger.info("Face detected")
+            self.logger.info("Target detected")
             self._had_target = True
 
         space_w, space_h = space
