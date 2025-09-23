@@ -76,6 +76,9 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         "port": 9090,
         "threads": 2,
         "health_timeout": 5.0,
+        "health_check_interval": 0.5,
+        "health_check_max_retries": 3,
+        "health_check_backoff": 2.0,
         "llm_base_url": "",
         "llm_request_timeout": 30.0,
         "max_parallel_inference": 1,
@@ -89,6 +92,21 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
     merged_conversation_cfg["threads"] = int(merged_conversation_cfg.get("threads", conversation_defaults["threads"]))
     merged_conversation_cfg["health_timeout"] = float(
         merged_conversation_cfg.get("health_timeout", conversation_defaults["health_timeout"])
+    )
+    merged_conversation_cfg["health_check_interval"] = float(
+        merged_conversation_cfg.get(
+            "health_check_interval", conversation_defaults["health_check_interval"]
+        )
+    )
+    merged_conversation_cfg["health_check_max_retries"] = int(
+        merged_conversation_cfg.get(
+            "health_check_max_retries", conversation_defaults["health_check_max_retries"]
+        )
+    )
+    merged_conversation_cfg["health_check_backoff"] = float(
+        merged_conversation_cfg.get(
+            "health_check_backoff", conversation_defaults["health_check_backoff"]
+        )
     )
     merged_conversation_cfg["llm_base_url"] = str(merged_conversation_cfg.get("llm_base_url", ""))
     merged_conversation_cfg["llm_request_timeout"] = float(

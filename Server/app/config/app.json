@@ -35,6 +35,9 @@
     "port": 9090,
     "threads": 2,
     "health_timeout": 5.0,
+    "health_check_interval": 0.5,
+    "health_check_max_retries": 3,
+    "health_check_backoff": 2.0,
     "llm_base_url": "",
     "llm_request_timeout": 30.0,
     "max_parallel_inference": 1
