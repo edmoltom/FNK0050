@@ -5,8 +5,11 @@ import logging
 import os
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Mapping, Sequence
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 
 class LlamaServerProcess:
@@ -188,6 +191,70 @@ class LlamaServerProcess:
                 if self.ready_text and self.ready_text in text:
                     self._ready_event.set()
         stream.close()
+
+    # ------------------------------------------------------------------
+    def is_running(self) -> bool:
+        process = self._process
+        return bool(process) and process.poll() is None
+
+    def poll(self) -> int | None:
+        process = self._process
+        return process.poll() if process else None
+
+    def poll_health(
+        self,
+        base_url: str,
+        *,
+        endpoint: str = "/health",
+        method: str = "GET",
+        timeout: float = 5.0,
+        interval: float = 0.5,
+        max_retries: int = 3,
+        backoff: float = 2.0,
+    ) -> bool:
+        """Ping the llama-server HTTP endpoint until it becomes healthy."""
+
+        if not base_url:
+            raise ValueError("base_url must be provided for health polling")
+
+        interval = max(0.05, interval)
+        backoff = max(1.0, backoff)
+        attempt_deadline = time.monotonic() + max(0.0, timeout)
+        attempts = max_retries + 1
+
+        url = f"{base_url.rstrip('/')}{endpoint}"
+        sleep_for = interval
+
+        for attempt in range(attempts):
+            if self.poll() is not None:
+                return False
+
+            try:
+                req = urllib_request.Request(url, method=method.upper())
+                with urllib_request.urlopen(req, timeout=min(timeout, max(interval, 0.1))) as response:
+                    status = getattr(response, "status", 200)
+                    if 200 <= status < 300:
+                        return True
+                    self.logger.debug(
+                        "Health check HTTP %s %s returned status %s", method, url, status
+                    )
+            except urllib_error.URLError as exc:  # pragma: no cover - network failures
+                self.logger.debug("Health check request failed: %s", exc)
+
+            if attempt == attempts - 1:
+                break
+
+            now = time.monotonic()
+            if now >= attempt_deadline:
+                break
+
+            remaining = attempt_deadline - now
+            sleep_time = min(sleep_for, max(0.0, remaining))
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            sleep_for *= backoff
+
+        return False
 
 
 __all__ = ["LlamaServerProcess"]
