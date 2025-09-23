@@ -59,6 +59,7 @@ def test_conversation_defaults_when_missing_section(tmp_path: Path) -> None:
         "threads": 2,
         "health_timeout": 5.0,
         "llm_base_url": "",
+        "llm_request_timeout": 30.0,
         "max_parallel_inference": 1,
     }
 
@@ -94,8 +95,65 @@ def test_conversation_disabled_when_required_paths_missing(tmp_path: Path, caplo
         "threads": 4,
         "health_timeout": 6.5,
         "llm_base_url": "http://localhost",
+        "llm_request_timeout": 30.0,
         "max_parallel_inference": 2,
     }
     assert services.conversation_disabled_reason is not None
     assert "llama_binary" in services.conversation_disabled_reason
     assert any("llama_binary" in record.message for record in caplog.records)
+
+
+def test_conversation_client_uses_configured_url_and_timeout(tmp_path: Path) -> None:
+    config_path = write_config(
+        tmp_path,
+        {
+            "enable_vision": False,
+            "enable_movement": False,
+            "conversation": {
+                "enable": True,
+                "llama_binary": "/bin/llama",
+                "model_path": "/models/model.gguf",
+                "port": 8088,
+                "threads": 4,
+                "health_timeout": 6.5,
+                "llm_base_url": "http://configured:8080",
+                "llm_request_timeout": 12.5,
+                "max_parallel_inference": 2,
+            },
+        },
+    )
+
+    services = build(str(config_path))
+
+    assert services.enable_conversation is True
+    assert services.conversation is not None
+    assert services.conversation.base_url == "http://configured:8080"
+    assert services.conversation.request_timeout == 12.5
+
+
+def test_conversation_client_falls_back_to_env_base(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LLAMA_BASE", "http://env-base:9000")
+    config_path = write_config(
+        tmp_path,
+        {
+            "enable_vision": False,
+            "enable_movement": False,
+            "conversation": {
+                "enable": True,
+                "llama_binary": "/bin/llama",
+                "model_path": "/models/model.gguf",
+                "port": 8088,
+                "threads": 4,
+                "health_timeout": 6.5,
+                "llm_base_url": "",
+                "max_parallel_inference": 2,
+            },
+        },
+    )
+
+    services = build(str(config_path))
+
+    assert services.enable_conversation is True
+    assert services.conversation is not None
+    assert services.conversation.base_url == "http://env-base:9000"
+    assert services.conversation.request_timeout == 30.0

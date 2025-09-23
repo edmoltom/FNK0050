@@ -5,13 +5,14 @@ import asyncio
 from pathlib import Path
 
 from LedController import LedController
+from core.llm.llm_client import LlamaClient, build_default_client
 from core.llm.llm_memory import ConversationMemory
 from core.llm.persona import build_system
-from core.llm.llm_client import query_llm
 from core.voice.tts import TextToSpeech
 from core.hearing.stt import SpeechToText
 
 mem = ConversationMemory(last_n=3)
+_default_llm_client = build_default_client()
 
 WAKE_WORDS = ["humo", "lo humo", "alumno", "lune", "lomo"]
 MAX_REPLY_CHARS = 220
@@ -113,11 +114,12 @@ def stt_stream():
         except queue.Empty:
             yield None
 
-def llm_ask(text: str) -> str:
+def llm_ask(text: str, client: LlamaClient | None = None) -> str:
     """Query the shared LLM client and return a brief Spanish reply."""
     system = build_system()
     msgs = mem.build_messages(system, text)
-    reply = query_llm(msgs, max_reply_chars=220)
+    llm_client = client or _default_llm_client
+    reply = llm_client.query(msgs, max_reply_chars=220)
     mem.add_turn(text, reply)
     return reply
 
@@ -136,7 +138,7 @@ def contains_wake_word(text: str) -> bool:
     return any(w in t for w in WAKE_WORDS)
 
 class ConversationManager:
-    def __init__(self) -> None:
+    def __init__(self, llm_client: LlamaClient | None = None) -> None:
         self.state = "NONE"
         self.stt_iter = stt_stream()
         self.pending = ""
@@ -144,6 +146,7 @@ class ConversationManager:
         self.last_speak_end = time.monotonic()
         self.attentive_until = 0.0      # active attention window
         self.set_state("WAKE")
+        self._llm_client = llm_client or _default_llm_client
 
     def set_state(self, new_state: str) -> None:
         if self.state != new_state:
@@ -195,7 +198,7 @@ class ConversationManager:
 
                 elif self.state == "THINK":
                     try:
-                        self.reply = llm_ask(self.pending)
+                        self.reply = llm_ask(self.pending, client=self._llm_client)
                         self.set_state("SPEAK")
                     except Exception as e:
                         print(f"[THINK ERROR] {e}")

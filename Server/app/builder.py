@@ -77,6 +77,7 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         "threads": 2,
         "health_timeout": 5.0,
         "llm_base_url": "",
+        "llm_request_timeout": 30.0,
         "max_parallel_inference": 1,
     }
     conversation_cfg_raw = cfg.get("conversation", {}) or {}
@@ -90,6 +91,11 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         merged_conversation_cfg.get("health_timeout", conversation_defaults["health_timeout"])
     )
     merged_conversation_cfg["llm_base_url"] = str(merged_conversation_cfg.get("llm_base_url", ""))
+    merged_conversation_cfg["llm_request_timeout"] = float(
+        merged_conversation_cfg.get(
+            "llm_request_timeout", conversation_defaults["llm_request_timeout"]
+        )
+    )
     merged_conversation_cfg["max_parallel_inference"] = int(
         merged_conversation_cfg.get("max_parallel_inference", conversation_defaults["max_parallel_inference"])
     )
@@ -129,6 +135,16 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         from .services.movement_service import MovementService
 
         services.movement = MovementService()
+
+    if services.enable_conversation and services.conversation_cfg["enable"]:
+        from core.llm.llm_client import LlamaClient
+
+        services.conversation = LlamaClient(
+            base_url=services.conversation_cfg.get("llm_base_url") or None,
+            request_timeout=services.conversation_cfg.get("llm_request_timeout"),
+        )
+    else:
+        services.conversation = None
 
     if services.vision and services.movement:
         from .controllers.social_fsm import SocialFSM
