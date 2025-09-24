@@ -328,16 +328,9 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         register_stop_event(conversation_service.stop_event)
         services.conversation = conversation_service
 
-        def _on_interact(_fsm: Any) -> None:
-            conversation_service.start()
-
-        def _on_exit_interact(_fsm: Any) -> None:
-            conversation_service.stop()
-
-        fsm_callbacks = {
-            "on_interact": _on_interact,
-            "on_exit_interact": _on_exit_interact,
-        }
+        # The conversation service now runs independently of the FSM lifecycle.
+        # It is started and stopped directly by the AppRuntime alongside the
+        # rest of the services, so no FSM callbacks are required here.
 
     if services.vision and services.movement:
         from .controllers.social_fsm import SocialFSM
