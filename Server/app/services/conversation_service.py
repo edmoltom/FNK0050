@@ -157,6 +157,20 @@ class ConversationService:
                 self._process.terminate()
                 return
 
+            query_callable = getattr(self._llm_client, "query", None)
+            if callable(query_callable):
+                try:
+                    self._logger.info("Performing non-blocking LLM smoke ping")
+                    query_callable(
+                        [
+                            {"role": "system", "content": "ping check"},
+                            {"role": "user", "content": "ping"},
+                        ],
+                        max_reply_chars=8,
+                    )
+                except Exception as exc:  # pragma: no cover - network dependent
+                    self._logger.warning("LLM smoke check failed: %s", exc)
+
             manager_kwargs: Dict[str, Any] = {
                 "stt": self._stt,
                 "tts": self._tts,
