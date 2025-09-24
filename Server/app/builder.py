@@ -250,7 +250,14 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
             reason_parts.append("paths not found: " + ", ".join(missing_files))
         reason = "Conversation disabled: " + "; ".join(reason_parts)
         services.conversation_disabled_reason = reason
-        logger.debug(reason)
+        if missing_files:
+            logger.warning(
+                "Conversation disabled: paths not found: llama_binary=%s, model_path=%s",
+                services.conversation_cfg.get("llama_binary"),
+                services.conversation_cfg.get("model_path"),
+            )
+        else:
+            logger.warning(reason)
     services.ws = None
     services.conversation = None
     fsm_callbacks: Dict[str, Callable[[Any], None]] = {}
@@ -273,41 +280,51 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
 
         services.movement = MovementService()
 
+    logger.info("Config conversation: %s", services.conversation_cfg)
+    if not services.conversation_cfg["enable"]:
+        logger.info("Conversation disabled by config flag")
+
     if services.enable_conversation and services.conversation_cfg["enable"]:
         from .services.conversation_service import ConversationService
 
-        llm_client = _build_conversation_llm_client(services.conversation_cfg)
-        llama_process = _build_conversation_process(services.conversation_cfg)
-        stt_service = _build_conversation_stt_service(services.conversation_cfg)
-        tts_engine = _build_conversation_tts(services.conversation_cfg)
-        led_handler, led_cleanup = _build_conversation_led_handler(services.conversation_cfg)
-        manager_factory, manager_kwargs, register_stop_event = _build_conversation_manager_factory()
+        try:
+            llm_client = _build_conversation_llm_client(services.conversation_cfg)
+            llama_process = _build_conversation_process(services.conversation_cfg)
+            stt_service = _build_conversation_stt_service(services.conversation_cfg)
+            tts_engine = _build_conversation_tts(services.conversation_cfg)
+            led_handler, led_cleanup = _build_conversation_led_handler(services.conversation_cfg)
+            manager_factory, manager_kwargs, register_stop_event = _build_conversation_manager_factory()
 
-        readiness_timeout = services.conversation_cfg.get("health_timeout", 5.0)
-        health_interval = services.conversation_cfg.get("health_check_interval", 0.5)
-        health_retries = services.conversation_cfg.get("health_check_max_retries", 3)
-        health_backoff = services.conversation_cfg.get("health_check_backoff", 2.0)
-        health_base_url = services.conversation_cfg.get("llm_base_url") or None
+            readiness_timeout = services.conversation_cfg.get("health_timeout", 5.0)
+            health_interval = services.conversation_cfg.get("health_check_interval", 0.5)
+            health_retries = services.conversation_cfg.get("health_check_max_retries", 3)
+            health_backoff = services.conversation_cfg.get("health_check_backoff", 2.0)
+            health_base_url = services.conversation_cfg.get("llm_base_url") or None
 
-        manager_kwargs = dict(manager_kwargs)
-        manager_kwargs.setdefault("close_led_on_cleanup", False)
+            manager_kwargs = dict(manager_kwargs)
+            manager_kwargs.setdefault("close_led_on_cleanup", False)
 
-        conversation_service = ConversationService(
-            stt=stt_service,
-            tts=tts_engine,
-            led_controller=led_handler,
-            llm_client=llm_client,
-            process=llama_process,
-            manager_factory=manager_factory,
-            manager_kwargs=manager_kwargs,
-            readiness_timeout=readiness_timeout,
-            health_check_base_url=health_base_url,
-            health_check_interval=health_interval,
-            health_check_max_retries=health_retries,
-            health_check_backoff=health_backoff,
-            health_check_timeout=readiness_timeout,
-            led_cleanup=led_cleanup,
-        )
+            conversation_service = ConversationService(
+                stt=stt_service,
+                tts=tts_engine,
+                led_controller=led_handler,
+                llm_client=llm_client,
+                process=llama_process,
+                manager_factory=manager_factory,
+                manager_kwargs=manager_kwargs,
+                readiness_timeout=readiness_timeout,
+                health_check_base_url=health_base_url,
+                health_check_interval=health_interval,
+                health_check_max_retries=health_retries,
+                health_check_backoff=health_backoff,
+                health_check_timeout=readiness_timeout,
+                led_cleanup=led_cleanup,
+            )
+            logger.info("ConversationService instance created successfully")
+        except Exception:
+            logger.exception("Failed to build ConversationService")
+            raise
+
         register_stop_event(conversation_service.stop_event)
         services.conversation = conversation_service
 
