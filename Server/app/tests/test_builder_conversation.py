@@ -93,12 +93,21 @@ def install_conversation_stubs(monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any
         return tts
 
     class DummyLED:
-        pass
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
 
     def fake_led(_cfg: Dict[str, Any]):
         led = DummyLED()
         created["led"] = led
-        return led, None, None
+
+        def _cleanup() -> None:
+            created["led_cleanup_called"] = True
+            led.close()
+
+        return led, _cleanup
 
     def fake_manager_factory():
         holder: Dict[str, Any] = {}
@@ -200,6 +209,7 @@ def test_conversation_disabled_when_required_paths_missing(tmp_path: Path, caplo
     }
     assert services.conversation_disabled_reason is not None
     assert "llama_binary" in services.conversation_disabled_reason
+    assert "paths not found" in services.conversation_disabled_reason
     assert any("llama_binary" in record.message for record in caplog.records)
     assert services.conversation is None
 
@@ -208,6 +218,10 @@ def test_conversation_client_uses_configured_url_and_timeout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     stubs = install_conversation_stubs(monkeypatch)
+    llama_path = tmp_path / "llama"
+    model_path = tmp_path / "model.gguf"
+    llama_path.write_text("")
+    model_path.write_text("")
     config_path = write_config(
         tmp_path,
         {
@@ -215,8 +229,8 @@ def test_conversation_client_uses_configured_url_and_timeout(
             "enable_movement": False,
             "conversation": {
                 "enable": True,
-                "llama_binary": "/bin/llama",
-                "model_path": "/models/model.gguf",
+                "llama_binary": str(llama_path),
+                "model_path": str(model_path),
                 "port": 8088,
                 "threads": 4,
                 "health_timeout": 6.5,
@@ -234,11 +248,16 @@ def test_conversation_client_uses_configured_url_and_timeout(
     assert stubs["llm_client"].base_url == "http://configured:8080"
     assert stubs["llm_client"].request_timeout == 12.5
     assert stubs["registered_stop_event"] is services.conversation.stop_event
+    assert stubs["manager_factory_kwargs"]["close_led_on_cleanup"] is False
 
 
 def test_conversation_client_falls_back_to_env_base(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     stubs = install_conversation_stubs(monkeypatch)
     monkeypatch.setenv("LLAMA_BASE", "http://env-base:9000")
+    llama_path = tmp_path / "llama"
+    model_path = tmp_path / "model.gguf"
+    llama_path.write_text("")
+    model_path.write_text("")
     config_path = write_config(
         tmp_path,
         {
@@ -246,8 +265,8 @@ def test_conversation_client_falls_back_to_env_base(monkeypatch: pytest.MonkeyPa
             "enable_movement": False,
             "conversation": {
                 "enable": True,
-                "llama_binary": "/bin/llama",
-                "model_path": "/models/model.gguf",
+                "llama_binary": str(llama_path),
+                "model_path": str(model_path),
                 "port": 8088,
                 "threads": 4,
                 "health_timeout": 6.5,
@@ -264,6 +283,7 @@ def test_conversation_client_falls_back_to_env_base(monkeypatch: pytest.MonkeyPa
     assert stubs["llm_client"].base_url == "http://env-base:9000"
     assert stubs["llm_client"].request_timeout == 30.0
     assert stubs["registered_stop_event"] is services.conversation.stop_event
+    assert stubs["manager_factory_kwargs"]["close_led_on_cleanup"] is False
 
 
 def test_social_fsm_registers_conversation_callbacks(
@@ -299,6 +319,10 @@ def test_social_fsm_registers_conversation_callbacks(
     social_module.SocialFSM = DummyFSM
     monkeypatch.setitem(sys.modules, "app.controllers.social_fsm", social_module)
 
+    llama_path = tmp_path / "llama"
+    model_path = tmp_path / "model.gguf"
+    llama_path.write_text("")
+    model_path.write_text("")
     config_path = write_config(
         tmp_path,
         {
@@ -306,8 +330,8 @@ def test_social_fsm_registers_conversation_callbacks(
             "enable_movement": True,
             "conversation": {
                 "enable": True,
-                "llama_binary": "/bin/llama",
-                "model_path": "/models/model.gguf",
+                "llama_binary": str(llama_path),
+                "model_path": str(model_path),
                 "port": 8088,
                 "threads": 4,
                 "health_timeout": 6.5,

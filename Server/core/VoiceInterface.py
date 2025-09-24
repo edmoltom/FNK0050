@@ -220,6 +220,7 @@ class ConversationManager:
         llm_retry_max_delay: Optional[float] = None,
         stt_poll_interval: float = 0.02,
         speak_cooldown: float = SPEAK_COOLDOWN_SEC,
+        close_led_on_cleanup: bool = True,
     ) -> None:
         self.state = "NONE"
         self._stt = stt
@@ -236,6 +237,7 @@ class ConversationManager:
         self._stop_event = stop_event
         self._extra_stop_events = tuple(additional_stop_events or ())
         self._wait_until_ready = wait_until_ready
+        self._close_led_on_cleanup = close_led_on_cleanup
 
         self._llm_retry_max_attempts = max(1, llm_retry_max_attempts)
         self._llm_retry_initial_delay = max(0.0, llm_retry_initial_delay)
@@ -384,7 +386,7 @@ class ConversationManager:
             except Exception:  # pragma: no cover - defensive
                 pass
 
-        if hasattr(self._led, "close"):
+        if self._close_led_on_cleanup and hasattr(self._led, "close"):
             try:
                 self._led.close()
             except Exception as exc:  # pragma: no cover - defensive

@@ -35,6 +35,12 @@ class ConversationService:
         manager_kwargs: Optional[Dict[str, Any]] = None,
         readiness_timeout: float = 30.0,
         shutdown_timeout: float = 5.0,
+        health_check_base_url: Optional[str] = None,
+        health_check_interval: float = 0.5,
+        health_check_max_retries: int = 3,
+        health_check_backoff: float = 2.0,
+        health_check_timeout: Optional[float] = None,
+        led_cleanup: Optional[Callable[[], None]] = None,
         logger: Optional[logging.Logger] = None,
         thread_name: str = "conversation-loop",
     ) -> None:
@@ -47,6 +53,13 @@ class ConversationService:
         self._extra_manager_kwargs = dict(manager_kwargs or {})
         self._readiness_timeout = readiness_timeout
         self._shutdown_timeout = shutdown_timeout
+        self._health_base_url = (health_check_base_url or "").strip() or None
+        self._health_check_interval = max(0.05, float(health_check_interval))
+        self._health_check_max_retries = max(0, int(health_check_max_retries))
+        self._health_check_backoff = max(1.0, float(health_check_backoff))
+        self._health_check_timeout = (
+            readiness_timeout if health_check_timeout is None else float(health_check_timeout)
+        )
         self._thread_name = thread_name
         self._logger = logger or logging.getLogger("conversation.service")
 
@@ -54,6 +67,8 @@ class ConversationService:
         self._manager: Any = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
+        self._led_cleanup = led_cleanup
+        self._led_shutdown = False
         self._atexit_callback: Optional[Callable[[], None]] = None
 
         self._register_atexit_hook()
@@ -63,6 +78,29 @@ class ConversationService:
         """Expose the internal stop event for dependency wiring."""
 
         return self._stop_event
+
+    # ------------------------------------------------------------------
+    def _resolve_health_base_url(self) -> str:
+        if self._health_base_url:
+            return self._health_base_url
+        port = getattr(self._process, "port", None)
+        if port:
+            return f"http://127.0.0.1:{int(port)}"
+        return "http://127.0.0.1:8080"
+
+    def _shutdown_led(self) -> None:
+        if self._led_shutdown:
+            return
+        cleanup = self._led_cleanup
+        if cleanup is None:
+            self._led_shutdown = True
+            return
+        try:
+            cleanup()
+        except Exception:  # pragma: no cover - defensive
+            self._logger.debug("Error shutting down LED resources", exc_info=True)
+        finally:
+            self._led_shutdown = True
 
     # ------------------------------------------------------------------
     def start(self) -> None:
@@ -101,6 +139,24 @@ class ConversationService:
             elapsed = time.monotonic() - wait_start
             self._logger.info("Llama server ready after %.2fs", elapsed)
 
+            try:
+                healthy = self._process.poll_health(
+                    self._resolve_health_base_url(),
+                    interval=self._health_check_interval,
+                    max_retries=self._health_check_max_retries,
+                    backoff=self._health_check_backoff,
+                    timeout=self._health_check_timeout,
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                self._logger.error("Health check invocation failed: %s", exc)
+                self._process.terminate()
+                return
+
+            if not healthy:
+                self._logger.error("Llama server health check did not succeed")
+                self._process.terminate()
+                return
+
             manager_kwargs: Dict[str, Any] = {
                 "stt": self._stt,
                 "tts": self._tts,
@@ -108,6 +164,7 @@ class ConversationService:
                 "llm_client": self._llm_client,
             }
             manager_kwargs.update(self._extra_manager_kwargs)
+            manager_kwargs.setdefault("close_led_on_cleanup", False)
 
             self._manager = self._manager_factory(**manager_kwargs)
             self._thread = threading.Thread(
@@ -118,7 +175,12 @@ class ConversationService:
             self._thread.start()
             self._logger.info("Conversation thread %s started", self._thread_name)
 
-    def stop(self) -> None:
+    def stop(
+        self,
+        *,
+        terminate_process: bool = False,
+        shutdown_resources: Optional[bool] = None,
+    ) -> None:
         """Detiene el servicio y asegura el cierre cooperativo."""
 
         thread: Optional[threading.Thread]
@@ -126,7 +188,10 @@ class ConversationService:
             thread = self._thread
             if not thread:
                 self._logger.info("Stop requested with no active conversation thread")
-                self._process.terminate()
+                if terminate_process:
+                    self._process.terminate()
+                    if shutdown_resources or (shutdown_resources is None and terminate_process):
+                        self._shutdown_led()
                 return
 
             self._logger.info("Stopping conversation service")
@@ -143,7 +208,12 @@ class ConversationService:
                 self._shutdown_timeout,
             )
 
-        self._process.terminate()
+        if terminate_process:
+            self._process.terminate()
+
+        if shutdown_resources or (shutdown_resources is None and terminate_process):
+            self._shutdown_led()
+
         self._logger.info("Conversation service shutdown sequence finished")
 
     def join(self, timeout: Optional[float] = None) -> bool:
@@ -225,7 +295,7 @@ class ConversationService:
         """Detiene y espera el cierre del servicio."""
 
         self._logger.info("Closing conversation service")
-        self.stop()
+        self.stop(terminate_process=True, shutdown_resources=True)
         self.join()
         self._unregister_atexit_hook()
 

@@ -209,6 +209,19 @@ class StubLlamaProcess:
     def wait_ready(self, timeout: float) -> bool:
         return True
 
+    def poll_health(
+        self,
+        _base_url: str,
+        *,
+        endpoint: str = "/health",
+        method: str = "GET",
+        timeout: float = 5.0,
+        interval: float = 0.5,
+        max_retries: int = 3,
+        backoff: float = 2.0,
+    ) -> bool:
+        return True
+
 
 class StubLedHandler:
     def __init__(self) -> None:
@@ -265,6 +278,7 @@ def _build_runtime_with_conversation() -> tuple[
         llm_client: StubLLMClient,
         wait_until_ready,
         additional_stop_events=None,
+        close_led_on_cleanup: bool = False,
     ) -> _ConversationManager:
         stop_event = stop_event_ref.get("stop_event")
         if stop_event is None:
@@ -279,6 +293,7 @@ def _build_runtime_with_conversation() -> tuple[
             additional_stop_events=additional_stop_events,
             stt_poll_interval=0.01,
             speak_cooldown=0.05,
+            close_led_on_cleanup=close_led_on_cleanup,
         )
 
     conversation_service = ConversationService(
@@ -291,6 +306,10 @@ def _build_runtime_with_conversation() -> tuple[
         manager_kwargs={"wait_until_ready": lambda: None},
         readiness_timeout=0.1,
         shutdown_timeout=0.2,
+        health_check_interval=0.01,
+        health_check_max_retries=0,
+        health_check_timeout=0.1,
+        led_cleanup=led_handler.close,
     )
     stop_event_ref["stop_event"] = conversation_service.stop_event
 

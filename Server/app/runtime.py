@@ -141,11 +141,6 @@ class AppRuntime:
         vision = self.svcs.vision if self.svcs.vision else None
         movement = self.svcs.movement if self.svcs.movement else None
         conversation = self.svcs.conversation if self.svcs.conversation else None
-        conversation_process = None
-        if conversation is not None:
-            conversation_process = getattr(conversation, "process", None) or getattr(
-                conversation, "_process", None
-            )
 
         self._shutdown_event.set()
 
@@ -157,7 +152,7 @@ class AppRuntime:
 
         if conversation and self.svcs.enable_conversation:
             try:
-                conversation.stop()
+                conversation.stop(terminate_process=True, shutdown_resources=True)
             except Exception:
                 pass
 
@@ -165,14 +160,6 @@ class AppRuntime:
                 conversation.join()
             except Exception:
                 pass
-
-            if conversation_process is not None:
-                terminate = getattr(conversation_process, "terminate", None)
-                if callable(terminate):
-                    try:
-                        terminate()
-                    except Exception:
-                        pass
 
         if vision and self.svcs.enable_vision:
             try:

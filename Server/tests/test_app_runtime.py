@@ -102,8 +102,10 @@ class MockConversation:
         self.recorder.add("conversation.start")
         self.started.set()
 
-    def stop(self) -> None:
+    def stop(self, **kwargs: object) -> None:
         self.recorder.add("conversation.stop")
+        if kwargs.get("terminate_process"):
+            self.process.terminate()
         self.stopped.set()
 
     def join(self, timeout: float | None = None) -> bool:
@@ -156,8 +158,12 @@ def test_runtime_stop_is_idempotent_and_orders_shutdown() -> None:
     runtime.stop()
     thread.join(timeout=1.0)
 
-    assert recorder.index("conversation.stop") < recorder.index("conversation.join")
-    assert recorder.index("conversation.join") < recorder.index("llm.terminate")
+    stop_index = recorder.index("conversation.stop")
+    join_index = recorder.index("conversation.join")
+    terminate_index = recorder.index("llm.terminate")
+
+    assert stop_index < terminate_index
+    assert terminate_index <= join_index
     assert recorder.count("conversation.stop") == 1
     assert recorder.count("llm.terminate") == 1
     assert recorder.count("vision.stop") == 1
