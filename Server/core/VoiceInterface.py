@@ -16,7 +16,7 @@ from core.llm.llm_memory import ConversationMemory
 from core.llm.persona import build_system
 from core.voice.tts import TextToSpeech
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("conversation.manager")
 
 
 mem = ConversationMemory(last_n=3)
@@ -281,6 +281,8 @@ class ConversationManager:
     def _ensure_ready(self) -> None:
         result: queue.Queue[Optional[BaseException]] = queue.Queue(maxsize=1)
 
+        logger.info("Waiting for conversation dependencies to signal readiness")
+
         def runner() -> None:
             try:
                 self._wait_until_ready()
@@ -300,7 +302,9 @@ class ConversationManager:
                 continue
 
             if exc is None:
+                logger.info("Dependencies ready, continuing conversation loop")
                 return
+            logger.error("Dependency readiness reported exception: %s", exc)
             raise exc
 
     def _poll_stt(self) -> Optional[str]:
@@ -368,6 +372,7 @@ class ConversationManager:
     def _cleanup(self) -> None:
         now = time.monotonic()
         self.metrics.stop_listen(now)
+        logger.info("Cleaning up conversation resources")
         try:
             self._stt.stop()
         except Exception as exc:  # pragma: no cover - defensive
@@ -384,6 +389,7 @@ class ConversationManager:
                 self._led.close()
             except Exception as exc:  # pragma: no cover - defensive
                 logger.debug("Error closing LED handler: %s", exc)
+        logger.info("Conversation resources released")
 
     # --------------------------------------------------------------------- main
     def run(self) -> None:
