@@ -45,7 +45,7 @@ class LlamaServerProcess:
         self.embeddings = embeddings
         self.extra_args = list(extra_args or [])
         self.env = dict(env or {})
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("conversation.llama")
         self.log_prefix = log_prefix
         self.ready_text = ready_text
 
@@ -130,13 +130,20 @@ class LlamaServerProcess:
         process = self._ensure_process()
 
         if self.ready_text is None:
-            return process.poll() is None
+            ready = process.poll() is None
+            if ready:
+                self.logger.info("llama-server ready (no readiness text configured)")
+            return ready
 
+        start_wait = time.monotonic()
         waited = self._ready_event.wait(timeout)
         if waited:
+            elapsed = time.monotonic() - start_wait
+            self.logger.info("llama-server signaled readiness after %.2fs", elapsed)
             return True
 
         if process.poll() is not None:
+            self.logger.error("llama-server exited before readiness was signaled")
             raise RuntimeError("Process exited before becoming ready")
 
         return False
@@ -227,6 +234,7 @@ class LlamaServerProcess:
 
         for attempt in range(attempts):
             if self.poll() is not None:
+                self.logger.error("llama-server process died during health polling")
                 return False
 
             try:
@@ -234,12 +242,18 @@ class LlamaServerProcess:
                 with urllib_request.urlopen(req, timeout=min(timeout, max(interval, 0.1))) as response:
                     status = getattr(response, "status", 200)
                     if 200 <= status < 300:
+                        self.logger.info(
+                            "Health check succeeded on attempt %d", attempt + 1
+                        )
                         return True
-                    self.logger.debug(
-                        "Health check HTTP %s %s returned status %s", method, url, status
+                    self.logger.warning(
+                        "Health check HTTP %s %s returned status %s",
+                        method,
+                        url,
+                        status,
                     )
             except urllib_error.URLError as exc:  # pragma: no cover - network failures
-                self.logger.debug("Health check request failed: %s", exc)
+                self.logger.warning("Health check request failed: %s", exc)
 
             if attempt == attempts - 1:
                 break
@@ -251,9 +265,15 @@ class LlamaServerProcess:
             remaining = attempt_deadline - now
             sleep_time = min(sleep_for, max(0.0, remaining))
             if sleep_time > 0:
+                self.logger.info(
+                    "Health check backoff sleeping %.2fs before retry %d",
+                    sleep_time,
+                    attempt + 2,
+                )
                 time.sleep(sleep_time)
             sleep_for *= backoff
 
+        self.logger.error("Health check failed after %d attempts", attempts)
         return False
 
 

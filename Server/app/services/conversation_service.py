@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import atexit
 import inspect
 import logging
 import threading
+import time
+import weakref
 from typing import Any, Callable, Dict, Optional
 
 from core.llm.llama_server_process import LlamaServerProcess
@@ -45,12 +48,15 @@ class ConversationService:
         self._readiness_timeout = readiness_timeout
         self._shutdown_timeout = shutdown_timeout
         self._thread_name = thread_name
-        self._logger = logger or logging.getLogger(__name__)
+        self._logger = logger or logging.getLogger("conversation.service")
 
         self._thread: Optional[threading.Thread] = None
         self._manager: Any = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
+        self._atexit_callback: Optional[Callable[[], None]] = None
+
+        self._register_atexit_hook()
 
     @property
     def stop_event(self) -> threading.Event:
@@ -64,19 +70,23 @@ class ConversationService:
 
         with self._lock:
             if self._thread and self._thread.is_alive():
-                self._logger.debug("Conversation thread already running")
+                self._logger.info("Conversation thread already running")
                 return
 
             self._stop_event.clear()
 
+            self._logger.info("Bootstrapping conversation service")
+
             try:
                 if not self._process.is_running():
+                    self._logger.info("Starting llama-server process")
                     self._process.start()
             except Exception as exc:  # pragma: no cover - defensive
                 self._logger.exception("Failed to start llama-server: %s", exc)
                 return
 
             try:
+                wait_start = time.monotonic()
                 ready = self._process.wait_ready(timeout=self._readiness_timeout)
             except Exception as exc:
                 self._logger.error("Llama server readiness failed: %s", exc)
@@ -87,6 +97,9 @@ class ConversationService:
                 self._logger.error("Timeout waiting for llama server readiness")
                 self._process.terminate()
                 return
+
+            elapsed = time.monotonic() - wait_start
+            self._logger.info("Llama server ready after %.2fs", elapsed)
 
             manager_kwargs: Dict[str, Any] = {
                 "stt": self._stt,
@@ -103,6 +116,7 @@ class ConversationService:
                 daemon=True,
             )
             self._thread.start()
+            self._logger.info("Conversation thread %s started", self._thread_name)
 
     def stop(self) -> None:
         """Detiene el servicio y asegura el cierre cooperativo."""
@@ -111,9 +125,11 @@ class ConversationService:
         with self._lock:
             thread = self._thread
             if not thread:
+                self._logger.info("Stop requested with no active conversation thread")
                 self._process.terminate()
                 return
 
+            self._logger.info("Stopping conversation service")
             self._stop_event.set()
             self._invoke_manager_method("pause_stt")
             self._invoke_manager_method("drain_queues")
@@ -128,6 +144,7 @@ class ConversationService:
             )
 
         self._process.terminate()
+        self._logger.info("Conversation service shutdown sequence finished")
 
     def join(self, timeout: Optional[float] = None) -> bool:
         """Bloquea hasta que el hilo de conversación termine."""
@@ -138,6 +155,7 @@ class ConversationService:
             thread = self._thread
 
         if not thread:
+            self._logger.debug("Join requested but no conversation thread active")
             return True
 
         thread.join(timeout)
@@ -147,6 +165,7 @@ class ConversationService:
                 if self._thread is thread:
                     self._thread = None
                     self._manager = None
+            self._logger.info("Conversation thread %s finished", thread.name)
         return not alive
 
     # ------------------------------------------------------------------
@@ -160,15 +179,19 @@ class ConversationService:
             self._logger.error("ConversationManager missing run() method")
             return
 
+        self._logger.info("Conversation loop started")
         try:
             if self._accepts_stop_event(run):
                 run(stop_event=self._stop_event)
             else:
                 run()
-        except Exception:  # pragma: no cover - defensive
+        except KeyboardInterrupt:
+            self._logger.info("Conversation loop interrupted by KeyboardInterrupt")
+        except BaseException:  # pragma: no cover - defensive
             self._logger.exception("ConversationManager.run raised an exception")
         finally:
             self._stop_event.set()
+            self._logger.info("Conversation loop terminated")
 
     def _accepts_stop_event(self, func: Callable[..., Any]) -> bool:
         try:
@@ -197,6 +220,48 @@ class ConversationService:
                 self._logger.exception(
                     "ConversationManager.%s raised an exception", name
                 )
+
+    def close(self) -> None:
+        """Detiene y espera el cierre del servicio."""
+
+        self._logger.info("Closing conversation service")
+        self.stop()
+        self.join()
+        self._unregister_atexit_hook()
+
+    def __enter__(self) -> "ConversationService":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    # ------------------------------------------------------------------
+    def _register_atexit_hook(self) -> None:
+        if self._atexit_callback is not None:
+            return
+
+        self_ref = weakref.ref(self)
+
+        def _cleanup() -> None:
+            instance = self_ref()
+            if not instance:
+                return
+            instance._logger.info("atexit cleanup: shutting down conversation service")
+            instance.close()
+
+        atexit.register(_cleanup)
+        self._atexit_callback = _cleanup
+
+    def _unregister_atexit_hook(self) -> None:
+        if self._atexit_callback is None:
+            return
+
+        try:
+            atexit.unregister(self._atexit_callback)
+        except AttributeError:  # pragma: no cover - Python <3.11 compat
+            pass
+        finally:
+            self._atexit_callback = None
 
 
 __all__ = ["ConversationService"]

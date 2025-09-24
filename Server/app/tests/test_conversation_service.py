@@ -48,6 +48,14 @@ sys.modules.setdefault("core.llm.llm_client", llm_client_stub)
 
 from app.services.conversation_service import ConversationService
 
+for name in [
+    "core.llm.llama_server_process",
+    "core.llm.llm_client",
+    "core.llm",
+    "core",
+]:
+    sys.modules.pop(name, None)
+
 
 class ProcessMock:
     def __init__(self) -> None:
@@ -148,6 +156,8 @@ def test_conversation_service_start_stop_multiple_times() -> None:
     assert process.start.call_count == 2
     assert process.wait_ready.call_count == 2
 
+    service.close()
+
 
 def test_stop_is_idempotent_when_readiness_never_met(caplog: pytest.LogCaptureFixture) -> None:
     process = ProcessMock()
@@ -167,4 +177,68 @@ def test_stop_is_idempotent_when_readiness_never_met(caplog: pytest.LogCaptureFi
 
     assert process.terminate.call_count >= 1
     assert service.join() is True
+    service.close()
+
+
+def test_conversation_service_logs_lifecycle(caplog: pytest.LogCaptureFixture) -> None:
+    process = ProcessMock()
+    events = {
+        "run_started": threading.Event(),
+        "run_finished": threading.Event(),
+    }
+    manager_factory = _manager_factory_factory(events)
+
+    service = _build_service(process, manager_factory=manager_factory)
+
+    caplog.set_level("INFO")
+
+    service.start()
+    assert events["run_started"].wait(timeout=1.0)
+    service.stop()
+    assert events["run_finished"].wait(timeout=1.0)
+    assert service.join()
+
+    service.close()
+
+    messages = [
+        record.message
+        for record in caplog.records
+        if record.name.startswith("conversation.service")
+    ]
+
+    assert any("Bootstrapping conversation service" in msg for msg in messages)
+    assert any("Llama server ready" in msg for msg in messages)
+    assert any("Conversation service shutdown sequence finished" in msg for msg in messages)
+
+
+def test_keyboard_interrupt_triggers_cleanup(caplog: pytest.LogCaptureFixture) -> None:
+    process = ProcessMock()
+
+    def _factory(**_kwargs: Any) -> mock.Mock:
+        manager = mock.Mock()
+
+        def _run(*, stop_event: threading.Event) -> None:
+            raise KeyboardInterrupt
+
+        manager.run = mock.Mock(side_effect=_run)
+        return manager
+
+    manager_factory = mock.Mock(side_effect=_factory)
+    service = _build_service(process, manager_factory=manager_factory)
+
+    caplog.set_level("INFO")
+
+    service.start()
+    assert service.join(timeout=1.0)
+
+    service.close()
+
+    messages = [
+        record.message
+        for record in caplog.records
+        if record.name.startswith("conversation.service")
+    ]
+
+    assert any("KeyboardInterrupt" in msg for msg in messages)
+    assert process.terminate.call_count >= 1
 
