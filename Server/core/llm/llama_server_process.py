@@ -191,12 +191,27 @@ class LlamaServerProcess:
     def _stream_output(self, stream, level: int, prefix: str) -> None:
         if stream is None:
             return
+        ready_markers = (
+            "server is listening",
+            "http server is listening",
+            "starting the main loop",
+            "all slots are idle",
+        )
+
         for line in iter(stream.readline, ""):
             text = line.rstrip()
             if text:
                 self.logger.log(level, "%s | %s", prefix, text)
+                ready = False
                 if self.ready_text and self.ready_text in text:
+                    ready = True
+                else:
+                    lowered = text.lower()
+                    ready = any(marker in lowered for marker in ready_markers)
+
+                if ready and not self._ready_event.is_set():
                     self._ready_event.set()
+                    self.logger.debug("Ready text matched on stderr: %s", line.strip())
         stream.close()
 
     # ------------------------------------------------------------------
