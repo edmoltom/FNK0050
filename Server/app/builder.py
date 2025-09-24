@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import logging
 
+import asyncio
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 
 CONFIG_PATH = str(Path(__file__).resolve().parent / "config" / "app.json")
@@ -41,6 +43,96 @@ class AppServices:
 def _load_json(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as file:
         return json.load(file)
+
+
+def _build_conversation_llm_client(cfg: Dict[str, Any]) -> Any:
+    from core.llm.llm_client import LlamaClient
+
+    return LlamaClient(
+        base_url=cfg.get("llm_base_url") or None,
+        request_timeout=cfg.get("llm_request_timeout"),
+    )
+
+
+def _build_conversation_process(cfg: Dict[str, Any]) -> Any:
+    from core.llm.llama_server_process import LlamaServerProcess
+
+    threads = cfg.get("threads") or None
+    parallel = cfg.get("max_parallel_inference") or None
+
+    return LlamaServerProcess(
+        cfg["llama_binary"],
+        cfg["model_path"],
+        port=int(cfg.get("port", 0)),
+        threads=threads,
+        parallel=parallel,
+    )
+
+
+def _build_conversation_stt_service(_cfg: Dict[str, Any]) -> Any:
+    from core.VoiceInterface import STTService
+    from core.hearing.stt import SpeechToText
+
+    stt_engine = SpeechToText()
+    return STTService(stt_engine)
+
+
+def _build_conversation_tts(_cfg: Dict[str, Any]) -> Any:
+    from core.voice.tts import TextToSpeech
+
+    return TextToSpeech()
+
+
+def _build_conversation_led_handler(
+    _cfg: Dict[str, Any]
+) -> Tuple[Any, asyncio.AbstractEventLoop, threading.Thread]:
+    from LedController import LedController
+    from core.VoiceInterface import LedStateHandler
+
+    loop = asyncio.new_event_loop()
+    loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+    loop_thread.start()
+    controller = LedController(loop=loop)
+    handler = LedStateHandler(controller, loop, loop_thread=loop_thread)
+    return handler, loop, loop_thread
+
+
+def _build_conversation_manager_factory() -> Tuple[
+    Callable[..., Any],
+    Dict[str, Any],
+    Callable[[threading.Event], None],
+]:
+    from core.VoiceInterface import ConversationManager
+
+    stop_event_ref: Dict[str, threading.Event] = {}
+
+    def _register(event: threading.Event) -> None:
+        stop_event_ref["stop_event"] = event
+
+    def _factory(
+        *,
+        stt: Any,
+        tts: Any,
+        led_controller: Any,
+        llm_client: Any,
+        wait_until_ready: Callable[[], None],
+        additional_stop_events: Optional[Tuple[threading.Event, ...]] = None,
+    ) -> Any:
+        stop_event = stop_event_ref.get("stop_event")
+        if stop_event is None:
+            raise RuntimeError("Conversation stop event not registered")
+        return ConversationManager(
+            stt=stt,
+            tts=tts,
+            led_controller=led_controller,
+            llm_client=llm_client,
+            stop_event=stop_event,
+            wait_until_ready=wait_until_ready,
+            additional_stop_events=additional_stop_events,
+        )
+
+    manager_kwargs: Dict[str, Any] = {"wait_until_ready": lambda: None}
+    return _factory, manager_kwargs, _register
 
 
 def build(config_path: str = CONFIG_PATH) -> AppServices:
@@ -135,6 +227,8 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         services.conversation_disabled_reason = reason
         logger.debug(reason)
     services.ws = None
+    services.conversation = None
+    fsm_callbacks: Dict[str, Callable[[Any], None]] = {}
 
     if services.enable_vision:
         from .services.vision_service import VisionService
@@ -155,18 +249,45 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         services.movement = MovementService()
 
     if services.enable_conversation and services.conversation_cfg["enable"]:
-        from core.llm.llm_client import LlamaClient
+        from .services.conversation_service import ConversationService
 
-        services.conversation = LlamaClient(
-            base_url=services.conversation_cfg.get("llm_base_url") or None,
-            request_timeout=services.conversation_cfg.get("llm_request_timeout"),
+        llm_client = _build_conversation_llm_client(services.conversation_cfg)
+        llama_process = _build_conversation_process(services.conversation_cfg)
+        stt_service = _build_conversation_stt_service(services.conversation_cfg)
+        tts_engine = _build_conversation_tts(services.conversation_cfg)
+        led_handler, _, _ = _build_conversation_led_handler(services.conversation_cfg)
+        manager_factory, manager_kwargs, register_stop_event = _build_conversation_manager_factory()
+
+        readiness_timeout = services.conversation_cfg.get("health_timeout", 5.0)
+
+        conversation_service = ConversationService(
+            stt=stt_service,
+            tts=tts_engine,
+            led_controller=led_handler,
+            llm_client=llm_client,
+            process=llama_process,
+            manager_factory=manager_factory,
+            manager_kwargs=manager_kwargs,
+            readiness_timeout=readiness_timeout,
         )
-    else:
-        services.conversation = None
+        register_stop_event(conversation_service.stop_event)
+        services.conversation = conversation_service
+
+        def _on_interact(_fsm: Any) -> None:
+            conversation_service.start()
+
+        def _on_exit_interact(_fsm: Any) -> None:
+            conversation_service.stop()
+
+        fsm_callbacks = {
+            "on_interact": _on_interact,
+            "on_exit_interact": _on_exit_interact,
+        }
 
     if services.vision and services.movement:
         from .controllers.social_fsm import SocialFSM
 
-        services.fsm = SocialFSM(services.vision, services.movement, cfg)
+        callbacks = fsm_callbacks or None
+        services.fsm = SocialFSM(services.vision, services.movement, cfg, callbacks=callbacks)
 
     return services

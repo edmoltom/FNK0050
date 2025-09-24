@@ -52,6 +52,12 @@ class ConversationService:
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
 
+    @property
+    def stop_event(self) -> threading.Event:
+        """Expose the internal stop event for dependency wiring."""
+
+        return self._stop_event
+
     # ------------------------------------------------------------------
     def start(self) -> None:
         """Inicia el servicio si no se encuentra en ejecución."""
