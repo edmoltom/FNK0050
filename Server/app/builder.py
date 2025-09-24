@@ -85,7 +85,7 @@ def _build_conversation_tts(_cfg: Dict[str, Any]) -> Any:
 
 def _build_conversation_led_handler(
     _cfg: Dict[str, Any]
-) -> Tuple[Any, asyncio.AbstractEventLoop, threading.Thread]:
+) -> Tuple[Any, Callable[[], None]]:
     from LedController import LedController
     from core.VoiceInterface import LedStateHandler
 
@@ -94,7 +94,19 @@ def _build_conversation_led_handler(
     loop_thread.start()
     controller = LedController(loop=loop)
     handler = LedStateHandler(controller, loop, loop_thread=loop_thread)
-    return handler, loop, loop_thread
+
+    def _cleanup() -> None:
+        try:
+            handler.close()
+        finally:
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except RuntimeError:
+                pass
+            if loop_thread.is_alive():
+                loop_thread.join(timeout=1)
+
+    return handler, _cleanup
 
 
 def _build_conversation_manager_factory() -> Tuple[
@@ -217,13 +229,26 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
     required_paths = [
         key for key in ("llama_binary", "model_path") if not merged_conversation_cfg.get(key)
     ]
-    if services.enable_conversation and required_paths:
+    missing_files: list[str] = []
+    for key in ("llama_binary", "model_path"):
+        value = merged_conversation_cfg.get(key)
+        if not value:
+            continue
+        candidate = Path(str(value))
+        if not candidate.exists():
+            missing_files.append(f"{key}={candidate}")
+
+    if services.enable_conversation and (required_paths or missing_files):
         services.enable_conversation = False
         services.conversation_cfg["enable"] = False
-        reason = (
-            "Conversation disabled: missing required configuration values: "
-            + ", ".join(required_paths)
-        )
+        reason_parts: list[str] = []
+        if required_paths:
+            reason_parts.append(
+                "missing required configuration values: " + ", ".join(required_paths)
+            )
+        if missing_files:
+            reason_parts.append("paths not found: " + ", ".join(missing_files))
+        reason = "Conversation disabled: " + "; ".join(reason_parts)
         services.conversation_disabled_reason = reason
         logger.debug(reason)
     services.ws = None
@@ -255,10 +280,17 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         llama_process = _build_conversation_process(services.conversation_cfg)
         stt_service = _build_conversation_stt_service(services.conversation_cfg)
         tts_engine = _build_conversation_tts(services.conversation_cfg)
-        led_handler, _, _ = _build_conversation_led_handler(services.conversation_cfg)
+        led_handler, led_cleanup = _build_conversation_led_handler(services.conversation_cfg)
         manager_factory, manager_kwargs, register_stop_event = _build_conversation_manager_factory()
 
         readiness_timeout = services.conversation_cfg.get("health_timeout", 5.0)
+        health_interval = services.conversation_cfg.get("health_check_interval", 0.5)
+        health_retries = services.conversation_cfg.get("health_check_max_retries", 3)
+        health_backoff = services.conversation_cfg.get("health_check_backoff", 2.0)
+        health_base_url = services.conversation_cfg.get("llm_base_url") or None
+
+        manager_kwargs = dict(manager_kwargs)
+        manager_kwargs.setdefault("close_led_on_cleanup", False)
 
         conversation_service = ConversationService(
             stt=stt_service,
@@ -269,6 +301,12 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
             manager_factory=manager_factory,
             manager_kwargs=manager_kwargs,
             readiness_timeout=readiness_timeout,
+            health_check_base_url=health_base_url,
+            health_check_interval=health_interval,
+            health_check_max_retries=health_retries,
+            health_check_backoff=health_backoff,
+            health_check_timeout=readiness_timeout,
+            led_cleanup=led_cleanup,
         )
         register_stop_event(conversation_service.stop_event)
         services.conversation = conversation_service
