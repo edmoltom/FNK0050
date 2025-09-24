@@ -302,7 +302,6 @@ class ConversationService:
                 "llm_client": self._llm_client,
             }
             manager_kwargs.update(self._extra_manager_kwargs)
-            manager_kwargs.setdefault("close_led_on_cleanup", False)
 
             process_info = {
                 "llama_binary": str(getattr(self._process, "binary_path", "")),
