@@ -35,6 +35,7 @@ LED_STATE_MAP = {
     "ATTENTIVE_LISTEN": "listen",
     "THINK": "processing",
     "SPEAK": "speaking",
+    "ERROR": "error",
 }
 
 
@@ -157,6 +158,9 @@ class LedStateHandler:
         elif state == "speaking":
             await self._controller.stop_animation()
             await self._controller.set_all([0, 0, 255])
+        elif state == "error":
+            await self._controller.stop_animation()
+            await self._controller.set_all([255, 0, 0])
         else:
             await self._controller.stop_animation()
             await self._controller.set_all([0, 0, 0])
@@ -436,6 +440,7 @@ class ConversationManager:
                         raise
                     except Exception as exc:
                         logger.error("LLM processing failed: %s", exc)
+                        self.set_state("ERROR")
                         self._stt.resume()
                         self.set_state("WAKE")
 
