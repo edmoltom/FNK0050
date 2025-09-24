@@ -56,15 +56,15 @@ class SocialFSM:
         self.audio = None
         self._drift_until = None
         callbacks = dict(callbacks or {})
+        disable_default = bool(callbacks.pop("disable_default_interact", False))
         self._callbacks: Dict[str, Callable[["SocialFSM"], None]] = {}
         for name in ("on_interact", "on_exit_interact"):
             cb = callbacks.get(name)
             if callable(cb):
                 self._callbacks[name] = cb
-        disable_default = bool(callbacks.get("disable_default_interact"))
-        self._default_interact_enabled = not disable_default
-        if "on_interact" not in self._callbacks:
-            self._default_interact_enabled = True
+        self._default_interact_enabled = not (
+            disable_default and "on_interact" in self._callbacks
+        )
 
     def _set_state(self, new_state: str) -> None:
         if new_state == self.state:
