@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import signal
 import threading
 import time
@@ -9,6 +10,9 @@ from typing import Any, Callable, Dict, Optional
 
 from .builder import AppServices
 from network import ws_server
+
+
+logger = logging.getLogger(__name__)
 
 
 class AppRuntime:
@@ -116,7 +120,15 @@ class AppRuntime:
                 vision_started = True
 
             if conversation and self.svcs.enable_conversation:
-                conversation.start()
+                try:
+                    logger.info("AppRuntime: starting conversation service")
+                    conversation.start()
+                    logger.info("AppRuntime: conversation service started")
+                except Exception:
+                    logger.exception(
+                        "AppRuntime: error while starting conversation service"
+                    )
+                    raise
 
             if self.svcs.enable_ws and vision:
                 ws_cfg = self.svcs.ws_cfg or {}
@@ -152,8 +164,13 @@ class AppRuntime:
 
         if conversation and self.svcs.enable_conversation:
             try:
+                logger.info("AppRuntime: stopping conversation service")
                 conversation.stop(terminate_process=True, shutdown_resources=True)
+                logger.info("AppRuntime: conversation service stopped")
             except Exception:
+                logger.exception(
+                    "AppRuntime: error while stopping conversation service"
+                )
                 pass
 
             try:
