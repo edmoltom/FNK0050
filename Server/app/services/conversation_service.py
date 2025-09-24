@@ -166,14 +166,31 @@ class ConversationService:
             manager_kwargs.update(self._extra_manager_kwargs)
             manager_kwargs.setdefault("close_led_on_cleanup", False)
 
+            process_info = {
+                "llama_binary": str(getattr(self._process, "binary_path", "")),
+                "model_path": str(getattr(self._process, "model_path", "")),
+                "port": getattr(self._process, "port", None),
+                "llm_base_url": getattr(self._llm_client, "base_url", None),
+            }
+            self._logger.info("Creating ConversationManager with cfg=%s", process_info)
+
             self._manager = self._manager_factory(**manager_kwargs)
+            self._logger.info("ConversationManager created, starting thread...")
+
+            def _thread_target() -> None:
+                try:
+                    self._run_manager()
+                except BaseException:  # pragma: no cover - defensive
+                    self._logger.exception("Conversation loop crashed")
+                    raise
+
             self._thread = threading.Thread(
-                target=self._run_manager,
+                target=_thread_target,
                 name=self._thread_name,
                 daemon=True,
             )
             self._thread.start()
-            self._logger.info("Conversation thread %s started", self._thread_name)
+            self._logger.info("Conversation loop thread started")
 
     def stop(
         self,
