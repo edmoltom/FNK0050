@@ -7,6 +7,8 @@ import threading
 import time
 import weakref
 from typing import Any, Callable, Dict, Optional
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from core.llm.llama_server_process import LlamaServerProcess
 
@@ -123,30 +125,152 @@ class ConversationService:
                 self._logger.exception("Failed to start llama-server: %s", exc)
                 return
 
-            try:
-                wait_start = time.monotonic()
-                ready = self._process.wait_ready(timeout=self._readiness_timeout)
-            except Exception as exc:
-                self._logger.error("Llama server readiness failed: %s", exc)
+            wait_start = time.monotonic()
+            readiness_deadline = wait_start + self._readiness_timeout
+            timeout_partial = min(5.0, self._readiness_timeout)
+            event_stop = threading.Event()
+            event_state: Dict[str, Any] = {"ready": False, "error": None}
+
+            def _wait_ready_event() -> None:
+                deadline = readiness_deadline
+                remaining = self._readiness_timeout
+                try:
+                    while remaining > 0 and not event_stop.is_set():
+                        wait_for = min(timeout_partial, remaining)
+                        if wait_for <= 0:
+                            break
+                        if self._process.wait_ready(timeout=wait_for):
+                            event_state["ready"] = True
+                            break
+                        if event_stop.is_set():
+                            break
+                        remaining = deadline - time.monotonic()
+                except Exception as exc:  # pragma: no cover - defensive
+                    event_state["error"] = exc
+
+            event_thread = threading.Thread(
+                target=_wait_ready_event,
+                name="llama-ready-wait",
+                daemon=True,
+            )
+            event_thread.start()
+
+            base_url = self._resolve_health_base_url()
+            health_url = f"{base_url.rstrip('/')}/health"
+            health_method = "GET"
+            max_attempts = max(0, self._health_check_max_retries) + 1
+            attempts = 0
+            next_attempt = wait_start
+            sleep_for = self._health_check_interval
+            backoff = self._health_check_backoff
+            health_ready = False
+            process_died = False
+
+            while True:
+                now = time.monotonic()
+                if now >= readiness_deadline:
+                    break
+
+                if event_state["error"] is not None:
+                    break
+
+                if event_state["ready"] or health_ready:
+                    break
+
+                if self._process.poll() is not None:
+                    process_died = True
+                    break
+
+                if attempts >= max_attempts:
+                    sleep_window = min(0.1, max(0.0, readiness_deadline - now))
+                    if sleep_window > 0:
+                        time.sleep(sleep_window)
+                    continue
+
+                if now < next_attempt:
+                    sleep_window = min(next_attempt - now, readiness_deadline - now, 0.1)
+                    if sleep_window > 0:
+                        time.sleep(sleep_window)
+                    continue
+
+                attempts += 1
+
+                try:
+                    req = urllib_request.Request(health_url, method=health_method)
+                    remaining = max(0.0, readiness_deadline - now)
+                    timeout = max(0.1, min(self._health_check_timeout, remaining))
+                    with urllib_request.urlopen(req, timeout=timeout) as response:
+                        status = getattr(response, "status", 200)
+                        if 200 <= status < 300:
+                            self._logger.info(
+                                "Health check succeeded on attempt %d", attempts
+                            )
+                            health_ready = True
+                            break
+                        self._logger.warning(
+                            "Health check HTTP %s %s returned status %s",
+                            health_method,
+                            health_url,
+                            status,
+                        )
+                except urllib_error.URLError as exc:  # pragma: no cover - network failures
+                    self._logger.warning("Health check request failed: %s", exc)
+
+                if health_ready:
+                    break
+
+                if attempts >= max_attempts:
+                    continue
+
+                sleep_window = min(sleep_for, max(0.0, readiness_deadline - now))
+                if sleep_window > 0:
+                    self._logger.info(
+                        "Health check backoff sleeping %.2fs before retry %d",
+                        sleep_window,
+                        attempts + 1,
+                    )
+                next_attempt = now + sleep_window
+                sleep_for *= backoff
+
+            event_stop.set()
+            event_thread.join()
+
+            if event_state["error"] is not None:
+                self._logger.error("Llama server readiness failed: %s", event_state["error"])
                 self._process.terminate()
                 return
 
-            if not ready:
+            if process_died:
+                self._logger.error("Llama server exited before readiness confirmation")
+                self._process.terminate()
+                return
+
+            event_ready = bool(event_state.get("ready"))
+
+            if not event_ready and not health_ready:
                 self._logger.error("Timeout waiting for llama server readiness")
                 self._process.terminate()
                 return
 
             elapsed = time.monotonic() - wait_start
-            self._logger.info("Llama server ready after %.2fs", elapsed)
+            self._logger.info(
+                "Llama server ready (event=%s, health=%s) in %.2fs",
+                event_ready,
+                health_ready,
+                elapsed,
+            )
 
             try:
-                healthy = self._process.poll_health(
-                    self._resolve_health_base_url(),
-                    interval=self._health_check_interval,
-                    max_retries=self._health_check_max_retries,
-                    backoff=self._health_check_backoff,
-                    timeout=self._health_check_timeout,
-                )
+                if health_ready:
+                    healthy = True
+                else:
+                    healthy = self._process.poll_health(
+                        base_url,
+                        interval=self._health_check_interval,
+                        max_retries=self._health_check_max_retries,
+                        backoff=self._health_check_backoff,
+                        timeout=self._health_check_timeout,
+                    )
             except Exception as exc:  # pragma: no cover - defensive
                 self._logger.error("Health check invocation failed: %s", exc)
                 self._process.terminate()
