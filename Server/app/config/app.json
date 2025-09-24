@@ -29,16 +29,16 @@
     }
   },
   "conversation": {
-    "enable": false,
-    "llama_binary": "",
-    "model_path": "",
-    "port": 9090,
-    "threads": 2,
-    "health_timeout": 5.0,
+    "enable": true,
+    "llama_binary": "/home/user/llama.cpp/build/bin/llama-server",
+    "model_path": "/home/user/llama.cpp/models/qwen2.5-0.5b-instruct-q3_k_m.gguf",
+    "port": 8080,
+    "threads": 3,
+    "health_timeout": 60.0,
     "health_check_interval": 0.5,
     "health_check_max_retries": 3,
     "health_check_backoff": 2.0,
-    "llm_base_url": "",
+    "llm_base_url": "http://127.0.0.1:8080",
     "llm_request_timeout": 30.0,
     "max_parallel_inference": 1
   }
