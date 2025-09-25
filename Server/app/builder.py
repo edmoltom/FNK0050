@@ -122,13 +122,14 @@ def _build_conversation_manager_factory() -> Tuple[
         stop_event_ref["stop_event"] = event
 
     def _factory(
-        *,
-        stt: Any,
-        tts: Any,
-        led_controller: Any,
-        llm_client: Any,
-        wait_until_ready: Callable[[], None],
-        additional_stop_events: Optional[Tuple[threading.Event, ...]] = None,
+    *,
+    stt: Any,
+    tts: Any,
+    led_controller: Any,
+    llm_client: Any,
+    wait_until_ready: Callable[[], None],
+    additional_stop_events: Optional[Tuple[threading.Event, ...]] = None,
+    **kwargs,
     ) -> Any:
         stop_event = stop_event_ref.get("stop_event")
         if stop_event is None:
@@ -141,6 +142,7 @@ def _build_conversation_manager_factory() -> Tuple[
             stop_event=stop_event,
             wait_until_ready=wait_until_ready,
             additional_stop_events=additional_stop_events,
+            **kwargs,
         )
 
     manager_kwargs: Dict[str, Any] = {"wait_until_ready": lambda: None}
@@ -294,6 +296,7 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
             tts_engine = _build_conversation_tts(services.conversation_cfg)
             led_handler, led_cleanup = _build_conversation_led_handler(services.conversation_cfg)
             manager_factory, manager_kwargs, register_stop_event = _build_conversation_manager_factory()
+            logger.info("Conversation stop_event registered")
 
             readiness_timeout = services.conversation_cfg.get("health_timeout", 5.0)
             health_interval = services.conversation_cfg.get("health_check_interval", 0.5)

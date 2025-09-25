@@ -7,7 +7,7 @@ import threading
 import time
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 from LedController import LedController
 from core.hearing.stt import SpeechToText
@@ -226,6 +226,9 @@ class ConversationManager:
         speak_cooldown: float = SPEAK_COOLDOWN_SEC,
         close_led_on_cleanup: bool = True,
     ) -> None:
+        logger = logging.getLogger("conversation.manager")
+        logger.info("ConversationManager.__init__ called with stt=%s, tts=%s, llm_client=%s, led_controller=%s",
+            type(stt).__name__, type(tts).__name__, type(llm_client).__name__, type(led_controller).__name__)
         self.state = "NONE"
         self._stt = stt
         self._stt_iter = stt.stream()

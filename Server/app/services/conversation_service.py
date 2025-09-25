@@ -394,6 +394,7 @@ class ConversationService:
 
     # ------------------------------------------------------------------
     def _run_manager(self) -> None:
+        self._logger.info("ConversationManager created, entering run()")
         manager = self._manager
         if not manager:
             return
