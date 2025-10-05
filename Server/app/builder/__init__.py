@@ -6,6 +6,7 @@ import sys
 from types import ModuleType
 from typing import Any
 
+from . import conversation_builder as _conversation_builder
 from . import core_builder as _core_builder
 
 
@@ -23,12 +24,12 @@ _module.__dict__.update(
     CONFIG_PATH=_core_builder.CONFIG_PATH,
     AppServices=_core_builder.AppServices,
     build=_core_builder.build,
-    _build_conversation_llm_client=_core_builder._build_conversation_llm_client,
-    _build_conversation_process=_core_builder._build_conversation_process,
-    _build_conversation_stt_service=_core_builder._build_conversation_stt_service,
-    _build_conversation_tts=_core_builder._build_conversation_tts,
-    _build_conversation_led_handler=_core_builder._build_conversation_led_handler,
-    _build_conversation_manager_factory=_core_builder._build_conversation_manager_factory,
+    _build_conversation_llm_client=_conversation_builder._build_conversation_llm_client,
+    _build_conversation_process=_conversation_builder._build_conversation_process,
+    _build_conversation_stt_service=_conversation_builder._build_conversation_stt_service,
+    _build_conversation_tts=_conversation_builder._build_conversation_tts,
+    _build_conversation_led_handler=_conversation_builder._build_conversation_led_handler,
+    _build_conversation_manager_factory=_conversation_builder._build_conversation_manager_factory,
 )
 
 __all__ = [
