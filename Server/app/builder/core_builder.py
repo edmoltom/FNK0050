@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 
-CONFIG_PATH = str(Path(__file__).resolve().parent / "config" / "app.json")
+CONFIG_PATH = str(Path(__file__).resolve().parents[1] / "config" / "app.json")
 
 
 logger = logging.getLogger(__name__)
@@ -265,7 +265,7 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
     fsm_callbacks: Dict[str, Callable[[Any], None]] = {}
 
     if services.enable_vision:
-        from .services.vision_service import VisionService
+        from app.services.vision_service import VisionService
 
         vision = VisionService(
             mode=services.mode,
@@ -278,7 +278,7 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         services.vision = vision
 
     if services.enable_movement:
-        from .services.movement_service import MovementService
+        from app.services.movement_service import MovementService
 
         services.movement = MovementService()
 
@@ -287,15 +287,21 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         logger.info("Conversation disabled by config flag")
 
     if services.enable_conversation and services.conversation_cfg["enable"]:
-        from .services.conversation_service import ConversationService
+        from app.services.conversation_service import ConversationService
 
         try:
             llm_client = _build_conversation_llm_client(services.conversation_cfg)
             llama_process = _build_conversation_process(services.conversation_cfg)
             stt_service = _build_conversation_stt_service(services.conversation_cfg)
             tts_engine = _build_conversation_tts(services.conversation_cfg)
-            led_handler, led_cleanup = _build_conversation_led_handler(services.conversation_cfg)
-            manager_factory, manager_kwargs, register_stop_event = _build_conversation_manager_factory()
+            led_handler, led_cleanup = _build_conversation_led_handler(
+                services.conversation_cfg
+            )
+            (
+                manager_factory,
+                manager_kwargs,
+                register_stop_event,
+            ) = _build_conversation_manager_factory()
             logger.info("Conversation stop_event registered")
 
             readiness_timeout = services.conversation_cfg.get("health_timeout", 5.0)
@@ -336,7 +342,7 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         # rest of the services, so no FSM callbacks are required here.
 
     if services.vision and services.movement:
-        from .controllers.social_fsm import SocialFSM
+        from app.controllers.social_fsm import SocialFSM
 
         callbacks = fsm_callbacks or None
         services.fsm = SocialFSM(services.vision, services.movement, cfg, callbacks=callbacks)
