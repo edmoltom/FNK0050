@@ -145,7 +145,13 @@ class LedStateHandler:
             logger.debug("LED loop no longer running")
 
     async def _apply_state(self, state: str) -> None:
-        if state == "wake":
+        if state == "boot":
+            await self._controller.stop_animation()
+            await self._controller.set_all([64, 64, 64])
+        elif state == "fatal":
+            await self._controller.stop_animation()
+            await self._controller.set_all([255, 0, 0])
+        elif state == "wake":
             await self._controller.stop_animation()
             await self._controller.set_all([0, 128, 0])
         elif state == "listen":

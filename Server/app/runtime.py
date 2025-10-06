@@ -99,6 +99,13 @@ class AppRuntime:
         movement = self.svcs.movement if self.svcs.movement else None
         conversation = self.svcs.conversation if self.svcs.conversation else None
 
+        led = None
+        if conversation and hasattr(conversation, "_led_controller"):
+            led = conversation._led_controller
+
+        if led:
+            led.set_state("boot")
+
         if movement and self.svcs.enable_movement:
             movement.start()
             movement.relax()
@@ -124,10 +131,14 @@ class AppRuntime:
                     logger.info("AppRuntime: starting conversation service")
                     conversation.start()
                     logger.info("AppRuntime: conversation service started")
+                    if led:
+                        led.set_state("ready")
                 except Exception:
                     logger.exception(
                         "AppRuntime: error while starting conversation service"
                     )
+                    if led:
+                        led.set_state("fatal")
                     raise
 
             if self.svcs.enable_ws and vision:
