@@ -195,6 +195,7 @@ class ConversationService:
 
                 attempts += 1
 
+                warmup_retry = False
                 try:
                     req = urllib_request.Request(health_url, method=health_method)
                     remaining = max(0.0, readiness_deadline - now)
@@ -207,17 +208,33 @@ class ConversationService:
                             )
                             health_ready = True
                             break
-                        self._logger.warning(
-                            "Health check HTTP %s %s returned status %s",
-                            health_method,
-                            health_url,
-                            status,
-                        )
+                        if status == 503:
+                            self._logger.info(
+                                "Health check: model warming up (503)"
+                            )
+                            warmup_retry = True
+                        else:
+                            self._logger.warning(
+                                "Health check HTTP %s %s returned status %s",
+                                health_method,
+                                health_url,
+                                status,
+                            )
                 except urllib_error.URLError as exc:  # pragma: no cover - network failures
                     self._logger.warning("Health check request failed: %s", exc)
 
                 if health_ready:
                     break
+
+                if warmup_retry:
+                    sleep_window = min(
+                        self._health_check_interval,
+                        max(0.0, readiness_deadline - time.monotonic()),
+                    )
+                    if sleep_window > 0:
+                        time.sleep(sleep_window)
+                    next_attempt = time.monotonic()
+                    continue
 
                 if attempts >= max_attempts:
                     continue
