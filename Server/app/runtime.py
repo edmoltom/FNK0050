@@ -9,6 +9,7 @@ from types import FrameType
 from typing import Any, Callable, Dict, Optional
 
 from .builder import AppServices
+from app.controllers.behavior_manager import BehaviorManager
 from network import ws_server
 
 
@@ -98,6 +99,7 @@ class AppRuntime:
         vision = self.svcs.vision if self.svcs.vision else None
         movement = self.svcs.movement if self.svcs.movement else None
         conversation = self.svcs.conversation if self.svcs.conversation else None
+        social_fsm = self.svcs.fsm if self.svcs.fsm else None
 
         led = None
         if conversation and hasattr(conversation, "_led_controller"):
@@ -109,6 +111,9 @@ class AppRuntime:
         if movement and self.svcs.enable_movement:
             movement.start()
             movement.relax()
+
+        self.behavior = BehaviorManager(vision, movement, conversation, social_fsm)
+        self.behavior.start()
 
         frame_handler = None
         if vision and self.svcs.enable_vision:
