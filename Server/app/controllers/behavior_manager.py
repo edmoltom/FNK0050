@@ -57,14 +57,24 @@ class BehaviorManager:
         if state in {"THINK", "SPEAK"}:
             self._set_mode("CONVERSE")
             self._set_face_tracking(False)
+            if hasattr(self.social_fsm, "pause"):
+                self.social_fsm.pause()
             self._stop_motion()
         elif state in {"ATTENTIVE_LISTEN", "WAKE"}:
             self._set_mode("SOCIAL")
             self._set_face_tracking(True)
+            if hasattr(self.social_fsm, "resume"):
+                self.social_fsm.resume()
+            if hasattr(self.social_fsm, "mute_social"):
+                self.social_fsm.mute_social(True)
             self._movement_relaxed = False
         else:
             self._set_mode("IDLE")
-            self._set_face_tracking(False)
+            self._set_face_tracking(True)
+            if hasattr(self.social_fsm, "resume"):
+                self.social_fsm.resume()
+            if hasattr(self.social_fsm, "mute_social"):
+                self.social_fsm.mute_social(False)
             self._relax_movement()
 
     def _get_conversation_state(self) -> Optional[str]:
