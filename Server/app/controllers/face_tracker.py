@@ -151,3 +151,20 @@ class FaceTracker:
         """Update head position based on vision ``result`` and timestep ``dt``."""
 
         self.tracker.update(result, dt)
+
+    # ----- State helpers -------------------------------------------------------
+    @property
+    def locked(self) -> bool:
+        return getattr(self.tracker, "locked", False)
+
+    @property
+    def had_target(self) -> bool:
+        return getattr(self.tracker, "had_target", False)
+
+    @property
+    def lost_target(self) -> bool:
+        return getattr(self.tracker, "lost_target", False)
+
+    @property
+    def horizontal_error(self) -> float:
+        return getattr(self.tracker, "horizontal_error", 0.0)

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Optional
 import logging
 import time
 import random
@@ -55,6 +55,7 @@ class SocialFSM:
         self.logger = logging.getLogger("social_fsm")
         self.audio = None
         self._drift_until = None
+        self.paused = False
         callbacks = dict(callbacks or {})
         disable_default = bool(callbacks.pop("disable_default_interact", False))
         self._callbacks: Dict[str, Callable[["SocialFSM"], None]] = {}
@@ -83,7 +84,22 @@ class SocialFSM:
             self.lock_frames = 0
             self._drift_until = None
 
+    def pause(self) -> None:
+        """Temporarily suspend social reactions and movement updates."""
+
+        self.paused = True
+        self.logger.info("SocialFSM paused")
+
+    def resume(self) -> None:
+        """Resume normal operation after a pause."""
+
+        self.paused = False
+        self.logger.info("SocialFSM resumed")
+
     def on_frame(self, result: Dict | None, dt: float) -> None:
+        if self.paused:
+            return
+
         detection = result or None
         if detection:
             score = float(detection.get("score") or 0.0)
@@ -92,17 +108,11 @@ class SocialFSM:
 
         self.tracker.update(detection, dt)
 
-        faces = detection.get("faces") if detection else None
-        face = self._select_largest_face(faces) if faces else None
-        space_w = 0.0
-        if detection:
-            space = detection.get("space", (0, 0))
-            if len(space) > 0:
-                space_w = float(space[0])
-        ex = self._ex_from_face(face, space_w) if face else 0.0
+        has_target = bool(self.tracker.had_target)
+        horizontal_error = self.tracker.horizontal_error if has_target else 0.0
 
         now = time.monotonic()
-        if face:
+        if has_target:
             self.miss_frames = 0
             self.last_active = now
         else:
@@ -115,7 +125,7 @@ class SocialFSM:
             if self.miss_frames >= self.miss_release or now >= self.interact_until:
                 self._set_state("IDLE")
                 return
-            if abs(ex) > self.deadband_x:
+            if abs(horizontal_error) > self.deadband_x:
                 self.lock_frames = 0
                 if self._drift_until is None:
                     self._drift_until = now + 0.4
@@ -125,13 +135,13 @@ class SocialFSM:
                 self._drift_until = None
             return
 
-        if not face:
+        if not has_target:
             if self.miss_frames >= self.miss_release:
                 self._set_state("IDLE")
         else:
             if self.state == "IDLE":
                 self._set_state("ALIGNING")
-            if abs(ex) <= self.deadband_x:
+            if abs(horizontal_error) <= self.deadband_x:
                 self.lock_frames += 1
                 if self.lock_frames >= self.lock_frames_needed:
                     self._set_state("INTERACT")
@@ -143,17 +153,6 @@ class SocialFSM:
             self._idle_stopped = True
         else:
             self._idle_stopped = False
-
-    def _select_largest_face(self, faces: List[Dict[str, float]]) -> Optional[Dict[str, float]]:
-        if not faces:
-            return None
-        return max(faces, key=lambda f: float(f.get("w", 0.0)) * float(f.get("h", 0.0)))
-
-    def _ex_from_face(self, face: Dict[str, float], space_w: float) -> float:
-        x = float(face.get("x", 0.0))
-        w = float(face.get("w", 0.0))
-        face_center_x = x + w / 2.0
-        return (face_center_x - space_w / 2.0) / (space_w / 2.0) if space_w > 0 else 0.0
 
     def _on_interact(self) -> None:
         now = time.monotonic()
