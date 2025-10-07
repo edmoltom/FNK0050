@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 import logging
 import time
 import random
@@ -14,7 +14,13 @@ from core.voice.sfx import play_sound
 class SocialFSM:
     """Simple social finite state machine based on face alignment."""
 
-    def __init__(self, vision: VisionService, movement: MovementService, cfg: dict | None = None) -> None:
+    def __init__(
+        self,
+        vision: VisionService,
+        movement: MovementService,
+        cfg: dict | None = None,
+        callbacks: Optional[Dict[str, Callable[["SocialFSM"], None]]] = None,
+    ) -> None:
         cfg = cfg or {}
         behavior_cfg = cfg.get("behavior", {}).get("social_fsm", {})
         self.deadband_x = float(behavior_cfg.get("deadband_x", 0.12))
@@ -49,16 +55,30 @@ class SocialFSM:
         self.logger = logging.getLogger("social_fsm")
         self.audio = None
         self._drift_until = None
+        callbacks = dict(callbacks or {})
+        disable_default = bool(callbacks.pop("disable_default_interact", False))
+        self._callbacks: Dict[str, Callable[["SocialFSM"], None]] = {}
+        for name in ("on_interact", "on_exit_interact"):
+            cb = callbacks.get(name)
+            if callable(cb):
+                self._callbacks[name] = cb
+        self._default_interact_enabled = not (
+            disable_default and "on_interact" in self._callbacks
+        )
 
     def _set_state(self, new_state: str) -> None:
         if new_state == self.state:
             return
         self.logger.info("leaving %s", self.state)
+        if self.state == "INTERACT":
+            self._run_callback("on_exit_interact")
         self.state = new_state
         self.logger.info("entering %s", self.state)
         if new_state == "INTERACT":
             self.interact_until = time.monotonic() + self.interact_ms / 1000.0
-            self._on_interact()
+            self._run_callback("on_interact")
+            if self._default_interact_enabled:
+                self._on_interact()
         if new_state != "INTERACT":
             self.lock_frames = 0
             self._drift_until = None
@@ -147,3 +167,12 @@ class SocialFSM:
             logging.info("meow")
         delay = random.uniform(self.meow_cooldown_min, self.meow_cooldown_max)
         self._next_meow_time = now + delay
+
+    def _run_callback(self, name: str) -> None:
+        callback = self._callbacks.get(name)
+        if not callback:
+            return
+        try:
+            callback(self)
+        except Exception:
+            self.logger.exception("error running %s callback", name)

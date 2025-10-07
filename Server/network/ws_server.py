@@ -1,7 +1,12 @@
 from __future__ import annotations
 import asyncio, json, socket, time
 from typing import Callable, Optional
-import websockets
+
+try:  # pragma: no cover - optional dependency in tests
+    import websockets
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    websockets = None
+
 from app.services.vision_service import VisionService
 
 async def _wait_for_frame(svc: VisionService, timeout=3.0, poll=0.05) -> Optional[str]:
@@ -53,6 +58,8 @@ def make_handler(svc: VisionService) -> Callable:
     return handler
 
 async def start_ws_server_async(svc: VisionService, host: str = "0.0.0.0", port: int = 8765) -> None:
+    if websockets is None:  # pragma: no cover - guard for optional dependency
+        raise RuntimeError("websockets package is required to start the WS server")
     addr = _get_local_ip()
     print(f"WebSocket listening at ws://{addr}:{port} ...")
     async with websockets.serve(make_handler(svc), host, port):
