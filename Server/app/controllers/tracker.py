@@ -239,6 +239,8 @@ class ObjectTracker:
     _locked: bool = field(default=False, init=False)
     _face_count: int = field(default=0, init=False)
     _miss_count: int = field(default=0, init=False)
+    _lost_target: bool = field(default=False, init=False, repr=False)
+    _horizontal_error: float = field(default=0.0, init=False, repr=False)
     _lock_frames_needed: int = field(default=3, init=False, repr=False)
     _miss_release: int = field(default=5, init=False, repr=False)
     _recenter_after: int = field(default=40, init=False, repr=False)
@@ -312,13 +314,16 @@ class ObjectTracker:
         """Update internal state based on detection ``result``."""
 
         targets = _extract_targets(result)
+        self._lost_target = False
 
         if not targets:
             if self._had_target:
                 self.logger.info("Target lost")
                 self._had_target = False
+                self._lost_target = True
             self._face_count = 0
             self._miss_count += 1
+            self._horizontal_error = 0.0
             self.y.reset()
             if self._locked and self._miss_count >= self.miss_release:
                 self._locked = False
@@ -359,6 +364,7 @@ class ObjectTracker:
 
         face_center_x = x + w / 2.0
         ex = (face_center_x - space_w / 2.0) / (space_w / 2.0) if space_w > 0 else 0.0
+        self._horizontal_error = ex
         self.x.update(ex, dt)
 
         self.y.update(target, (space_w, space_h), dt)
@@ -374,4 +380,21 @@ class ObjectTracker:
                 self.vision.set_roi((roi_x, roi_y, roi_w, roi_h))
             else:
                 self.vision.set_roi(None)
+
+    # ----- State accessors ------------------------------------------------------
+    @property
+    def locked(self) -> bool:
+        return self._locked
+
+    @property
+    def had_target(self) -> bool:
+        return self._had_target
+
+    @property
+    def lost_target(self) -> bool:
+        return self._lost_target
+
+    @property
+    def horizontal_error(self) -> float:
+        return self._horizontal_error
 
