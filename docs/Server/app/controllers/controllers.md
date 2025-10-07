@@ -1,61 +1,94 @@
-# Controladores de la aplicación
+# Controladores (`app/controllers`)
 
-Los controladores encapsulan la lógica de seguimiento y socialización que se ejecuta sobre las detecciones que llegan desde visión.
+Los controladores coordinan el comportamiento social y perceptivo del robot.  
+Actúan como intermediarios entre los servicios (visión, movimiento, conversación) y las capas de decisión más altas.  
+Dentro de esta carpeta se incluyen, entre otros:
 
-## Utilidades genéricas (`tracker.py`)
+- `face_tracker.py`: gestiona el seguimiento visual de rostros y coordina los ejes de movimiento (cabeza y cuerpo).  
+- `social_fsm.py`: define la máquina de estados sociales del robot.  
+- `tracker.py`: abstrae el control del movimiento y seguimiento del objeto o rostro detectado.  
+- `behavior_manager.py`: coordina los modos globales y las prioridades de los subsistemas.
 
-El archivo define funciones auxiliares para seleccionar objetivos:
+---
 
-- `_extract_targets` y `_select_largest_box` filtran y priorizan la lista de `targets` o `faces` proporcionada por la visión.
-- `_extract_space` extrae el tamaño de la imagen (`width`, `height`) para normalizar errores y calcular centros.
+## `SocialFSM`: comportamiento social básico
 
-### `AxisXTurnController`
+El **SocialFSM** representa la capa de interacción inmediata del robot.  
+Define tres estados principales:
 
-Gestiona los giros sobre el eje horizontal cuando el objetivo se desplaza lateralmente. Ajustes destacados:
+| Estado | Descripción |
+|---------|-------------|
+| `IDLE` | El robot está relajado, sin objetivo de interacción. |
+| `ALIGNING` | Se detecta un rostro y se ajusta la orientación de cabeza/cuerpo. |
+| `INTERACT` | El rostro está centrado; el robot puede emitir sonidos o gestos sociales. |
 
-| Parámetro | Propósito | Valor inicial |
-| --- | --- | --- |
-| `deadband_x` | Margen de error permitido antes de iniciar un giro. | `0.12` |
-| `k_turn` | Ganancia para escalar el pulso en función del error normalizado. | `0.8` |
-| `base_pulse_ms` / `min_pulse_ms` / `max_pulse_ms` | Controlan la duración del pulso enviado a `MovementControl.turn_left/turn_right`. | `120 / 60 / 180` ms |
-| `turn_speed` | Velocidad aplicada durante el giro en el plano. | `0.3` |
+### Control dual de pausa
 
-El método `update()` aplica un enfriamiento interno para evitar giros continuos y delega la acción en `MovementControl`.
+La máquina social ahora dispone de dos niveles de control externo:
 
-### `AxisYHeadController`
+1. **Pausa completa (`pause` / `resume`)**  
+   - Detiene completamente el bucle social: no se actualizan movimientos, ni rastreo, ni expresiones.  
+   - Se usa cuando el robot está *hablando* o *pensando*, para evitar que el cuerpo o la cabeza se muevan durante el discurso.  
 
-Controla la inclinación vertical de la cabeza. Combina un filtro exponencial para suavizar el centro del rostro y un PID incremental:
+2. **Silencio social (`mute_social`)**  
+   - Solo desactiva las *reacciones sociales* (como los maullidos), manteniendo activo el seguimiento de rostro.  
+   - Permite que el robot mantenga la mirada en su interlocutor mientras escucha, pero sin emitir sonidos ni gestos espontáneos.
 
-| Parámetro | Descripción |
-| --- | --- |
-| `pid` (`Incremental_PID(20.0, 0.0, 5.0)`) | Calcula el delta angular. |
-| `pid_scale` | Escala la salida del PID (`0.1`). |
-| `ema_alpha` | Peso del nuevo centro detectado (`0.2`). |
-| `error_threshold` | Margen de error aceptable antes de mover la cabeza (`0.05`). |
-| `delta_limit_deg` | Límite de grados por actualización (`3.0`). |
-| `recenter_speed_deg` / `recenter_duration_ms` | Controlan la reciente con el tiempo. |
+Ambos mecanismos son gestionados desde el **BehaviorManager**, lo que garantiza coherencia entre el estado cognitivo del robot y su expresión física.
 
-El controlador mantiene el ángulo actual, llama a `MovementControl.head_deg` y ofrece `recenter()` para volver gradualmente al centro tras perder el objetivo.
+---
 
-### `ObjectTracker`
+### Ejemplo de flujo
 
-Coordina ambos ejes y mantiene el estado del objetivo:
+| Estado de conversación | Acción en `SocialFSM` | Efecto visible |
+|------------------------|------------------------|----------------|
+| `THINK`, `SPEAK` | `pause()` | El robot se inmoviliza y guarda silencio. |
+| `ATTENTIVE_LISTEN`, `WAKE` | `resume()` + `mute_social(True)` | El robot sigue mirando, pero no maúlla. |
+| `IDLE` o `SOCIAL` | `resume()` + `mute_social(False)` | Recupera su comportamiento natural y expresivo. |
 
-- Lleva contadores de detecciones consecutivas para fijar (`lock`) o liberar (`miss_release`) el objetivo.
-- Cuando pierde rostros, reinicia la posición vertical, detiene el movimiento y puede recentrar la cabeza.
-- Al detectar un rostro, calcula el error horizontal (`ex`) y actualiza ambos ejes. Si dispone de `VisionManager`, ajusta la ROI para concentrar la búsqueda alrededor del objetivo bloqueado.
+---
 
-### `FaceTracker`
+## `BehaviorManager`: coordinación de modos globales
 
-Proporciona una interfaz compatible con versiones anteriores sobre `ObjectTracker`. Reexpone propiedades (`deadband_x`, `enable_x`, `base_pulse_ms`, etc.) y delega `update()` al rastreador interno. Está pensado para integrarse con servicios que todavía esperan la API de `MovementControl` y `VisionManager`.
+El **BehaviorManager** supervisa el estado de los servicios y ajusta el comportamiento global de Lumo.  
+Evalúa de forma continua los estados de conversación y aplica decisiones sobre el movimiento, la visión y el FSM social.
 
-## `SocialFSM`
+### Modos actuales
 
-Implementa una máquina de estados sencilla para reaccionar ante rostros alineados:
+| Modo | Descripción | Acciones principales |
+|------|--------------|---------------------|
+| `CONVERSE` | El robot está hablando o pensando. | Pausa total del FSM y rastreo facial detenido. |
+| `SOCIAL` | El robot está atento o escuchando. | Rastreo facial activo, reacciones sociales desactivadas. |
+| `IDLE` | Sin interacción activa. | FSM completo activo (seguimiento y expresividad). |
 
-- **Estados**: `IDLE`, `ALIGNING`, `INTERACT`.
-- **Transiciones**: pasa a `ALIGNING` al detectar un rostro; entra en `INTERACT` tras acumular `lock_frames_needed` frames dentro del `deadband_x`; regresa a `IDLE` al perder caras durante `miss_release` frames o al agotar `interact_ms`.
-- **Acciones**: usa `MovementService` para detenerse o relajarse tras periodos de inactividad, delega el seguimiento en `FaceTracker` y reproduce el sonido `meow.wav` con un cooldown aleatorio cuando entra en `INTERACT`.
+La coordinación se realiza sin detener los servicios base (visión, movimiento o conversación).  
+Los procesos como el LLM permanecen cargados para evitar latencia y consumo extra.
 
-Los parámetros (`deadband_x`, `miss_release`, `interact_ms`, `relax_timeout`, `meow_cooldown_min/max`) se leen del bloque `behavior.social_fsm` de la configuración.
+---
 
+### Interacción entre capas
+
+AppRuntime
+├─ VisionService
+├─ MovementService
+├─ ConversationService
+├─ SocialFSM (interacción física)
+└─ BehaviorManager (coordinación de modos)
+
+yaml
+Copiar código
+
+- El **BehaviorManager** escucha el estado del `ConversationManager` y ajusta el comportamiento global.  
+- El **SocialFSM** ejecuta los cambios (pausar, reanudar, silenciar) según las órdenes del manager.  
+- El **FaceTracker** y el **ObjectTracker** siguen operando a nivel de visión, sin interrupción, garantizando continuidad visual aunque el comportamiento esté silenciado.
+
+---
+
+### Propósito de la arquitectura
+
+Esta separación entre *percepción, socialización y comportamiento* permite que Lumo:
+- Mantenga una coherencia natural entre lo que “piensa”, “oye” y “hace”.  
+- Evite movimientos o sonidos incoherentes durante la conversación.  
+- Pueda extenderse fácilmente con nuevos modos (por ejemplo, exploración o juego) sin romper la base social.
+
+---
