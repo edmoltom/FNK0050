@@ -71,11 +71,10 @@ class SocialFSM:
     def _set_state(self, new_state: str) -> None:
         if new_state == self.state:
             return
-        self.logger.info("leaving %s", self.state)
+        self.logger.info("[FSM] %s → %s", self.state, new_state)
         if self.state == "INTERACT":
             self._run_callback("on_exit_interact")
         self.state = new_state
-        self.logger.info("entering %s", self.state)
         if new_state == "INTERACT":
             self.interact_until = time.monotonic() + self.interact_ms / 1000.0
             self._run_callback("on_interact")
@@ -89,22 +88,22 @@ class SocialFSM:
         """Temporarily suspend social reactions and movement updates."""
 
         self.paused = True
-        self.logger.info("SocialFSM paused")
+        self.logger.info("[FSM] paused")
 
     def resume(self) -> None:
         """Resume normal operation after a pause."""
 
         self.paused = False
-        self.logger.info("SocialFSM resumed")
+        self.logger.info("[FSM] resumed")
 
     def mute_social(self, enabled: bool) -> None:
         """Enable or disable only the social reactions (e.g. meows) while keeping tracking active."""
 
         self.social_muted = enabled
         if enabled:
-            self.logger.info("SocialFSM: social reactions muted")
+            self.logger.info("[FSM] social reactions muted")
         else:
-            self.logger.info("SocialFSM: social reactions unmuted")
+            self.logger.info("[FSM] social reactions unmuted")
 
     def on_frame(self, result: Dict | None, dt: float) -> None:
         if self.paused:
@@ -175,7 +174,7 @@ class SocialFSM:
         try:
             play_sound(sound_file)
         except Exception:
-            logging.info("meow")
+            self.logger.debug("meow")
         delay = random.uniform(self.meow_cooldown_min, self.meow_cooldown_max)
         self._next_meow_time = now + delay
 

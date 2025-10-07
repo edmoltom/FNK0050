@@ -132,5 +132,17 @@ class BehaviorManager:
 
     def _set_mode(self, new_mode: str) -> None:
         if new_mode != self.current_mode:
-            self.logger.info("Behavior mode: %s → %s", self.current_mode, new_mode)
+            self.logger.info("[MODE] %s → %s", self.current_mode, new_mode)
             self.current_mode = new_mode
+
+            state = self._get_conversation_state()
+            if hasattr(self, "social_fsm"):
+                fsm_state = getattr(self.social_fsm, "state", "unknown")
+            else:
+                fsm_state = "none"
+            self.logger.debug(
+                "[STATE] Conversation=%s | FaceTracking=%s | FSM=%s",
+                state,
+                getattr(self, "_face_tracking_enabled", None),
+                fsm_state,
+            )
