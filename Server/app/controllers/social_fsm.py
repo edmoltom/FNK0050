@@ -56,6 +56,7 @@ class SocialFSM:
         self.audio = None
         self._drift_until = None
         self.paused = False
+        self.social_muted = False
         callbacks = dict(callbacks or {})
         disable_default = bool(callbacks.pop("disable_default_interact", False))
         self._callbacks: Dict[str, Callable[["SocialFSM"], None]] = {}
@@ -95,6 +96,15 @@ class SocialFSM:
 
         self.paused = False
         self.logger.info("SocialFSM resumed")
+
+    def mute_social(self, enabled: bool) -> None:
+        """Enable or disable only the social reactions (e.g. meows) while keeping tracking active."""
+
+        self.social_muted = enabled
+        if enabled:
+            self.logger.info("SocialFSM: social reactions muted")
+        else:
+            self.logger.info("SocialFSM: social reactions unmuted")
 
     def on_frame(self, result: Dict | None, dt: float) -> None:
         if self.paused:
@@ -157,6 +167,8 @@ class SocialFSM:
     def _on_interact(self) -> None:
         now = time.monotonic()
         self.last_active = now
+        if self.social_muted:
+            return
         if now < self._next_meow_time:
             return
         sound_file = Path(__file__).resolve().parents[2] / "sounds" / "meow.wav"
