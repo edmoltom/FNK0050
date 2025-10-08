@@ -423,14 +423,14 @@ class ConversationManager:
                     if utter:
                         logger.info("heard: %s", utter)
                         if contains_wake_word(utter):
-                            logger.info("wake word detected → attentive mode")
+                            logger.info("wake word detected -> attentive mode")
                             self.attentive_until = now + ATTENTION_TTL_SEC
                             self.metrics.start_listen(now)
                             self.set_state("ATTENTIVE_LISTEN")
 
                 elif self.state == "ATTENTIVE_LISTEN":
                     if now > self.attentive_until:
-                        logger.info("attention expired → WAKE")
+                        logger.info("attention expired -> WAKE")
                         self.metrics.stop_listen(now)
                         self.set_state("WAKE")
                     elif utter:

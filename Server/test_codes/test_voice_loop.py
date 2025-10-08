@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------------------
-# test_voice_loop.py — Orchestrated test: STT → LLM → TTS
+# test_voice_loop.py — Orchestrated test: STT -> LLM -> TTS
 # ---------------------------------------------------------------------------
 # Launches your STT script as a subprocess (unbuffered) and reads lines.
 # Whenever a line starts with "> ", it is considered a full utterance and
-# is sent to the LLM→TTS bridge (llm_to_tts.py).
+# is sent to the LLM->TTS bridge (llm_to_tts.py).
 #
 # Usage (from your project root):
 #   python3 run.py --test voice_loop
@@ -43,7 +43,7 @@ def main():  # entrypoint expected by your run.py
             if line.startswith("> "):
                 utterance = line[2:].strip()
                 if utterance:
-                    # Send to LLM → TTS bridge
+                    # Send to LLM -> TTS bridge
                     _subprocess.run([_sys.executable, str(_LLM_TO_TTS),
                                      "--prompt", utterance],
                                     check=False, env=env)

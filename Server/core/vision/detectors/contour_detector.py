@@ -1,10 +1,10 @@
 """Contour detection pipeline with optional color gating and scoring.
 
 Design notes:
-    preprocess (resize+blur) → auto-canny with rescue → optional color-gate
-    (LAB/HSV) with coverage thresholds → premorph patches (bottom margin,
-    despeckle, fill-from-edges) → iterative morphology (close/dilate) →
-    contour features → scoring → selection → export overlay/metrics.
+    preprocess (resize+blur) -> auto-canny with rescue -> optional color-gate
+    (LAB/HSV) with coverage thresholds -> premorph patches (bottom margin,
+    despeckle, fill-from-edges) -> iterative morphology (close/dilate) ->
+    contour features -> scoring -> selection -> export overlay/metrics.
 
     Score formula used in ``imgproc._score_contour``::
 

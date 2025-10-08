@@ -71,7 +71,7 @@ class SocialFSM:
     def _set_state(self, new_state: str) -> None:
         if new_state == self.state:
             return
-        self.logger.info("[FSM] %s → %s", self.state, new_state)
+        self.logger.info("[FSM] %s -> %s", self.state, new_state)
         if self.state == "INTERACT":
             self._run_callback("on_exit_interact")
         self.state = new_state

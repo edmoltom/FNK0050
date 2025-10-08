@@ -3,7 +3,7 @@
 The module implements the orchestration layer described in the project
 README::
 
-    MovementControl → queue → controller → gait_runner/kinematics/posture → hardware
+    MovementControl -> queue -> controller -> gait_runner/kinematics/posture -> hardware
 
 ``MovementControl`` is a light façade used by the network layer.  It
 simply enqueues commands which are then consumed by

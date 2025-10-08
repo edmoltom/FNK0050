@@ -230,7 +230,7 @@ class MockSocialFSM:
     def _set_state(self, new_state: str) -> None:
         if new_state == self.state:
             return
-        self.logger.info("[FSM] %s → %s", self.state, new_state)
+        self.logger.info("[FSM] %s -> %s", self.state, new_state)
         self.state = new_state
 
 

@@ -132,7 +132,7 @@ class BehaviorManager:
 
     def _set_mode(self, new_mode: str) -> None:
         if new_mode != self.current_mode:
-            self.logger.info("[MODE] %s → %s", self.current_mode, new_mode)
+            self.logger.info("[MODE] %s -> %s", self.current_mode, new_mode)
             self.current_mode = new_mode
 
             state = self._get_conversation_state()

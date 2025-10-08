@@ -144,7 +144,7 @@ class PCA9685:
         @param channel Channel number (0-15).
         @param pulse_us Pulse width in microseconds.
         """
-        ticks = int((pulse_us * 4096) / 20000)  # 50Hz → 20,000us period
+        ticks = int((pulse_us * 4096) / 20000)  # 50Hz -> 20,000us period
         self.set_pwm(channel, 0, ticks)
 
 

@@ -45,7 +45,7 @@ def process_axis(axis_label):
     plt.savefig(os.path.join(output_folder, f"displacement_{axis_label}.png"))
     plt.close()
 
-    print(f"[OK] Axis {axis_label.upper()} → velocity and displacement saved.")
+    print(f"[OK] Axis {axis_label.upper()} -> velocity and displacement saved.")
 
 # --- PROCESS ALL AXES ---
 for axis in ['x', 'y', 'z']:
