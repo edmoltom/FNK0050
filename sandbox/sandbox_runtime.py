@@ -34,8 +34,13 @@ def _install_sandbox_stubs() -> None:
 
     core_module = sys.modules.get("core")
     if core_module is None:
-        core_module = types.ModuleType("core")
-        sys.modules["core"] = core_module
+        try:  # pragma: no cover - import side effects depend on environment
+            import core as core_module  # type: ignore
+        except Exception:
+            core_module = types.ModuleType("core")
+            sys.modules["core"] = core_module
+        else:
+            sys.modules.setdefault("core", core_module)
 
     if "cv2" not in sys.modules:
         cv2_module = types.ModuleType("cv2")
@@ -374,6 +379,7 @@ class _SandboxConversationManager:
         wait_until_ready: Callable[[], None],
         additional_stop_events: Optional[Iterable[threading.Event]] = None,
         logger: Optional[logging.Logger] = None,
+        system_prompt: Optional[str] = None,
     ) -> None:
         self._stt = stt
         self._tts = tts
@@ -385,6 +391,7 @@ class _SandboxConversationManager:
         self._logger = logger or logging.getLogger("sandbox.cognitive.manager")
         self._paused = False
         self._running = False
+        self._system_prompt = system_prompt
 
     def run(self, stop_event: Optional[threading.Event] = None) -> None:
         stop = stop_event or self._stop_event
@@ -412,10 +419,14 @@ class _SandboxConversationManager:
                 self._led.set_color("thinking")
                 self._logger.debug("User said: %s", utterance)
 
+                system_prompt = (
+                    self._system_prompt
+                    or "You are Lumo, a friendly companion robot."
+                )
                 messages = [
                     {
                         "role": "system",
-                        "content": "You are Lumo, a friendly companion robot.",
+                        "content": system_prompt,
                     },
                     {"role": "user", "content": utterance},
                 ]
@@ -451,7 +462,9 @@ class _SandboxConversationManager:
         self._running = False
 
 
-def _build_sandbox_manager_factory() -> Tuple[
+def _build_sandbox_manager_factory(
+    system_prompt: Optional[str] = None,
+) -> Tuple[
     Callable[..., _SandboxConversationManager],
     Dict[str, object],
     Callable[[threading.Event], None],
@@ -484,6 +497,7 @@ def _build_sandbox_manager_factory() -> Tuple[
             wait_until_ready=wait_until_ready,
             additional_stop_events=additional_stop_events,
             logger=logger,
+            system_prompt=system_prompt,
         )
 
     manager_kwargs: Dict[str, object] = {
@@ -511,7 +525,13 @@ def _load_sandbox_config(config_path: Path) -> Dict[str, object]:
 class CognitiveConversationService:
     """Conversation service that optionally delegates to the real runtime."""
 
-    def __init__(self, voice: MockVoiceService, led: MockLedController) -> None:
+    def __init__(
+        self,
+        voice: MockVoiceService,
+        led: MockLedController,
+        *,
+        system_prompt: Optional[str] = None,
+    ) -> None:
         self.logger = logging.getLogger("sandbox.cognitive.conversation")
         self.voice = voice
         self._led_controller = led
@@ -520,6 +540,7 @@ class CognitiveConversationService:
         self._running = False
         self._conversation = None
         self._stop_fallback = threading.Event()
+        self._system_prompt = system_prompt
 
         config_path = Path(__file__).with_name("sandbox_config.json")
         self._config = _load_sandbox_config(config_path)
@@ -582,7 +603,9 @@ class CognitiveConversationService:
             return None
 
         process = _SandboxLlamaProcess(available=available, base_url=self._llm_base_url)
-        manager_factory, manager_kwargs, register = _build_sandbox_manager_factory()
+        manager_factory, manager_kwargs, register = _build_sandbox_manager_factory(
+            self._system_prompt
+        )
 
         conversation = conversation_cls(
             stt=self.voice,
@@ -603,6 +626,10 @@ class CognitiveConversationService:
         )
 
         register(conversation.stop_event)
+        if self._system_prompt:
+            logging.getLogger("sandbox.cognitive").info(
+                "[COGNITIVE] Using real ConversationService with system prompt."
+            )
         return conversation
 
     def _start_fallback_loop(self, llm_client) -> None:
@@ -629,10 +656,14 @@ class CognitiveConversationService:
 
             self.state = "THINK"
             self._led_controller.set_color("thinking")
+            system_prompt = (
+                self._system_prompt
+                or "You are Lumo, a friendly companion robot."
+            )
             messages = [
                 {
                     "role": "system",
-                    "content": "You are Lumo, a friendly companion robot.",
+                    "content": system_prompt,
                 },
                 {"role": "user", "content": utterance},
             ]
@@ -748,7 +779,29 @@ def build_services() -> tuple[AppServices, MockVisionService, MockMovementServic
     movement = MockMovementService()
     voice = MockVoiceService()
     led = MockLedController()
-    conversation = CognitiveConversationService(voice, led)
+    persona_logger = logging.getLogger("sandbox.cognitive")
+    system_prompt: Optional[str] = None
+    try:
+        from core.llm.persona import build_system
+
+        try:
+            system_prompt = build_system()
+        except Exception as exc:  # pragma: no cover - defensive
+            persona_logger.warning(
+                "[COGNITIVE] Failed to build persona: %s", exc
+            )
+        else:
+            persona_logger.info("[COGNITIVE] Persona loaded successfully.")
+    except Exception as exc:  # pragma: no cover - defensive
+        persona_logger.warning(
+            "[COGNITIVE] Unable to import persona module: %s", exc
+        )
+
+    conversation = CognitiveConversationService(
+        voice,
+        led,
+        system_prompt=system_prompt,
+    )
     social_fsm = MockSocialFSM()
 
     services.vision = vision
