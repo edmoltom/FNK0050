@@ -12,6 +12,10 @@ core_stub = types.ModuleType("core")
 core_stub.__path__ = [str(SERVER_ROOT / "core")]
 sys.modules["core"] = core_stub
 
+mind_stub = types.ModuleType("mind")
+mind_stub.__path__ = [str(SERVER_ROOT / "mind")]
+sys.modules["mind"] = mind_stub
+
 led_stub = types.ModuleType("LedController")
 
 
@@ -31,6 +35,7 @@ class _StubLedController:
 
 led_stub.LedController = _StubLedController
 sys.modules["LedController"] = led_stub
+sys.modules["core.LedController"] = led_stub
 
 sounddevice_stub = types.ModuleType("sounddevice")
 
@@ -79,7 +84,7 @@ def _fail_post(*_args, **_kwargs):  # pragma: no cover - guardrail
 requests_stub.post = _fail_post
 sys.modules["requests"] = requests_stub
 
-from core.VoiceInterface import ConversationManager
+from mind.interface.voice_interface import ConversationManager
 
 
 class FakeSTT:

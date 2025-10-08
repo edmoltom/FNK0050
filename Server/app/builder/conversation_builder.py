@@ -18,7 +18,7 @@ __all__ = [
 
 
 def _build_conversation_llm_client(cfg: Dict[str, Any]) -> Any:
-    from core.llm.llm_client import LlamaClient
+    from mind.llm_client import LlamaClient
 
     return LlamaClient(
         base_url=cfg.get("llm_base_url") or None,
@@ -27,7 +27,7 @@ def _build_conversation_llm_client(cfg: Dict[str, Any]) -> Any:
 
 
 def _build_conversation_process(cfg: Dict[str, Any]) -> Any:
-    from core.llm.llama_server_process import LlamaServerProcess
+    from mind.llama_server_process import LlamaServerProcess
 
     threads = cfg.get("threads") or None
     parallel = cfg.get("max_parallel_inference") or None
@@ -42,7 +42,7 @@ def _build_conversation_process(cfg: Dict[str, Any]) -> Any:
 
 
 def _build_conversation_stt_service(_cfg: Dict[str, Any]) -> Any:
-    from core.VoiceInterface import STTService
+    from mind.interface.voice_interface import STTService
     from core.hearing.stt import SpeechToText
 
     stt_engine = SpeechToText()
@@ -58,8 +58,8 @@ def _build_conversation_tts(_cfg: Dict[str, Any]) -> Any:
 def _build_conversation_led_handler(
     _cfg: Dict[str, Any]
 ) -> Tuple[Any, Callable[[], None]]:
-    from LedController import LedController
-    from core.VoiceInterface import LedStateHandler
+    from core.LedController import LedController
+    from mind.interface.voice_interface import LedStateHandler
 
     loop = asyncio.new_event_loop()
     loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
@@ -86,7 +86,7 @@ def _build_conversation_manager_factory() -> Tuple[
     Dict[str, Any],
     Callable[[threading.Event], None],
 ]:
-    from core.VoiceInterface import ConversationManager
+    from mind.interface.voice_interface import ConversationManager
 
     stop_event_ref: Dict[str, threading.Event] = {}
 

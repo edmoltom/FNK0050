@@ -68,7 +68,7 @@ def _install_sandbox_stubs() -> None:
             spec.submodule_search_locations = search_locations or [core_path_str]
             core_module.__spec__ = spec  # type: ignore[attr-defined]
     if llm_path.exists():
-        persona_spec = importlib.util.find_spec("core.llm.persona")
+        persona_spec = importlib.util.find_spec("mind.persona")
         if persona_spec is not None and persona_spec.origin:
             logging.getLogger("sandbox.cognitive").info(
                 "[COGNITIVE] Real persona module linked successfully."
@@ -618,7 +618,7 @@ class CognitiveConversationService:
             return MockLLMClient()
 
         try:
-            from core.llm.llm_client import LlamaClient
+            from mind.llm_client import LlamaClient
 
             client = LlamaClient(base_url=base_url)
             self.logger.info("Using real LlamaClient for LLM interactions")
@@ -814,7 +814,7 @@ def build_services() -> tuple[AppServices, MockVisionService, MockMovementServic
     persona_logger = logging.getLogger("sandbox.cognitive")
     system_prompt: Optional[str] = None
     try:
-        from core.llm.persona import build_system
+        from mind.persona import build_system
 
         try:
             system_prompt = build_system()

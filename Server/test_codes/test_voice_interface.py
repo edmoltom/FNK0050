@@ -8,7 +8,7 @@ from pathlib import Path
 # Make sure the core folder is on the import path
 sys.path.append(str(Path(__file__).resolve().parents[1] / "core"))
 
-from VoiceInterface import ConversationManager
+from mind.interface.voice_interface import ConversationManager
 
 
 def main(prompt: str = None) -> None:

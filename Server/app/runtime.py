@@ -8,6 +8,8 @@ import time
 from types import FrameType
 from typing import Any, Callable, Dict, Optional
 
+from mind import initialize_mind
+
 from .builder import AppServices
 from app.controllers.behavior_manager import BehaviorManager
 from network import ws_server
@@ -21,6 +23,11 @@ class AppRuntime:
 
     def __init__(self, services: AppServices) -> None:
         self.svcs = services
+        logger.info("[BOOT] Initializing Lumo core systems...")
+        app_config = getattr(services, "cfg", {}) or {}
+        logger.info("[BOOT] Mind module detected — linking cognition.")
+        self.mind = initialize_mind(app_config)
+        logger.info("[READY] Lumo body and mind synchronized.")
         self._latest_detection: Dict[str, Any] = {}
         self._frame_handler: Optional[Callable[[Dict[str, Any] | None], None]] = None
         self._shutdown_event = threading.Event()
