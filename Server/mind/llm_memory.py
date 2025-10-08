@@ -1,4 +1,7 @@
-from typing import List, Dict, Any
+from typing import Dict, List
+
+from typing import Dict, List
+
 
 class ConversationMemory:
     """Keeps the last N turns (user/assistant) for short-term context."""
@@ -21,3 +24,20 @@ class ConversationMemory:
         msgs.extend(self.history)
         msgs.append({"role": "user", "content": user_text})
         return msgs
+
+
+class MemoryManager:
+    """High-level memory interface that wraps :class:`ConversationMemory`."""
+
+    def __init__(self, last_n: int = 4) -> None:
+        self._conversation = ConversationMemory(last_n=last_n)
+
+    @property
+    def conversation(self) -> ConversationMemory:
+        return self._conversation
+
+    def reset(self) -> None:
+        self._conversation.reset()
+
+    def build_messages(self, system_text: str, user_text: str) -> List[Dict[str, str]]:
+        return self._conversation.build_messages(system_text, user_text)
