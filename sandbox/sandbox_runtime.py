@@ -1,6 +1,8 @@
 """Entry point for running the Lumo runtime in sandbox mode."""
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import json
 import logging
 import sys
@@ -41,6 +43,36 @@ def _install_sandbox_stubs() -> None:
             sys.modules["core"] = core_module
         else:
             sys.modules.setdefault("core", core_module)
+
+    core_path = SERVER_ROOT / "core"
+    llm_path = core_path / "llm"
+    if core_path.exists():
+        search_locations = list(getattr(core_module, "__path__", []))
+        core_path_str = str(core_path)
+        if core_path_str not in search_locations:
+            search_locations.append(core_path_str)
+        if search_locations:
+            core_module.__path__ = search_locations  # type: ignore[attr-defined]
+        if not getattr(core_module, "__package__", None):
+            core_module.__package__ = "core"
+        if not getattr(core_module, "__file__", None):
+            init_file = core_path / "__init__.py"
+            core_module.__file__ = str(init_file)
+        spec = getattr(core_module, "__spec__", None)
+        if not isinstance(spec, importlib.machinery.ModuleSpec) or not getattr(
+            spec, "submodule_search_locations", None
+        ):
+            spec = importlib.machinery.ModuleSpec(
+                "core", loader=None, is_package=True
+            )
+            spec.submodule_search_locations = search_locations or [core_path_str]
+            core_module.__spec__ = spec  # type: ignore[attr-defined]
+    if llm_path.exists():
+        persona_spec = importlib.util.find_spec("core.llm.persona")
+        if persona_spec is not None and persona_spec.origin:
+            logging.getLogger("sandbox.cognitive").info(
+                "[COGNITIVE] Real persona module linked successfully."
+            )
 
     if "cv2" not in sys.modules:
         cv2_module = types.ModuleType("cv2")
