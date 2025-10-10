@@ -5,10 +5,10 @@ Test script to run the full voice interface (STT -> LLM -> TTS).
 import sys
 from pathlib import Path
 
-# Make sure the core folder is on the import path
-sys.path.append(str(Path(__file__).resolve().parents[1] / "core"))
+# Make sure the Server package root is on the import path
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from mind.interface.voice_interface import ConversationManager
+from interface.VoiceInterface import ConversationManager
 
 
 def main(prompt: str = None) -> None:

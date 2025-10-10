@@ -28,6 +28,10 @@ mind_stub.__path__ = [str(SERVER_ROOT / "mind")]
 sys.modules["mind"] = mind_stub
 importlib.import_module("mind.llama_server_process")
 
+interface_stub = types.ModuleType("interface")
+interface_stub.__path__ = [str(SERVER_ROOT / "interface")]
+sys.modules["interface"] = interface_stub
+
 requests_stub = types.ModuleType("requests")
 
 
@@ -51,8 +55,9 @@ sys.modules.setdefault("requests", requests_stub)
 
 def teardown_module() -> None:
     sys.modules.pop("mind.llama_server_process", None)
-    sys.modules.pop("mind.interface.voice_interface", None)
+    sys.modules.pop("interface.VoiceInterface", None)
     sys.modules.pop("mind", None)
+    sys.modules.pop("interface", None)
     sys.modules.pop("core", None)
 
 def _no_op(*_args, **_kwargs) -> None:
@@ -64,7 +69,7 @@ sys.modules.setdefault("cv2", cv2_stub)
 sys.modules.setdefault("numpy", numpy_stub)
 sys.modules.setdefault("numpy.typing", numpy_typing_stub)
 sys.modules.setdefault("LedController", led_controller_stub)
-sys.modules.setdefault("core.LedController", led_controller_stub)
+sys.modules.setdefault("interface.LedController", led_controller_stub)
 sys.modules.setdefault("sounddevice", sounddevice_stub)
 sys.modules.setdefault("vosk", vosk_stub)
 
@@ -269,7 +274,7 @@ def _build_runtime_with_conversation() -> tuple[
     llama_process = StubLlamaProcess()
     led_handler = StubLedHandler()
 
-    from mind.interface.voice_interface import ConversationManager as _ConversationManager
+    from interface.VoiceInterface import ConversationManager as _ConversationManager
 
     stop_event_ref: Dict[str, threading.Event] = {}
 

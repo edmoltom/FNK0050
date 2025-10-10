@@ -42,7 +42,7 @@ def _build_conversation_process(cfg: Dict[str, Any]) -> Any:
 
 
 def _build_conversation_stt_service(_cfg: Dict[str, Any]) -> Any:
-    from mind.interface.voice_interface import STTService
+    from interface.VoiceInterface import STTService
     from core.hearing.stt import SpeechToText
 
     stt_engine = SpeechToText()
@@ -58,8 +58,8 @@ def _build_conversation_tts(_cfg: Dict[str, Any]) -> Any:
 def _build_conversation_led_handler(
     _cfg: Dict[str, Any]
 ) -> Tuple[Any, Callable[[], None]]:
-    from core.LedController import LedController
-    from mind.interface.voice_interface import LedStateHandler
+    from interface.LedController import LedController
+    from interface.VoiceInterface import LedStateHandler
 
     loop = asyncio.new_event_loop()
     loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
@@ -86,7 +86,7 @@ def _build_conversation_manager_factory() -> Tuple[
     Dict[str, Any],
     Callable[[threading.Event], None],
 ]:
-    from mind.interface.voice_interface import ConversationManager
+    from interface.VoiceInterface import ConversationManager
 
     stop_event_ref: Dict[str, threading.Event] = {}
 

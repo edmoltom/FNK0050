@@ -1,8 +1,10 @@
+"""Interface-level module bridging mind and core layers."""
+
 from __future__ import annotations
 
 import threading
 
-from movement.controller import (
+from core.movement.controller import (
     AttitudeCmd,
     HeadCmd,
     HeadPctCmd,
@@ -15,8 +17,8 @@ from movement.controller import (
     TurnCmd,
     WalkCmd,
 )
-from movement.hardware import Hardware
-from movement.logger import MovementLogger
+from core.movement.hardware import Hardware
+from core.movement.logger import MovementLogger
 
 
 class MovementControl:

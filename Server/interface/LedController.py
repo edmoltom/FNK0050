@@ -1,8 +1,10 @@
+"""Interface-level module bridging mind and core layers."""
+
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
-from led.led import Led
+from core.led.led import Led
 
 
 class LedController:

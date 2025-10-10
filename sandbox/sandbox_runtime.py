@@ -44,7 +44,15 @@ def _install_sandbox_stubs() -> None:
         else:
             sys.modules.setdefault("core", core_module)
 
+    interface_module = sys.modules.get("interface")
+    if interface_module is None:
+        interface_module = types.ModuleType("interface")
+        sys.modules["interface"] = interface_module
+    else:
+        sys.modules.setdefault("interface", interface_module)
+
     core_path = SERVER_ROOT / "core"
+    interface_path = SERVER_ROOT / "interface"
     llm_path = core_path / "llm"
     if core_path.exists():
         search_locations = list(getattr(core_module, "__path__", []))
@@ -74,6 +82,19 @@ def _install_sandbox_stubs() -> None:
                 "[COGNITIVE] Real persona module linked successfully."
             )
 
+    if interface_path.exists():
+        interface_locations = list(getattr(interface_module, "__path__", []))
+        interface_path_str = str(interface_path)
+        if interface_path_str not in interface_locations:
+            interface_locations.append(interface_path_str)
+        if interface_locations:
+            interface_module.__path__ = interface_locations  # type: ignore[attr-defined]
+        if not getattr(interface_module, "__package__", None):
+            interface_module.__package__ = "interface"
+        if not getattr(interface_module, "__file__", None):
+            init_file = interface_path / "__init__.py"
+            interface_module.__file__ = str(init_file)
+
     if "cv2" not in sys.modules:
         cv2_module = types.ModuleType("cv2")
 
@@ -84,8 +105,12 @@ def _install_sandbox_stubs() -> None:
         sys.modules["cv2"] = cv2_module
 
     # Vision stubs ---------------------------------------------------------
-    if "core.VisionManager" not in sys.modules:
-        vm_module = types.ModuleType("core.VisionManager")
+    vm_module = sys.modules.get("interface.VisionManager")
+    if vm_module is None:
+        vm_module = types.ModuleType("interface.VisionManager")
+        sys.modules["interface.VisionManager"] = vm_module
+
+    if not hasattr(vm_module, "VisionManager"):
 
         class _VisionManager:
             def __init__(self, *args, **kwargs) -> None:
@@ -109,8 +134,10 @@ def _install_sandbox_stubs() -> None:
                 return None
 
         vm_module.VisionManager = _VisionManager
-        sys.modules["core.VisionManager"] = vm_module
-        core_module.VisionManager = _VisionManager  # type: ignore[attr-defined]
+
+    sys.modules.setdefault("core.VisionManager", vm_module)
+    interface_module.VisionManager = vm_module.VisionManager  # type: ignore[attr-defined]
+    core_module.VisionManager = vm_module.VisionManager  # type: ignore[attr-defined]
 
     if "core.vision.profile_manager" not in sys.modules:
         pm_module = types.ModuleType("core.vision.profile_manager")
@@ -158,8 +185,12 @@ def _install_sandbox_stubs() -> None:
     core_module.vision = vision_pkg  # type: ignore[attr-defined]
 
     # Movement stubs -------------------------------------------------------
-    if "core.MovementControl" not in sys.modules:
-        movement_module = types.ModuleType("core.MovementControl")
+    movement_module = sys.modules.get("interface.MovementControl")
+    if movement_module is None:
+        movement_module = types.ModuleType("interface.MovementControl")
+        sys.modules["interface.MovementControl"] = movement_module
+
+    if not hasattr(movement_module, "MovementControl"):
 
         class MovementControl:  # pragma: no cover - stub
             def start_loop(self) -> None:
@@ -178,7 +209,10 @@ def _install_sandbox_stubs() -> None:
                 return None
 
         movement_module.MovementControl = MovementControl
-        sys.modules["core.MovementControl"] = movement_module
+
+    sys.modules.setdefault("core.MovementControl", movement_module)
+    interface_module.MovementControl = movement_module.MovementControl  # type: ignore[attr-defined]
+    core_module.MovementControl = movement_module.MovementControl  # type: ignore[attr-defined]
 
     # Audio stubs ----------------------------------------------------------
     if "core.voice.sfx" not in sys.modules:
