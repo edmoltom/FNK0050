@@ -1,5 +1,15 @@
 # Aplicación del servidor
 
+*Part of the FNK0050 Lumo architecture.*
+
+**Purpose:**  
+Coordinar el runtime y los servicios cognitivos, garantizando que las órdenes fluyan hacia las capas de `mind/`, `interface/` y `core/` en ese orden.
+
+**Hierarchy:**  
+app → mind → interface → core
+
+**Updated:** 2025-10-10
+
 La carpeta `Server/app` orquesta la ejecución del runtime que combina visión artificial, control de movimiento y difusión opcional por WebSocket. Los archivos principales son:
 
 * `application.py`: punto de entrada que prepara el registro, construye los servicios y arranca el runtime principal.
@@ -41,7 +51,7 @@ El fichero `config/app.json` ofrece un ejemplo completo: activa todos los subsis
 
 ## Relación con controladores y servicios
 
-El runtime delega las decisiones de seguimiento y socialización al módulo `controllers` y utiliza los adaptadores de `services` para hablar con las capas de `core`. La documentación detallada de ambos se encuentra en archivos separados dentro de esta misma carpeta.
+El runtime delega las decisiones de seguimiento y socialización al módulo `controllers` y utiliza los adaptadores de `services` para hablar con la capa `interface/` (por ejemplo, `MovementControl`, `VisionManager`, `VoiceInterface` y `LedController`), que es la responsable de mediar con `core`. La documentación detallada de ambos se encuentra en archivos separados dentro de esta misma carpeta.
 
 ---
 
@@ -89,3 +99,8 @@ El resultado es un sistema más comprensible: basta con leer `_coordinate_behavi
 A largo plazo, esta arquitectura facilita añadir nuevas “máquinas de estado” o comportamientos (exploración, emociones, aprendizaje) sin romper los subsistemas existentes.
 
 ---
+**See also:**
+- [App Layer](../app/app.md)
+- [Mind Layer](../mind/mind.md)
+- [Interface Layer](../interface/interface.md)
+- [Core Layer](../core/core.md)
