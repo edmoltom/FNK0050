@@ -3,6 +3,7 @@ import logging
 from mind.persona import build_system
 from mind.llm_client import DEFAULT_BASE_URL, LlamaClient
 from mind.llm_memory import MemoryManager
+from mind.proprioception.body_model import BodyModel
 
 logger = logging.getLogger(__name__)
 
@@ -29,16 +30,19 @@ class MindContext:
             model=llm_cfg.get("model", "local-llm"),
         )
         self.memory = MemoryManager()
+        self.body = BodyModel()
         logger.info("[COGNITIVE] Persona loaded successfully.")
         logger.info(
             "[MIND] LlamaClient initialized for %s (model=%s)",
             self.llm.base_url,
             getattr(self.llm, "model", "unknown"),
         )
+        logger.info("[MIND] BodyModel initialized (proprioception active).")
 
     def summary(self):
         return {
             "persona": type(self.persona).__name__,
             "llm": type(self.llm).__name__,
             "memory": type(self.memory).__name__,
+            "body": self.body.summary(),
         }
