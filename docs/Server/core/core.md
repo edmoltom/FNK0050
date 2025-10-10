@@ -1,15 +1,25 @@
 # Núcleo del servidor (`Server/core`)
 
-El paquete `core` reúne todos los subsistemas de bajo nivel del robot: control de movimiento, visión artificial, síntesis y reconocimiento de voz, integración con modelos de lenguaje, sensorización y utilidades de hardware como los LEDs. La aplicación de alto nivel (`Server/app`) consume estos componentes a través de las clases fachada `MovementControl`, `VisionManager`, `VoiceInterface` y `LedController`.
+*Part of the FNK0050 Lumo architecture.*
+
+**Purpose:**  
+Proporcionar controladores y utilidades de hardware de bajo nivel que ahora son consumidos a través de la capa `interface/`.
+
+**Hierarchy:**  
+app → mind → interface → core
+
+**Updated:** 2025-10-10
+
+El paquete `core` reúne todos los subsistemas de bajo nivel del robot: control de movimiento, visión artificial, síntesis y reconocimiento de voz, integración con modelos de lenguaje, sensorización y utilidades de hardware como los LEDs. Las fachadas de alto nivel (`MovementControl`, `VisionManager`, `VoiceInterface` y `LedController`) se han trasladado a `Server/interface`, de modo que la aplicación (`Server/app`) y la capa cognitiva (`Server/mind`) consumen `core` exclusivamente a través de esa mediación.
 
 ## Mapa rápido de módulos
 
 | Archivo/Paquete | Propósito principal |
 | --- | --- |
-| `MovementControl.py` | Fachada síncrona para poner en marcha el controlador de locomoción basado en colas. |
-| `VisionManager.py` | Gestión de cámara, pipelines y streaming de detecciones. |
-| `VoiceInterface.py` | Orquestación completa STT → LLM → TTS con estados de conversación y feedback por LEDs. |
-| `LedController.py` | Envoltura asíncrona sobre `led/led.py` para lanzar animaciones sin bloquear el bucle principal. |
+| `interface/MovementControl.py` | Fachada síncrona para poner en marcha el controlador de locomoción basado en colas; delega en `core/movement`. |
+| `interface/VisionManager.py` | Gestión de cámara, pipelines y streaming de detecciones exponiendo un API estable para `mind/` y `app/`. |
+| `interface/VoiceInterface.py` | Orquestación completa STT → LLM → TTS con estados de conversación y feedback por LEDs, ahora como puente entre mente y hardware. |
+| `interface/LedController.py` | Envoltura asíncrona sobre `core/led/led.py` para lanzar animaciones sin bloquear el bucle principal. |
 | `movement/` | Implementación completa del controlador: cinemática, CPG, hardware PCA9685, gestos y logging. |
 | `vision/` | Pipelines de visión, detectores, perfiles y utilidades para registrar o superponer resultados. |
 | `voice/` | Reproductor de efectos (`sfx.py`) y síntesis vía Piper+SoX (`tts.py`). |
@@ -25,7 +35,7 @@ A continuación se detalla cada bloque.
 ## Movimiento (`movement/`)
 
 ### `MovementControl` y `MovementController`
-- `MovementControl` ofrece un API sencillo (`walk`, `turn`, `step`, `head_deg`, `gesture`, etc.) que encola comandos en el `MovementController` subyacente.
+- `MovementControl` (ahora ubicado en `Server/interface/MovementControl.py`) ofrece un API sencillo (`walk`, `turn`, `step`, `head_deg`, `gesture`, etc.) que encola comandos en el `MovementController` subyacente.
 - `MovementController` consume la cola, gestiona el estado de locomoción y aplica órdenes al hardware:
   - Mantiene un punto objetivo para cada pata (`point[leg][x|y|z]`) y, tras validar que está dentro de los límites, lo convierte en ángulos con `kinematics.coordinate_to_angle`.
   - Permite comandos continuos (`WalkCmd`, `TurnCmd`) y discretos (`StepCmd`) ajustando un generador de patrones centrales (`GaitRunner`/`CPG`).
@@ -54,7 +64,7 @@ A continuación se detalla cada bloque.
 ## Visión (`vision/`)
 
 ### `VisionManager`
-- Envuelve una `Camera` (Picamera2 opcional) y gestiona streaming en segundo plano con `CameraWorker`.
+- `VisionManager` se ha movido a `Server/interface/VisionManager.py`: envuelve una `Camera` (Picamera2 opcional) y gestiona streaming en segundo plano con `CameraWorker`.
 - Permite registrar pipelines (`register_pipeline`), seleccionar modo (`select_pipeline`), fijar ROI dinámico y recuperar el último frame procesado en base64 (`get_last_processed_encoded`, `snapshot`).
 - Durante el streaming:
   - Restringe los FPS según `camera_fps` (configurable).
@@ -98,8 +108,8 @@ A continuación se detalla cada bloque.
 - `llm_to_tts.py` reutiliza `TextToSpeech` para convertir un prompt único en audio (útil en scripts o tests).
 - `start_llama_server.py` lanza el servidor `llama.cpp` con parámetros adecuados para Raspberry Pi (modelo Qwen 0.5B quantizado).
 
-### `VoiceInterface.py`
-- Construye `TextToSpeech`, `SpeechToText`, `LedController` y una memoria conversacional global.
+### `interface/VoiceInterface.py`
+- La interfaz de voz reside ahora en `Server/interface/VoiceInterface.py`: construye `TextToSpeech`, `SpeechToText`, `LedController` y una memoria conversacional global.
 - Gestiona estados `WAKE → ATTENTIVE_LISTEN → THINK → SPEAK` con tiempo de atención configurable y cooldown tras hablar.
 - Detecta palabras de activación (`WAKE_WORDS`), pausa el STT durante la generación de respuesta, consulta el LLM (`llm_ask`) y reproduce la salida con TTS (`tts_say`).
 - Controla LEDs según el estado (`wake`, `listen`, `processing`, `speaking`) usando corrutinas en el bucle de evento propio (`asyncio`).
@@ -119,10 +129,10 @@ A continuación se detalla cada bloque.
 - `tick_gait(phase_deg, step_length)` integra desplazamientos en cada evento de zancada (cambia de signo el seno).
 - `zupt(is_stance, gyro_z_dps)` implementa una regla de “Zero Velocity Update” cuando la pata está en apoyo y el giro es pequeño.
 
-### LEDs (`LedController.py` y `led/`)
+### LEDs (`interface/LedController.py` y `led/`)
 - `led/led.py` controla la tira SPI de 8 LEDs (ajustable) con métodos como `set_all`, `colorWipe`, `rainbow`, `off`.
 - `led/spi_ledpixel.py` es el driver directo (`spidev` + `numpy`) que convierte colores a los timings WS2812 compatibles con la PCB v2.
-- `LedController` encapsula el acceso en un contexto asíncrono: encola comandos, permite animaciones (`start_pulsed_wipe`, `rainbow`, etc.) y garantiza cierre limpio (`close()`).
+- `LedController` ahora vive en `Server/interface/LedController.py` y encapsula el acceso en un contexto asíncrono: encola comandos, permite animaciones (`start_pulsed_wipe`, `rainbow`, etc.) y garantiza cierre limpio (`close()`).
 
 ---
 
@@ -155,6 +165,13 @@ Recuerda revisar `Server/lib` y `Server/network` si necesitas detalles adicional
 1. `AppServices` crea una instancia de `MovementControl`, `VisionService` (que a su vez envuelve a `VisionManager`) y `SocialFSM`.
 2. El runtime lanza el hilo de movimiento (`MovementController.start_loop`), inicia el streaming de visión (`VisionManager.start_stream`) y registra callbacks de seguimiento (controladores en `Server/app/controllers`).
 3. El servicio WebSocket opcional expone `VisionManager.snapshot`/`get_last_processed_encoded` y mapea comandos a los métodos de `MovementControl`.
-4. Para experiencias conversacionales, scripts como `test_voice_interface.py` o `run.py` cargan `VoiceInterface.ConversationManager`.
+4. Para experiencias conversacionales, scripts como `test_voice_interface.py` o `run.py` cargan `interface.VoiceInterface.ConversationManager`.
 
 Este documento debería servir como referencia rápida para entender qué hace cada pieza del núcleo y cómo se relaciona con el resto del proyecto.
+
+---
+**See also:**
+- [App Layer](../app/app.md)
+- [Mind Layer](../mind/mind.md)
+- [Interface Layer](../interface/interface.md)
+- [Core Layer](../core/core.md)
