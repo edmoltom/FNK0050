@@ -3,14 +3,8 @@ from pathlib import Path
 import time
 import pytest
 
-# Ensure the proprioception package is importable when running tests directly.
-PROPRIO_ROOT = Path(__file__).resolve().parents[1]
-if str(PROPRIO_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROPRIO_ROOT))
-
-from proprioception.body_model import BodyModel
-from proprioception.sensor_bus import SensorBus
-
+from mind.proprioception.body_model import BodyModel
+from mind.proprioception.sensor_bus import SensorBus
 
 def test_sensorbus_odometry_update():
     """Verify that SensorBus updates BodyModel correctly from odometry packets."""
