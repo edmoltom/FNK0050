@@ -2,8 +2,8 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 import logging
 
-from core.MovementControl import MovementControl
-from core.VisionManager import VisionManager
+from interface.MovementControl import MovementControl
+from interface.VisionManager import VisionManager
 
 from .tracker import ObjectTracker
 

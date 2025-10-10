@@ -3,7 +3,7 @@ from typing import Optional, Callable, Dict, Any
 
 import cv2
 
-from core.VisionManager import VisionManager
+from interface.VisionManager import VisionManager
 import core.vision.profile_manager as pm
 from core.vision import api
 from core.vision.pipeline.face_pipeline import FacePipeline

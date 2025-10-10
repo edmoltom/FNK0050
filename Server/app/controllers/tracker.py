@@ -8,8 +8,8 @@ import logging
 
 from control.pid import Incremental_PID
 
-from core.MovementControl import MovementControl
-from core.VisionManager import VisionManager
+from interface.MovementControl import MovementControl
+from interface.VisionManager import VisionManager
 
 
 def _clamp(value: float, mn: float, mx: float) -> float:

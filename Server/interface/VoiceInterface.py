@@ -1,3 +1,5 @@
+"""Interface-level module bridging mind and core layers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +11,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any, Optional, Callable
 
-from LedController import LedController
+from .LedController import LedController
 from core.hearing.stt import SpeechToText
 from core.voice.tts import TextToSpeech
 from mind.llm_client import LlamaClient, build_default_client

@@ -1,3 +1,5 @@
+"""Interface-level module bridging mind and core layers."""
+
 import base64
 import threading
 import time
@@ -6,14 +8,14 @@ from typing import Optional, TYPE_CHECKING, Callable, Tuple
 
 import cv2
 
-from .vision import api
-from .vision.camera import Camera, CameraCaptureError
-from .vision.camera_worker import CameraWorker
-from .vision.overlays import draw_result, _get_reference_resolution
-from .vision.profile_manager import get_config
+from core.vision import api
+from core.vision.camera import Camera, CameraCaptureError
+from core.vision.camera_worker import CameraWorker
+from core.vision.overlays import draw_result, _get_reference_resolution
+from core.vision.profile_manager import get_config
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers only
-    from .vision.viz_logger import VisionLogger
+    from core.vision.viz_logger import VisionLogger
 
 
 class VisionManager:

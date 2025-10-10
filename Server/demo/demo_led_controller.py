@@ -2,8 +2,8 @@ import asyncio
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core'))
-from LedController import LedController
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+from interface.LedController import LedController
 
 async def test_led_no_block():
     ctrl = LedController(brightness=30)
