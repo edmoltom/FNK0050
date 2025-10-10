@@ -1,25 +1,34 @@
-# Proprioception Subsystem
+# Proprioception Module
 
-Lumo's proprioception subsystem models the robot's spatial self-awareness. It
-fuses predictions from odometry with observations from physical sensors to
-maintain an internal estimate of the body pose. The resulting body model is
-accessible from the broader mind stack, enabling cognitive components to reason
-about movement, balance, and situational context.
+This directory implements Lumo’s internal body awareness system.
 
-## Interfaces
+## Components
 
-- **Sensor inputs** — Future components will connect to `core.sensing` to ingest
-  odometry, ultrasonic, and IMU data streams.
-- **Mind integrations** — `MindContext` and `BehaviorManager` will use the body
-  model to ground reasoning and decision making in the robot's physical state.
+- **BodyModel**: Tracks Lumo’s internal pose `(x, y, θ, v, w, confidence)`.
+- **SensorBus**: Mediates sensory data from the physical layer (`core/sensing`)
+  and updates the BodyModel accordingly.
 
-## Roadmap
+## Typical Flow
 
-The initial `BodyModel` class provides the storage and summary scaffolding for
-Lumo's internal pose. Upcoming work will add:
+1. A sensor in `core/sensing` sends a packet:
+   ```python
+   packet = {
+       "sensor": "odometry",
+       "type": "relative",
+       "data": {"dx": 0.02, "dy": 0.0, "dtheta": 0.01},
+       "confidence": 0.95
+   }
+   ```
+   The application calls:
 
-- Sensor fusion algorithms that blend odometry with distance and inertial
-  corrections.
-- Confidence estimation to quantify localization certainty.
-- Deeper integration with behavior and motivation systems so actions can adapt
-  to the robot's perceived body dynamics.
+   ```python
+   mind.sensor_bus.receive(packet)
+   ```
+
+   The SensorBus routes the update to BodyModel, adjusting the internal pose and confidence.
+
+## Future Extensions
+
+- Sensor fusion (Kalman / Complementary filters)
+- Environment mapping
+- Simulation and sandbox testing
