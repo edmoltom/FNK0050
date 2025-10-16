@@ -13,6 +13,8 @@ from mind import initialize_mind
 from .builder import AppServices
 from app.controllers.behavior_manager import BehaviorManager
 from network import ws_server
+from interface.sensor_controller import SensorController
+from interface.sensor_gateway import SensorGateway
 
 
 logger = logging.getLogger(__name__)
@@ -102,6 +104,16 @@ class AppRuntime:
         with self._stop_lock:
             self._stop_completed = False
         self._running = True
+
+        if not hasattr(self, "sensor_controller"):
+            self.sensor_controller = SensorController()
+        if not hasattr(self, "sensor_gateway"):
+            self.sensor_gateway = SensorGateway(
+                controller=self.sensor_controller,
+                sensor_bus=self.mind.sensor_bus,
+                poll_rate_hz=10.0,
+            )
+        self.sensor_gateway.start()
 
         vision = self.svcs.vision if self.svcs.vision else None
         movement = self.svcs.movement if self.svcs.movement else None
@@ -198,6 +210,12 @@ class AppRuntime:
 
             try:
                 conversation.join()
+            except Exception:
+                pass
+
+        if hasattr(self, "sensor_gateway"):
+            try:
+                self.sensor_gateway.stop()
             except Exception:
                 pass
 
