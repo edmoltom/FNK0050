@@ -1,20 +1,8 @@
-"""High level movement controller.
-
-The module implements the orchestration layer described in the project
-README::
-
-    MovementControl -> queue -> controller -> gait_runner/kinematics/posture -> hardware
-
-``MovementControl`` is a light façade used by the network layer.  It
-simply enqueues commands which are then consumed by
-:class:`MovementController`.  The controller translates these commands
-into leg positions through the :mod:`gait_runner`,
-:mod:`kinematics` and :mod:`posture` helpers before finally sending the
-resulting angles to the :mod:`hardware` abstraction.
-"""
+"""High level movement controller dedicated to actuation."""
 from __future__ import annotations
 
 import time
+import logging
 from dataclasses import dataclass
 from queue import Empty, Queue
 from typing import Any, Optional, Union
@@ -23,9 +11,11 @@ from pathlib import Path
 from . import kinematics, posture, data
 from .gait_runner import GaitRunner
 from .hardware import Hardware
-from .logger import MovementLogger
 from .gestures import GesturePlayer, load_sequence_json, Keyframe
 from copy import deepcopy
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -111,10 +101,7 @@ class MovementController:
         self,
         hardware: Optional[Hardware] = None,
         gait: Optional[Any] = None,
-        logger: Optional[MovementLogger] = None,
         *,
-        imu: Optional[Any] = None,
-        odom: Optional[Any] = None,
         config: Optional[dict] = None,
     ) -> None:
         """Create a new movement controller.
@@ -127,16 +114,10 @@ class MovementController:
         gait:
             Optional CPG or gait runner to drive the legs.  Defaults to the
             CPG embedded in ``hardware``.
-        logger:
-            Optional movement logger instance.
-        imu, odom:
-            Optional IMU and odometry instances forwarded to
-            :class:`Hardware` when it needs to construct its own bundle.
         """
-        self.hardware = hardware or Hardware(imu=imu, odom=odom)
+        self.hardware = hardware or Hardware()
         self.gait = GaitRunner(gait or self.hardware.cpg)
         self.cpg = self.gait.cpg
-        self.logger = logger or MovementLogger()
         self.config = config or {}
         self.head_channel = int(self.config.get("head_channel", 15))
         self.head_min_deg = float(self.config.get("head_min_deg", 20.0))
@@ -159,6 +140,7 @@ class MovementController:
         # when passed the controller instance. Custom gestures can be provided
         # via JSON files under ``gestures/`` and are loaded on-demand.
         self._gesture_builders = {}
+        logger.info("[MOVEMENT] Controller initialized (actuation only).")
 
     # ------------------------------------------------------------------
     def setup_state(self) -> None:
@@ -215,8 +197,6 @@ class MovementController:
             try:
                 self.update_angles_from_points()
                 self.hardware.apply_angles(self.angle)
-                if self.logger.active:
-                    self.logger.log_state(time.time(), self.hardware.imu, self.point, self.hardware.odom)
             except Exception as e:
                 print("Exception during run():", e)
         else:
