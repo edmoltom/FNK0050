@@ -18,7 +18,6 @@ from core.movement.controller import (
     WalkCmd,
 )
 from core.movement.hardware import Hardware
-from core.movement.logger import MovementLogger
 
 
 class MovementControl:
@@ -27,16 +26,12 @@ class MovementControl:
     def __init__(
         self,
         hardware: Hardware | None = None,
-        logger: MovementLogger | None = None,
         *,
-        imu: object | None = None,
-        odom: object | None = None,
+        config: dict | None = None,
     ) -> None:
         self.controller = MovementController(
             hardware=hardware,
-            logger=logger,
-            imu=imu,
-            odom=odom,
+            config=config,
         )
 
     def walk(self, vx: float, vy: float, omega: float) -> None:
