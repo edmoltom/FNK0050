@@ -41,7 +41,6 @@ for relative in ("app", "core", "lib", "network"):
 from interface.sensor_controller import SensorController
 from interface.sensor_gateway import SensorGateway
 from mind.proprioception.body_model import BodyModel
-from mind.proprioception.sensor_bus import SensorBus
 
 
 def _install_sandbox_stubs() -> None:
@@ -913,13 +912,16 @@ def main() -> None:
         logger.info("[SANDBOX] Enabling proprioception simulation (mock-only)")
 
         body = BodyModel()
-        bus = SensorBus(body)
 
         controller = SensorController()
         controller.imu = MockIMU()
         controller.odom = MockOdometry()
 
-        gateway = SensorGateway(controller, bus, poll_rate_hz=5.0)
+        gateway = SensorGateway(
+            controller=controller,
+            body_model=body,
+            poll_rate_hz=5.0,
+        )
         gateway.start()
         logger.info("[SANDBOX] Proprioceptive sensors active (mock mode)")
     else:

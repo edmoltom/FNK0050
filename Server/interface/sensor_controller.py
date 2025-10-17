@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class SensorController:
-    """Manages physical sensors (IMU, Odometry) and exposes structured packets for SensorBus."""
+    """Manages physical sensors (IMU, Odometry) and exposes structured packets."""
 
     def __init__(self):
         self.imu = IMU()
@@ -15,7 +15,7 @@ class SensorController:
         logger.info("[SENSORS] Controller initialized with IMU and Odometry")
 
     def get_imu_packet(self) -> dict:
-        """Return latest IMU reading formatted for SensorBus."""
+        """Return latest IMU reading formatted for the proprioceptive pipeline."""
         pitch, roll, yaw, ax, ay, az = self.imu.update_imu()
         return {
             "sensor": "imu",
@@ -26,7 +26,7 @@ class SensorController:
         }
 
     def get_odometry_packet(self) -> dict:
-        """Return latest Odometry reading formatted for SensorBus."""
+        """Return latest Odometry reading formatted for the proprioceptive pipeline."""
         return {
             "sensor": "odometry",
             "timestamp": time.time(),
