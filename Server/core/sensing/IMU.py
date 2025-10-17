@@ -1,6 +1,37 @@
+import logging
 import math
+
 from filters.kalman import KalmanFilter
-from mpu6050 import mpu6050
+
+logger = logging.getLogger(__name__)
+
+try:
+    from mpu6050 import mpu6050  # type: ignore
+    HAS_MPU6050 = True
+except Exception as e:  # pragma: no cover - defensive import guard
+    HAS_MPU6050 = False
+    logger.warning(
+        f"[IMU] Hardware driver not found ({e}); using dummy MPU6050 driver."
+    )
+
+    class mpu6050:  # type: ignore
+        ACCEL_RANGE_2G = 0
+        GYRO_RANGE_250DEG = 0
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def set_accel_range(self, *args, **kwargs):
+            return None
+
+        def set_gyro_range(self, *args, **kwargs):
+            return None
+
+        def get_accel_data(self):
+            return {"x": 0.0, "y": 0.0, "z": 9.81}
+
+        def get_gyro_data(self):
+            return {"x": 0.0, "y": 0.0, "z": 0.0}
 
 
 class IMU:
