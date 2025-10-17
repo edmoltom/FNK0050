@@ -5,7 +5,7 @@ import logging
 from interface.MovementControl import MovementControl
 from interface.VisionManager import VisionManager
 
-from .tracker import ObjectTracker
+from app.controllers.tracker import ObjectTracker
 
 
 class FaceTracker:

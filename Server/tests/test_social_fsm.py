@@ -132,7 +132,7 @@ class _StubPID:  # pragma: no cover - test stub
 control_pid_module.Incremental_PID = _StubPID
 sys.modules.setdefault("control.pid", control_pid_module)
 
-from app.controllers import social_fsm
+from mind.behavior import social_fsm
 
 
 class _DummyTracker:
