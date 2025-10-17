@@ -11,7 +11,6 @@ import importlib.machinery
 import importlib.util
 import json
 import logging
-import platform
 import sys
 import threading
 import time
@@ -908,20 +907,21 @@ def main() -> None:
 
     gateway: Optional[SensorGateway] = None
     config = _load_sandbox_config(Path(__file__).with_name("sandbox_config.json"))
+
+    # --- SANDBOX PROPRIOCEPTION (mock-only) ---
     if config.get("enable_proprioception", False):
-        logger.info("[SANDBOX] Enabling proprioception simulation")
-        if platform.system().lower().startswith("linux") and "raspberry" in platform.platform().lower():
-            logger.warning(
-                "[SANDBOX] Running on Raspberry Pi – ignoring real sensors; mock mode enforced."
-            )
+        logger.info("[SANDBOX] Enabling proprioception simulation (mock-only)")
+
         body = BodyModel()
         bus = SensorBus(body)
+
         controller = SensorController()
         controller.imu = MockIMU()
         controller.odom = MockOdometry()
+
         gateway = SensorGateway(controller, bus, poll_rate_hz=5.0)
         gateway.start()
-        logger.info("[SANDBOX] Proprioceptive sensors active (mock mode only)")
+        logger.info("[SANDBOX] Proprioceptive sensors active (mock mode)")
     else:
         logger.info("[SANDBOX] Proprioception disabled")
 
@@ -931,11 +931,11 @@ def main() -> None:
         pass
     finally:
         runtime.stop()
-        if gateway is not None:
-            try:
+        try:
+            if "gateway" in locals() and gateway:
                 gateway.stop()
-            except Exception:
-                pass
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
