@@ -5,9 +5,10 @@ import time
 import random
 from pathlib import Path
 
-from .face_tracker import FaceTracker
-from ..services.movement_service import MovementService
-from ..services.vision_service import VisionService
+from mind.perception.face_tracker import FaceTracker
+
+from app.services.movement_service import MovementService
+from app.services.vision_service import VisionService
 from core.voice.sfx import play_sound
 
 

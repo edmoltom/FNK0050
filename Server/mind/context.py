@@ -3,13 +3,21 @@ import logging
 from mind.persona import build_system
 from mind.llm_client import DEFAULT_BASE_URL, LlamaClient
 from mind.llm_memory import MemoryManager
-from mind.proprioception.body_model import BodyModel
+from mind.supervisor import MindSupervisor
 
 logger = logging.getLogger(__name__)
 
 
 class MindContext:
-    def __init__(self, config):
+    def __init__(
+        self,
+        config,
+        *,
+        vision=None,
+        voice=None,
+        movement=None,
+        social=None,
+    ):
         self.persona = build_system()
 
         llm_cfg = {}
@@ -30,14 +38,24 @@ class MindContext:
             model=llm_cfg.get("model", "local-llm"),
         )
         self.memory = MemoryManager()
-        self.body = BodyModel()
+        self.vision = vision
+        self.voice = voice
+        self.movement = movement
+        self.social = social
+        self.supervisor = MindSupervisor(
+            vision=self.vision,
+            voice=self.voice,
+            movement=self.movement,
+            social=self.social,
+        )
+        self.body = self.supervisor.body
         logger.info("[COGNITIVE] Persona loaded successfully.")
         logger.info(
             "[MIND] LlamaClient initialized for %s (model=%s)",
             self.llm.base_url,
             getattr(self.llm, "model", "unknown"),
         )
-        logger.info("[MIND] BodyModel initialized (proprioception active).")
+        logger.info("[MIND] MindSupervisor attached.")
 
     def summary(self):
         return {
@@ -46,3 +64,29 @@ class MindContext:
             "memory": type(self.memory).__name__,
             "body": self.body.summary(),
         }
+
+    def attach_interfaces(
+        self,
+        *,
+        vision=None,
+        voice=None,
+        movement=None,
+        social=None,
+    ) -> None:
+        """Update runtime interfaces and refresh the supervisor wiring."""
+
+        if vision is not None:
+            self.vision = vision
+        if voice is not None:
+            self.voice = voice
+        if movement is not None:
+            self.movement = movement
+        if social is not None:
+            self.social = social
+
+        self.supervisor.attach_interfaces(
+            vision=self.vision,
+            voice=self.voice,
+            movement=self.movement,
+            social=self.social,
+        )

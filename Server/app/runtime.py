@@ -11,7 +11,6 @@ from typing import Any, Callable, Dict, Optional
 from mind import initialize_mind
 
 from .builder import AppServices
-from app.controllers.behavior_manager import BehaviorManager
 from network import ws_server
 from interface.sensor_controller import SensorController
 from interface.sensor_gateway import SensorGateway
@@ -28,7 +27,13 @@ class AppRuntime:
         logger.info("[BOOT] Initializing Lumo core systems...")
         app_config = getattr(services, "cfg", {}) or {}
         logger.info("[BOOT] Mind module detected — linking cognition.")
-        self.mind = initialize_mind(app_config)
+        self.mind = initialize_mind(
+            app_config,
+            vision=services.vision,
+            voice=services.conversation,
+            movement=services.movement,
+            social=services.fsm,
+        )
         logger.info("[READY] Lumo body and mind synchronized.")
         self._latest_detection: Dict[str, Any] = {}
         self._frame_handler: Optional[Callable[[Dict[str, Any] | None], None]] = None
@@ -62,10 +67,12 @@ class AppRuntime:
             dt = now - prev_time
             prev_time = now
 
-            if self.svcs.fsm:
-                self.svcs.fsm.on_frame(result or {}, dt)
+            fsm = self.mind.supervisor.social or self.svcs.fsm
+            if fsm:
+                fsm.on_frame(result or {}, dt)
 
             self._store_latest_detection(result)
+            self.mind.supervisor.update()
 
         self._frame_handler = _handle
 
@@ -120,6 +127,14 @@ class AppRuntime:
         conversation = self.svcs.conversation if self.svcs.conversation else None
         social_fsm = self.svcs.fsm if self.svcs.fsm else None
 
+        self.mind.attach_interfaces(
+            vision=vision,
+            voice=conversation,
+            movement=movement,
+            social=social_fsm,
+        )
+        self.mind.supervisor.update()
+
         led = None
         if conversation and hasattr(conversation, "_led_controller"):
             led = conversation._led_controller
@@ -130,9 +145,6 @@ class AppRuntime:
         if movement and self.svcs.enable_movement:
             movement.start()
             movement.relax()
-
-        self.behavior = BehaviorManager(vision, movement, conversation, social_fsm)
-        self.behavior.start()
 
         frame_handler = None
         if vision and self.svcs.enable_vision:
@@ -172,13 +184,13 @@ class AppRuntime:
                 self._start_ws_server(vision, host=host, port=port)
                 try:
                     while not self._shutdown_event.wait(timeout=0.5):
-                        pass
+                        self.mind.supervisor.update()
                 except KeyboardInterrupt:
                     pass
             elif vision_started:
                 try:
                     while not self._shutdown_event.wait(timeout=1.0):
-                        pass
+                        self.mind.supervisor.update()
                 except KeyboardInterrupt:
                     pass
         finally:
