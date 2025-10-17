@@ -69,3 +69,11 @@ class MockMovementService(IMovementController):
 
     def start_loop(self):
         self.mc.start_loop()
+
+    def start(self):
+        """
+        Compatibility method for MovementControl.start() in sandbox mode.
+        Simulates starting the movement loop without real hardware.
+        """
+        logger.info("[MOCK] start() called – simulated movement loop starting.")
+        self.mc.start_loop()
