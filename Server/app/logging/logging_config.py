@@ -2,8 +2,8 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+import sys
 
-# Default path for configuration file
 CONFIG_PATH = Path(__file__).resolve().parent / "logging_config.json"
 
 def setup_logging(config_path: Path = CONFIG_PATH):
@@ -22,16 +22,26 @@ def setup_logging(config_path: Path = CONFIG_PATH):
     fmt = root_cfg.get("format", "%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
     max_bytes = root_cfg.get("max_bytes", 1048576)
     backup_count = root_cfg.get("backup_count", 3)
+    echo_to_console = bool(root_cfg.get("echo_to_console", False))
+
+    # File handler (always active)
+    handlers = [
+        RotatingFileHandler(log_file, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8")
+    ]
+
+    # Optional console handler (for debug runs)
+    if echo_to_console:
+        handlers.append(logging.StreamHandler(sys.stdout))
 
     # Configure root logger
-    logging.basicConfig(
-        level=root_level,
-        format=fmt,
-        handlers=[
-            RotatingFileHandler(log_file, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"),
-            logging.StreamHandler()
-        ]
-    )
+    logging.basicConfig(level=root_level, format=fmt, handlers=handlers)
+    root_logger = logging.getLogger()
+
+    # Always ensure CRITICAL and exception messages go to console
+    console_handler = logging.StreamHandler(sys.stderr)
+    console_handler.setLevel(logging.CRITICAL)
+    console_handler.setFormatter(logging.Formatter(fmt))
+    root_logger.addHandler(console_handler)
 
     # --- Module-level configuration ---
     modules = config.get("modules", {})
@@ -43,6 +53,7 @@ def setup_logging(config_path: Path = CONFIG_PATH):
 
         if level_upper == "NONE":
             logger.disabled = True
+            logger.propagate = False
             log_summary.append(f"{name}: DISABLED")
             continue
 
@@ -55,10 +66,9 @@ def setup_logging(config_path: Path = CONFIG_PATH):
             log_summary.append(f"{name}: INVALID ({level_upper}) → default=INFO")
             logging.warning(f"[LOGGING] Invalid level '{level}' for module '{name}'")
 
-    # Log summary at startup
+    # Startup summary
+    logging.info(f"[LOGGING] Configuration loaded from {config_path}")
     if log_summary:
         logging.info("[LOGGING] Module log levels:")
         for entry in log_summary:
             logging.info(f"    - {entry}")
-
-    logging.info(f"[LOGGING] Configuration loaded from {config_path}")
