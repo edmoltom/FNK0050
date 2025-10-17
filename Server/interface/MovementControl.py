@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import threading
+
+from interface.base.movement_interface import IMovementController
 
 from core.movement.controller import (
     AttitudeCmd,
@@ -20,7 +23,10 @@ from core.movement.controller import (
 from core.movement.hardware import Hardware
 
 
-class MovementControl:
+logger = logging.getLogger(__name__)
+
+
+class MovementControl(IMovementController):
     """High-level façade queuing movement commands."""
 
     def __init__(
@@ -33,6 +39,7 @@ class MovementControl:
             hardware=hardware,
             config=config,
         )
+        logger.info(f"[MOVEMENT] Controller initialized ({self.__class__.__name__})")
 
     def walk(self, vx: float, vy: float, omega: float) -> None:
         """\brief Request continuous walking velocity.
@@ -103,6 +110,18 @@ class MovementControl:
         """\brief Center the head using :class:`HeadPctCmd`."""
         self.controller.queue.put(HeadPctCmd(50.0, 0))
 
+    def move_head(self, x_deg: float, y_deg: float) -> None:
+        """Move the head to the requested yaw/pitch in degrees.
+
+        The underlying hardware currently only supports yaw control, so the
+        pitch value is logged for observability and otherwise ignored.
+        """
+        if y_deg:
+            logger.debug(
+                "[MOVEMENT] Pitch input %.2f° ignored; hardware yaw-only.", y_deg
+            )
+        self.head_deg(x_deg)
+
     def stop(self) -> None:
         """\brief Stop any ongoing motion."""
         self.controller.queue.put(StopCmd())
@@ -116,10 +135,10 @@ class MovementControl:
         self.controller.queue.put(GestureCmd(name=name))
 
     @property
-    def head_limits(self) -> tuple[float, float, float]:
+    def head_limits(self) -> list[float]:
         """Expose head min, max, and center angles from the internal controller."""
         c = self.controller
-        return c.head_min_deg, c.head_max_deg, c.head_center_deg
+        return [c.head_min_deg, c.head_max_deg, c.head_center_deg]
 
     def set_speed(self, speed: int) -> None:
         """\brief Set the controller speed.
