@@ -11,6 +11,9 @@ from control.pid import Incremental_PID
 from interface.MovementControl import MovementControl
 from interface.VisionManager import VisionManager
 
+logger = logging.getLogger(__name__)
+logger.info("[TRACKER] VisualTracker module loaded (interface layer).")
+
 
 def _clamp(value: float, mn: float, mx: float) -> float:
     """Clamp ``value`` between ``mn`` and ``mx``."""
@@ -225,7 +228,7 @@ class AxisYHeadController:
 
 
 @dataclass
-class ObjectTracker:
+class VisualTracker:
     """High-level helper coordinating per-axis controllers."""
 
     movement: MovementControl

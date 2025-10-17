@@ -2,14 +2,18 @@
 
 from typing import TYPE_CHECKING
 
-from .tracker import AxisXTurnController, AxisYHeadController, ObjectTracker
+from interface.tracker.visual_tracker import (
+    AxisXTurnController,
+    AxisYHeadController,
+    VisualTracker,
+)
 
 __all__ = [
     "FaceTracker",
     "SocialFSM",
     "AxisXTurnController",
     "AxisYHeadController",
-    "ObjectTracker",
+    "VisualTracker",
 ]
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -26,5 +30,9 @@ def __getattr__(name: str):
         from mind.behavior.social_fsm import SocialFSM
 
         return SocialFSM
+    if name == "ObjectTracker":
+        from interface.tracker.visual_tracker import VisualTracker
+
+        return VisualTracker
     raise AttributeError(f"module 'app.controllers' has no attribute {name!r}")
 
