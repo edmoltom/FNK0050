@@ -1,5 +1,6 @@
 {
   "mode": "sandbox",
   "mock_behavior": "face_follow_loop",
-  "llm_server": "http://127.0.0.1:8080"
+  "llm_server": "http://127.0.0.1:8080",
+  "enable_proprioception": true
 }
