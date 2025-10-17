@@ -43,32 +43,42 @@ def setup_logging(config_path: Path = CONFIG_PATH):
     console_handler.setFormatter(logging.Formatter(fmt))
     root_logger.addHandler(console_handler)
 
-    # --- Module-level configuration ---
+    # --- Module-level configuration with prefix matching ---
     modules = config.get("modules", {})
     log_summary = []
 
-    for name, level in modules.items():
-        logger = logging.getLogger(name)
-        level_upper = str(level).upper().strip()
+    # Snapshot of all known loggers
+    known = list(logging.root.manager.loggerDict.keys())
 
+    def apply_to_logger(logger_name: str, level_upper: str):
+        lg = logging.getLogger(logger_name)
         if level_upper == "NONE":
-            logger.disabled = True
-            logger.propagate = False
-            log_summary.append(f"{name}: DISABLED")
-            continue
-
+            lg.disabled = True
+            lg.propagate = False
+            return "DISABLED"
         try:
-            numeric_level = getattr(logging, level_upper)
-            logger.setLevel(numeric_level)
-            log_summary.append(f"{name}: {level_upper}")
+            lg.setLevel(getattr(logging, level_upper))
+            return level_upper
         except AttributeError:
-            logger.setLevel(logging.INFO)
-            log_summary.append(f"{name}: INVALID ({level_upper}) → default=INFO")
-            logging.warning(f"[LOGGING] Invalid level '{level}' for module '{name}'")
+            lg.setLevel(logging.INFO)
+            logging.warning(f"[LOGGING] Invalid level '{level_upper}' for module '{logger_name}' (default=INFO)")
+            return f"INVALID({level_upper})->INFO"
 
-    # Startup summary
+    for prefix, level in modules.items():
+        level_upper = str(level).upper().strip()
+        # Apply to prefix and all its child loggers
+        matched = [name for name in known if name == prefix or name.startswith(prefix + ".")]
+        if prefix not in matched:
+            matched.append(prefix)
+
+        for name in matched:
+            apply_to_logger(name, level_upper)
+
+        log_summary.append(f"{prefix}: {'DISABLED' if level_upper == 'NONE' else level_upper}")
+
+    # Startup summary (compact)
     logging.info(f"[LOGGING] Configuration loaded from {config_path}")
     if log_summary:
-        logging.info("[LOGGING] Module log levels:")
+        logging.info("[LOGGING] Module log levels (prefix mode):")
         for entry in log_summary:
             logging.info(f"    - {entry}")
