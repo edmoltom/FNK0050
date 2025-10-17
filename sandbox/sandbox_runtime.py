@@ -18,6 +18,8 @@ from typing import Callable, Dict, Iterable, Optional, Tuple
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SERVER_ROOT = PROJECT_ROOT / "Server"
 
+logger = logging.getLogger(__name__)
+
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 if str(SERVER_ROOT) not in sys.path:
@@ -29,6 +31,11 @@ for relative in ("app", "core", "lib", "network"):
         folder_str = str(folder)
         if folder_str not in sys.path:
             sys.path.insert(0, folder_str)
+
+from interface.sensor_controller import SensorController
+from interface.sensor_gateway import SensorGateway
+from mind.proprioception.body_model import BodyModel
+from mind.proprioception.sensor_bus import SensorBus
 
 
 def _install_sandbox_stubs() -> None:
@@ -243,6 +250,7 @@ from sandbox.mocks import (  # noqa: E402
     MockVisionService,
     MockVoiceService,
 )
+from sandbox.mocks.mock_sensors import MockIMU, MockOdometry  # noqa: E402
 
 
 class MockTracker:
@@ -891,12 +899,32 @@ def main() -> None:
     runtime.conversation = services.conversation
     runtime.social_fsm = services.fsm
 
+    gateway: Optional[SensorGateway] = None
+    config = _load_sandbox_config(Path(__file__).with_name("sandbox_config.json"))
+    if config.get("enable_proprioception", False):
+        logger.info("[SANDBOX] Enabling proprioception simulation")
+        body = BodyModel()
+        bus = SensorBus(body)
+        controller = SensorController()
+        controller.imu = MockIMU()
+        controller.odom = MockOdometry()
+        gateway = SensorGateway(controller, bus, poll_rate_hz=5.0)
+        gateway.start()
+        logger.info("[SANDBOX] Proprioceptive sensors active (mock mode)")
+    else:
+        logger.info("[SANDBOX] Proprioception disabled")
+
     try:
         runtime.start()
     except KeyboardInterrupt:
         pass
     finally:
         runtime.stop()
+        if gateway is not None:
+            try:
+                gateway.stop()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
