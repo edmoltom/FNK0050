@@ -1,10 +1,17 @@
-"""Entry point for running the Lumo runtime in sandbox mode."""
+"""SANDBOX RUNTIME
+---------------
+This environment is purely simulated.
+It always uses mock sensors (IMU, Odometry) for proprioception.
+Never intended for use with physical hardware.
+
+Entry point for running the Lumo runtime in sandbox mode."""
 from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
 import json
 import logging
+import platform
 import sys
 import threading
 import time
@@ -903,6 +910,10 @@ def main() -> None:
     config = _load_sandbox_config(Path(__file__).with_name("sandbox_config.json"))
     if config.get("enable_proprioception", False):
         logger.info("[SANDBOX] Enabling proprioception simulation")
+        if platform.system().lower().startswith("linux") and "raspberry" in platform.platform().lower():
+            logger.warning(
+                "[SANDBOX] Running on Raspberry Pi – ignoring real sensors; mock mode enforced."
+            )
         body = BodyModel()
         bus = SensorBus(body)
         controller = SensorController()
@@ -910,7 +921,7 @@ def main() -> None:
         controller.odom = MockOdometry()
         gateway = SensorGateway(controller, bus, poll_rate_hz=5.0)
         gateway.start()
-        logger.info("[SANDBOX] Proprioceptive sensors active (mock mode)")
+        logger.info("[SANDBOX] Proprioceptive sensors active (mock mode only)")
     else:
         logger.info("[SANDBOX] Proprioception disabled")
 
