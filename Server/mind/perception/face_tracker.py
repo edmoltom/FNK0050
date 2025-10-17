@@ -5,7 +5,7 @@ import logging
 from interface.MovementControl import MovementControl
 from interface.VisionManager import VisionManager
 
-from app.controllers.tracker import ObjectTracker
+from interface.tracker.visual_tracker import VisualTracker
 
 
 class FaceTracker:
@@ -15,7 +15,7 @@ class FaceTracker:
         self.movement = movement
         self.vision = vision
         self.logger = logging.getLogger("face_tracker")
-        self.tracker = ObjectTracker(movement, vision, logger=self.logger)
+        self.tracker = VisualTracker(movement, vision, logger=self.logger)
 
     # ----- Compatibility helpers -------------------------------------------------
     @property
