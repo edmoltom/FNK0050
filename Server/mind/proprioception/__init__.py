@@ -6,5 +6,5 @@ with higher-level cognitive reasoning in :mod:`mind.context` and
 behavior planners.
 """
 
-__all__ = ["body_model", "sensor_bus"]
+__all__ = ["body_model"]
 

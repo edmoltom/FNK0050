@@ -110,7 +110,7 @@ class AppRuntime:
         if not hasattr(self, "sensor_gateway"):
             self.sensor_gateway = SensorGateway(
                 controller=self.sensor_controller,
-                sensor_bus=self.mind.sensor_bus,
+                body_model=self.mind.body,
                 poll_rate_hz=10.0,
             )
         self.sensor_gateway.start()
