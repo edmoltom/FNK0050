@@ -26,7 +26,7 @@ sys.modules["core"] = core_stub
 mind_stub = types.ModuleType("mind")
 mind_stub.__path__ = [str(SERVER_ROOT / "mind")]
 sys.modules["mind"] = mind_stub
-importlib.import_module("mind.llama_server_process")
+importlib.import_module("mind.llm.process")
 
 interface_stub = types.ModuleType("interface")
 interface_stub.__path__ = [str(SERVER_ROOT / "interface")]
@@ -54,8 +54,9 @@ requests_stub.Response = _StubRequestsResponse
 sys.modules.setdefault("requests", requests_stub)
 
 def teardown_module() -> None:
-    sys.modules.pop("mind.llama_server_process", None)
+    sys.modules.pop("mind.llm.process", None)
     sys.modules.pop("interface.VoiceInterface", None)
+    sys.modules.pop("mind.llm", None)
     sys.modules.pop("mind", None)
     sys.modules.pop("interface", None)
     sys.modules.pop("core", None)

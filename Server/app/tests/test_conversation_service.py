@@ -18,7 +18,12 @@ mind_stub = types.ModuleType("mind")
 mind_stub.__path__ = []  # type: ignore[attr-defined]
 sys.modules.setdefault("mind", mind_stub)
 
-llama_stub = types.ModuleType("mind.llama_server_process")
+llm_pkg_stub = types.ModuleType("mind.llm")
+llm_pkg_stub.__path__ = []  # type: ignore[attr-defined]
+sys.modules.setdefault("mind.llm", llm_pkg_stub)
+setattr(mind_stub, "llm", llm_pkg_stub)
+
+llama_stub = types.ModuleType("mind.llm.process")
 
 
 class _StubLlamaServerProcess:  # pragma: no cover - test scaffolding
@@ -26,9 +31,10 @@ class _StubLlamaServerProcess:  # pragma: no cover - test scaffolding
 
 
 llama_stub.LlamaServerProcess = _StubLlamaServerProcess
-sys.modules.setdefault("mind.llama_server_process", llama_stub)
+sys.modules.setdefault("mind.llm.process", llama_stub)
+setattr(llm_pkg_stub, "process", llama_stub)
 
-llm_client_stub = types.ModuleType("mind.llm_client")
+llm_client_stub = types.ModuleType("mind.llm.client")
 
 
 class _StubLlamaClient:  # pragma: no cover - test scaffolding
@@ -40,13 +46,14 @@ class _StubLlamaClient:  # pragma: no cover - test scaffolding
 
 
 llm_client_stub.LlamaClient = _StubLlamaClient
-sys.modules.setdefault("mind.llm_client", llm_client_stub)
-
+sys.modules.setdefault("mind.llm.client", llm_client_stub)
+setattr(llm_pkg_stub, "client", llm_client_stub)
 from app.services.conversation_service import ConversationService
 
 for name in [
-    "mind.llama_server_process",
-    "mind.llm_client",
+    "mind.llm.process",
+    "mind.llm.client",
+    "mind.llm",
     "mind",
 ]:
     sys.modules.pop(name, None)

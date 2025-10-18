@@ -1,8 +1,9 @@
 import logging
 
 from mind.persona import build_system
-from mind.llm_client import DEFAULT_BASE_URL, LlamaClient
-from mind.llm_memory import MemoryManager
+from mind.llm.client import DEFAULT_BASE_URL, LlamaClient
+from mind.llm.memory import MemoryManager
+from mind.llm.settings import DEFAULT_TIMEOUT
 from mind.supervisor import MindSupervisor
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class MindContext:
 
         self.llm = LlamaClient(
             base_url=llm_cfg.get("base_url", DEFAULT_BASE_URL),
-            request_timeout=llm_cfg.get("timeout", 30.0),
+            request_timeout=llm_cfg.get("timeout", DEFAULT_TIMEOUT),
             model=llm_cfg.get("model", "local-llm"),
         )
         self.memory = MemoryManager()

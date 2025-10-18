@@ -18,7 +18,7 @@ __all__ = [
 
 
 def _build_conversation_llm_client(cfg: Dict[str, Any]) -> Any:
-    from mind.llm_client import LlamaClient
+    from mind.llm.client import LlamaClient
 
     return LlamaClient(
         base_url=cfg.get("llm_base_url") or None,
@@ -27,7 +27,7 @@ def _build_conversation_llm_client(cfg: Dict[str, Any]) -> Any:
 
 
 def _build_conversation_process(cfg: Dict[str, Any]) -> Any:
-    from mind.llama_server_process import LlamaServerProcess
+    from mind.llm.process import LlamaServerProcess
 
     threads = cfg.get("threads") or None
     parallel = cfg.get("max_parallel_inference") or None

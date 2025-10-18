@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
+
+import asyncio
 import queue
 import threading
 import time
@@ -14,8 +15,9 @@ from typing import Any, Optional, Callable
 from .LedController import LedController
 from core.hearing.stt import SpeechToText
 from core.voice.tts import TextToSpeech
-from mind.llm_client import LlamaClient, build_default_client
-from mind.llm_memory import ConversationMemory
+from mind.llm.client import LlamaClient, build_default_client
+from mind.llm.memory import ConversationMemory
+from mind.llm.settings import MAX_REPLY_CHARS
 from mind.persona import build_system
 
 logger = logging.getLogger("conversation.manager")
@@ -26,7 +28,6 @@ mem = ConversationMemory(last_n=3)
 
 
 WAKE_WORDS = ["humo", "lo humo", "alumno", "lune", "lomo"]
-MAX_REPLY_CHARS = 220
 THINK_TIMEOUT_SEC = 30
 SPEAK_COOLDOWN_SEC = 1.5
 ATTENTION_TTL_SEC = 15.0        # wake-up window (seconds)

@@ -1,5 +1,4 @@
-"""
-The 'mind' package contains Lumo's cognitive and language modules.
+"""The 'mind' package contains Lumo's cognitive and language modules.
 It includes the LLM interface, memory systems, persona, and reasoning bridge.
 """
 
@@ -41,4 +40,14 @@ def __getattr__(name):
         from .supervisor import MindSupervisor
 
         return MindSupervisor
-    raise AttributeError(f"module 'mind' has no attribute {name!r}")
+    aliases = {
+        "llm_client": "mind.llm.client",
+        "llm_memory": "mind.llm.memory",
+        "llama_server_process": "mind.llm.process",
+        "llm_to_tts": "mind.communication.llm_to_tts",
+    }
+    if name in aliases:
+        import importlib
+
+        return importlib.import_module(aliases[name])
+    raise AttributeError(f"module {__name__} has no attribute {name}")

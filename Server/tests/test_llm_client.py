@@ -20,7 +20,7 @@ def _fail_post(*_args, **_kwargs):  # pragma: no cover - guardrail
 requests_stub.post = _fail_post
 sys.modules["requests"] = requests_stub
 
-from mind.llm_client import CHAT_ENDPOINT, LlamaClient
+from mind.llm.client import CHAT_ENDPOINT, LlamaClient
 
 
 def test_llama_client_uses_env_base_when_not_provided(monkeypatch: pytest.MonkeyPatch) -> None:

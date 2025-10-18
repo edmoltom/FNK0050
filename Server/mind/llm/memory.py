@@ -1,20 +1,26 @@
+"""Conversation memory helpers for llama.cpp chat sessions (mind.llm.memory)."""
+
+import logging
 from typing import Dict, List
 
-from typing import Dict, List
+from .settings import HISTORY_TURNS
+
+logger = logging.getLogger(__name__)
+logger.info("[LLM] Module loaded: mind.llm.memory")
 
 
 class ConversationMemory:
     """Keeps the last N turns (user/assistant) for short-term context."""
-    def __init__(self, last_n: int = 4):
+
+    def __init__(self, last_n: int = HISTORY_TURNS) -> None:
         self.last_n = last_n
         self.history: List[Dict[str, str]] = []
 
     def add_turn(self, user_text: str, assistant_text: str) -> None:
         self.history.append({"role": "user", "content": user_text})
         self.history.append({"role": "assistant", "content": assistant_text})
-        # keep only last_n turns (i.e., last_n*2 messages)
         if len(self.history) > self.last_n * 2:
-            self.history = self.history[-self.last_n*2:]
+            self.history = self.history[-self.last_n * 2 :]
 
     def reset(self) -> None:
         self.history.clear()
@@ -29,7 +35,7 @@ class ConversationMemory:
 class MemoryManager:
     """High-level memory interface that wraps :class:`ConversationMemory`."""
 
-    def __init__(self, last_n: int = 4) -> None:
+    def __init__(self, last_n: int = HISTORY_TURNS) -> None:
         self._conversation = ConversationMemory(last_n=last_n)
 
     @property
