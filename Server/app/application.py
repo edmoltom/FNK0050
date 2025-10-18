@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 from app.builder import build
-from app.logging.logging_config import setup_logging
+from app.logging_utils.logging_config import setup_logging
 from app.runtime import AppRuntime
 
 
