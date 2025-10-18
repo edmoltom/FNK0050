@@ -1,7 +1,9 @@
 {
+  "mode": "sandbox",
   "enable_vision": true,
   "enable_ws": true,
   "enable_movement": true,
+  "enable_proprioception": true,
   "vision": {
     "interval_sec": 0.1,
     "camera_fps": 15,

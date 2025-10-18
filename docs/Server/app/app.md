@@ -16,7 +16,7 @@ La carpeta `Server/app` orquesta la ejecución del runtime que combina visión a
 * `builder.py`: fabrica un contenedor `AppServices` a partir de la configuración JSON y crea instancias de visión, movimiento y la lógica social.
 * `runtime.py`: coordina el ciclo de vida de los servicios, gestiona la captura de frames, despacha la lógica de interacción y, cuando está habilitado, expone un servidor WebSocket.
 * `logging_config.py`: define la política de rotación del fichero `robot.log`.
-* `config/app.json`: valores predeterminados de los servicios y la lógica social.
+* `app.json`: valores predeterminados de los servicios, el modo de ejecución y la lógica social.
 
 ## Flujo de arranque típico
 
@@ -43,7 +43,7 @@ La carpeta `Server/app` orquesta la ejecución del runtime que combina visión a
 | `ws_cfg`                                        | Diccionario con `host` y `port` para el servidor WebSocket.                                      | `{"host": "0.0.0.0", "port": 8765}` |
 | `vision`, `movement`, `fsm`                     | Instancias concretas de `VisionService`, `MovementService` y `SocialFSM` (si se han habilitado). | `None`                              |
 
-El fichero `config/app.json` ofrece un ejemplo completo: activa todos los subsistemas, selecciona el modo `face`, ajusta el detector con `resize_ratio`, `min_size`, `scale_factor` y `min_neighbors`, y define el comportamiento social (`deadband_x`, `lock_frames_needed`, `miss_release`, `interact_ms`, `relax_timeout`, `meow_cooldown_*`). Puedes copiarlo y adaptarlo a tu entorno.
+El fichero `app.json` ofrece un ejemplo completo: activa todos los subsistemas, selecciona el modo `face`, ajusta el detector con `resize_ratio`, `min_size`, `scale_factor` y `min_neighbors`, define el modo global (`"sandbox"` o `"real"`) y especifica el comportamiento social (`deadband_x`, `lock_frames_needed`, `miss_release`, `interact_ms`, `relax_timeout`, `meow_cooldown_*`). Puedes copiarlo y adaptarlo a tu entorno.
 
 ## Logging y salidas
 

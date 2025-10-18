@@ -11,7 +11,7 @@ Esta guía resume los pasos mínimos para comprobar el pipeline de conversación
 
 ## Configuración de la aplicación
 
-El archivo por defecto `Server/app/config/app.json` incluye la sección `conversation`. Para habilitar la conversación:
+El archivo por defecto `Server/app/app.json` incluye la sección `conversation`. Para habilitar la conversación:
 
 ```json
 {
@@ -46,7 +46,7 @@ El archivo por defecto `Server/app/config/app.json` incluye la sección `convers
 2. Lanza la aplicación con logging de información:
 
    ```bash
-   python Server/run.py --config Server/app/config/app.json
+   python Server/run.py --config Server/app/app.json
    ```
 
 3. Habla la palabra de activación (por defecto “humo”) y emite un comando corto. El robot debería:

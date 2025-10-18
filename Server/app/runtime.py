@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import signal
 import threading
 import time
@@ -17,6 +19,34 @@ from interface.sensor_gateway import SensorGateway
 
 
 logger = logging.getLogger(__name__)
+
+# Load application configuration
+APP_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "app.json")
+try:
+    with open(APP_CONFIG_PATH, "r", encoding="utf-8") as f:
+        app_config = json.load(f)
+except FileNotFoundError:
+    logger.warning("Application configuration not found at %s", APP_CONFIG_PATH)
+    app_config = {}
+
+mode = str(app_config.get("mode", "sandbox")).lower()
+if mode not in {"sandbox", "real"}:
+    logger.warning("[RUNTIME] Unknown mode '%s', defaulting to sandbox", mode)
+    mode = "sandbox"
+
+logger.info("[RUNTIME] Starting in %s mode", mode.upper())
+
+# Conditional imports depending on mode
+if mode == "sandbox":
+    from Server.sandbox.mocks import mock_movement as movement
+    from Server.sandbox.mocks import mock_vision as vision
+else:
+    from interface.MovementControl import MovementControl as movement
+    from interface.VisionManager import VisionManager as vision
+
+RUNTIME_MODE = mode
+MOVEMENT_BACKEND = movement
+VISION_BACKEND = vision
 
 
 class AppRuntime:

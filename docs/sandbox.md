@@ -21,15 +21,15 @@ Está diseñado para:
 ## ⚙️ Estructura
 
 ```
-sandbox/
- ├── mocks/
- │    ├── mock_led.py
- │    ├── mock_movement.py
- │    ├── mock_vision.py
- │    ├── mock_voice.py
- │    └── __init__.py
- ├── sandbox_runtime.py
- └── sandbox_config.json
+Server/
+ └── sandbox/
+      ├── mocks/
+      │    ├── mock_led.py
+      │    ├── mock_movement.py
+      │    ├── mock_vision.py
+      │    ├── mock_voice.py
+      │    └── __init__.py
+      └── sandbox_runtime.py
 ```
 
 Cada archivo en `mocks/` representa una versión simplificada de los servicios físicos:
@@ -41,8 +41,8 @@ Cada archivo en `mocks/` representa una versión simplificada de los servicios f
 | `mock_voice.py` | Voz (STT / TTS) | Usa la consola para escuchar (entrada) y hablar (salida). |
 | `mock_led.py` | LEDs de estado | Muestra el color o estado actual mediante logs. |
 
-El archivo `sandbox_runtime.py` reemplaza los servicios reales por estos mocks y arranca el runtime normal.  
-El archivo `sandbox_config.json` define los parámetros de configuración (modo, servidor LLM, comportamiento de prueba, etc.).
+El archivo `sandbox_runtime.py` reemplaza los servicios reales por estos mocks y arranca el runtime normal.
+La configuración global vive en `Server/app/app.json`; ahí se elige el modo (`"sandbox"` o `"real"`) y las banderas de servicios.
 
 ---
 
@@ -51,7 +51,7 @@ El archivo `sandbox_config.json` define los parámetros de configuración (modo,
 Desde la raíz del proyecto, simplemente ejecuta:
 
 ```bash
-python sandbox/sandbox_runtime.py
+python Server/sandbox/sandbox_runtime.py
 ```
 
 El sistema iniciará los servicios simulados y mostrará logs como:
@@ -74,18 +74,21 @@ Esto indica que **la mente de Lumo está activa**:
 
 ## 🧰 Configuración
 
-El archivo `sandbox_config.json` define los parámetros del entorno:
+El archivo `Server/app/app.json` concentra todas las opciones de la aplicación. Un extracto relevante para el sandbox es:
 
 ```json
 {
   "mode": "sandbox",
-  "mock_behavior": "face_follow_loop",
-  "llm_server": "http://127.0.0.1:8080"
+  "enable_vision": true,
+  "enable_movement": true,
+  "enable_proprioception": true,
+  "conversation": {
+    "llm_base_url": "http://127.0.0.1:8080"
+  }
 }
 ```
 
-Puedes añadir más opciones (frecuencia de detecciones, nivel de ruido, comportamiento inicial, etc.)  
-sin afectar al código principal.
+Edita ese fichero para alternar entre hardware real (`"mode": "real"`) o mocks, ajustar los servicios habilitados o cambiar la URL del LLM.
 
 ---
 
@@ -112,7 +115,7 @@ Algunas posibles extensiones:
 ## 🧩 Ejemplo de sesión típica
 
 ```
-python sandbox/sandbox_runtime.py
+python Server/sandbox/sandbox_runtime.py
 ```
 
 Salida:
