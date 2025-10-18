@@ -27,7 +27,7 @@ cd llama.cpp
 Compila el binario:
 
 ```cmd
-cmake -B build
+cmake -B build -DLLAMA_CURL=OFF
 cmake --build build --config Release
 ```
 
