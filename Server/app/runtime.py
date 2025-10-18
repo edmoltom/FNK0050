@@ -38,15 +38,25 @@ logger.info("[RUNTIME] Starting in %s mode", mode.upper())
 
 # Conditional imports depending on mode
 if mode == "sandbox":
+    from ..sandbox.mocks import mock_led
     from ..sandbox.mocks import mock_movement as movement
     from ..sandbox.mocks import mock_vision as vision
+    from ..sandbox.mocks import mock_voice
+
+    voice_backend = mock_voice
+    led_backend = mock_led
 else:
     from interface.MovementControl import MovementControl as movement
     from interface.VisionManager import VisionManager as vision
 
+    voice_backend = None
+    led_backend = None
+
 RUNTIME_MODE = mode
 MOVEMENT_BACKEND = movement
 VISION_BACKEND = vision
+VOICE_BACKEND = voice_backend
+LED_BACKEND = led_backend
 
 
 class AppRuntime:
