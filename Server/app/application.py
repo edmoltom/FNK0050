@@ -7,7 +7,7 @@ from app.logging_utils.logging_config import setup_logging
 from app.runtime import AppRuntime
 
 
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "app.json")
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "app.json")
 
 
 def main(config_path: str = CONFIG_PATH) -> None:

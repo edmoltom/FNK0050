@@ -17,7 +17,7 @@ from .conversation_builder import (
 )
 
 
-CONFIG_PATH = str(Path(__file__).resolve().parents[1] / "config" / "app.json")
+CONFIG_PATH = str(Path(__file__).resolve().parents[1] / "app.json")
 
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ class AppServices:
     cfg: Dict[str, Any] = field(default_factory=dict)
     vision_cfg: Dict[str, Any] = field(default_factory=dict)
     mode: str = "object"
+    runtime_mode: str = "sandbox"
     camera_fps: float = 15.0
     face_cfg: Dict[str, Any] = field(default_factory=dict)
     interval_sec: float = 1.0
@@ -63,6 +64,12 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
     services.enable_vision = bool(cfg.get("enable_vision", True))
     services.enable_ws = bool(cfg.get("enable_ws", True))
     services.enable_movement = bool(cfg.get("enable_movement", True))
+
+    runtime_mode = str(cfg.get("mode", "sandbox")).lower()
+    if runtime_mode not in {"sandbox", "real"}:
+        logger.warning("Unknown runtime mode '%s', defaulting to sandbox", runtime_mode)
+        runtime_mode = "sandbox"
+    services.runtime_mode = runtime_mode
 
     vision_cfg = cfg.get("vision", {}) or {}
     services.vision_cfg = vision_cfg
@@ -166,22 +173,32 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
     fsm_callbacks: Dict[str, Callable[[Any], None]] = {}
 
     if services.enable_vision:
-        from app.services.vision_service import VisionService
+        if services.runtime_mode == "sandbox":
+            from Server.sandbox.mocks import MockVisionService
 
-        vision = VisionService(
-            mode=services.mode,
-            camera_fps=services.camera_fps,
-            face_cfg=services.face_cfg,
-        )
-        if services.face_cfg:
-            profile = str(services.face_cfg.get("profile", "face"))
-            vision.register_face_pipeline(profile)
-        services.vision = vision
+            services.vision = MockVisionService()
+        else:
+            from app.services.vision_service import VisionService
+
+            vision = VisionService(
+                mode=services.mode,
+                camera_fps=services.camera_fps,
+                face_cfg=services.face_cfg,
+            )
+            if services.face_cfg:
+                profile = str(services.face_cfg.get("profile", "face"))
+                vision.register_face_pipeline(profile)
+            services.vision = vision
 
     if services.enable_movement:
-        from app.services.movement_service import MovementService
+        if services.runtime_mode == "sandbox":
+            from Server.sandbox.mocks import MockMovementService
 
-        services.movement = MovementService()
+            services.movement = MockMovementService()
+        else:
+            from app.services.movement_service import MovementService
+
+            services.movement = MovementService()
 
     logger.info("Config conversation: %s", services.conversation_cfg)
     if not services.conversation_cfg["enable"]:

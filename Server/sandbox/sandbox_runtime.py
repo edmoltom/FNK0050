@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, Optional, Tuple
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SERVER_ROOT = PROJECT_ROOT / "Server"
 
 logger = logging.getLogger(__name__)
@@ -592,11 +592,11 @@ def _load_sandbox_config(config_path: Path) -> Dict[str, object]:
             return json.load(fh)
     except FileNotFoundError:
         logging.getLogger("sandbox.cognitive").warning(
-            "sandbox_config.json not found at %s", config_path
+            "app.json not found at %s", config_path
         )
     except json.JSONDecodeError as exc:
         logging.getLogger("sandbox.cognitive").warning(
-            "Invalid sandbox_config.json (%s): %s", config_path, exc
+            "Invalid app.json (%s): %s", config_path, exc
         )
     return {}
 
@@ -621,11 +621,14 @@ class CognitiveConversationService:
         self._stop_fallback = threading.Event()
         self._system_prompt = system_prompt
 
-        config_path = Path(__file__).with_name("sandbox_config.json")
+        config_path = Path(__file__).resolve().parents[1] / "app" / "app.json"
         self._config = _load_sandbox_config(config_path)
+        conversation_cfg = (
+            self._config.get("conversation") if isinstance(self._config, dict) else {}
+        ) or {}
         self._llm_base_url = str(
-            self._config.get("llm_server")
-            or self._config.get("llm_base_url")
+            conversation_cfg.get("llm_server")
+            or conversation_cfg.get("llm_base_url")
             or ""
         ).strip()
 
@@ -905,10 +908,14 @@ def main() -> None:
     runtime.social_fsm = services.fsm
 
     gateway: Optional[SensorGateway] = None
-    config = _load_sandbox_config(Path(__file__).with_name("sandbox_config.json"))
+    config = _load_sandbox_config(Path(__file__).resolve().parents[1] / "app" / "app.json")
 
     # --- SANDBOX PROPRIOCEPTION (mock-only) ---
-    if config.get("enable_proprioception", False):
+    sandbox_cfg = config.get("sandbox", {}) if isinstance(config, dict) else {}
+    enable_proprioception = bool(
+        sandbox_cfg.get("enable_proprioception", config.get("enable_proprioception", False))
+    )
+    if enable_proprioception:
         logger.info("[SANDBOX] Enabling proprioception simulation (mock-only)")
 
         body = BodyModel()

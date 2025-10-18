@@ -69,13 +69,16 @@ main: server is listening on http://127.0.0.1:8080 - starting the main loop
 
 ## 🧩 Paso 4. Integrar con Lumo o el Sandbox
 
-En el archivo sandbox/sandbox_config.json, asegúrate de incluir:
+En `Server/app/app.json`, establece al menos:
 
+```
 {
   "mode": "sandbox",
-  "llm_server": "http://127.0.0.1:8080",
-  "mock_behavior": "face_follow_loop"
+  "conversation": {
+    "llm_base_url": "http://127.0.0.1:8080"
+  }
 }
+```
 
 ## 🧩 Paso 5. Verificación rápida (opcional)
 
