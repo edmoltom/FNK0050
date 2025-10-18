@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, Optional
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
-from mind.llama_server_process import LlamaServerProcess
+from mind.llm.process import LlamaServerProcess
 
 
 ConversationManagerFactory = Callable[..., Any]

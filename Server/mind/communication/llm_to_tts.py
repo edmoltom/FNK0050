@@ -1,29 +1,32 @@
+"""CLI bridge from LLM responses to TTS playback (mind.communication.llm_to_tts)."""
+
 from __future__ import annotations
 
 import argparse
-import sys
+import logging
 from pathlib import Path
 
-from persona import build_system
-from llm_client import LlamaClient
 from core.voice.tts import TextToSpeech
+
+from ..llm.client import LlamaClient
+from ..llm.settings import MAX_REPLY_CHARS
+from ..persona import build_system
+
+logger = logging.getLogger(__name__)
+logger.info("[LLM] Module loaded: mind.communication.llm_to_tts")
 
 THIS_DIR = Path(__file__).resolve().parent
 # Reuse the TTS engine as a library instead of spawning a subprocess
 _tts = TextToSpeech()
 
-# Limit LLM verbosity so TTS flows better
-MAX_REPLY_CHARS = 220
 
-# --- TTS ----------------------------------------------------------------------
-def speak_text(text: str):
+def speak_text(text: str) -> None:
     """Send text to the TTS engine and play audio."""
+
     try:
         _tts.speak(text)
-    except Exception as e:  # pragma: no cover - runtime errors only
-        print(f"[ERROR] TTS failed: {e}")
-
-# --- CLI ----------------------------------------------------------------------
+    except Exception as exc:  # pragma: no cover - runtime errors only
+        print(f"[ERROR] TTS failed: {exc}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,6 +64,7 @@ def main(argv: list[str] | None = None) -> None:
 
     print(f"[LLM] {reply}")
     speak_text(reply)
+
 
 if __name__ == "__main__":
     try:

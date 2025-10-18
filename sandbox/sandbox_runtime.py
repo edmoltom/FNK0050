@@ -665,7 +665,7 @@ class CognitiveConversationService:
             return MockLLMClient()
 
         try:
-            from mind.llm_client import LlamaClient
+            from mind.llm.client import LlamaClient
 
             client = LlamaClient(base_url=base_url)
             self.logger.info("Using real LlamaClient for LLM interactions")

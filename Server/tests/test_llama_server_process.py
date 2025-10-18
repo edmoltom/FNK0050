@@ -9,8 +9,8 @@ SERVER_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVER_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVER_ROOT))
 
-from mind.llama_server_process import LlamaServerProcess
-import mind.llama_server_process as llama_process_module
+from mind.llm.process import LlamaServerProcess
+import mind.llm.process as llama_process_module
 
 
 def test_start_is_non_blocking(dummy_binary: Path, dummy_model: Path) -> None:
@@ -81,7 +81,7 @@ def test_poll_health_logs_backoff(
     caplog.set_level("INFO")
 
     monkeypatch.setattr(
-        "mind.llama_server_process.urllib_request.urlopen",
+        "mind.llm.process.urllib_request.urlopen",
         mock.Mock(side_effect=llama_process_module.urllib_error.URLError("boom")),
     )
 

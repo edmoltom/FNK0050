@@ -1,20 +1,25 @@
-"""HTTP client to interact with the local LLaMA REST API."""
+"""LLM client for llama.cpp-compatible chat endpoints (mind.llm.client)."""
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Iterable, MutableMapping, Optional, Sequence
 
 import requests
 
-from .persona import MAX_TOKENS, TEMP, TOP_K, TOP_P, postprocess
+from ..persona import MAX_TOKENS, TEMP, TOP_K, TOP_P, postprocess
+from .settings import DEFAULT_STOP_SEQUENCES, DEFAULT_TIMEOUT, MAX_REPLY_CHARS
+
+logger = logging.getLogger(__name__)
+logger.info("[LLM] Module loaded: mind.llm.client")
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8080"
 CHAT_ENDPOINT = "/v1/chat/completions"
 
 
 class LlamaClient:
-    """Small HTTP client specialised for the llama.cpp compatible API."""
+    """Small HTTP client specialised for llama.cpp compatible chat endpoints."""
 
     def __init__(
         self,
@@ -28,11 +33,13 @@ class LlamaClient:
         env_base = os.getenv("LLAMA_BASE", DEFAULT_BASE_URL)
         chosen_base = base_url or env_base
         self.base_url = chosen_base.rstrip("/") or DEFAULT_BASE_URL
-        self.request_timeout = 30.0 if request_timeout is None else float(request_timeout)
+        self.request_timeout = (
+            DEFAULT_TIMEOUT if request_timeout is None else float(request_timeout)
+        )
         self.model = model
         self._http = http_client or requests
         self.stop_sequences: Sequence[str] = (
-            stop_sequences if stop_sequences is not None else ["\n", "Usuario:", "Lumo:"]
+            stop_sequences if stop_sequences is not None else DEFAULT_STOP_SEQUENCES
         )
 
     @property
@@ -56,7 +63,12 @@ class LlamaClient:
             "stop": list(self.stop_sequences),
         }
 
-    def query(self, messages: Sequence[MutableMapping[str, str]], *, max_reply_chars: int = 220) -> str:
+    def query(
+        self,
+        messages: Sequence[MutableMapping[str, str]],
+        *,
+        max_reply_chars: int = MAX_REPLY_CHARS,
+    ) -> str:
         """Execute a chat completion request and post-process the answer."""
 
         payload = self.build_payload(messages)

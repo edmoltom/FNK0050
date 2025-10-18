@@ -1,3 +1,5 @@
+"""Process manager for llama.cpp servers (mind.llm.process)."""
+
 from __future__ import annotations
 
 import atexit
@@ -11,6 +13,8 @@ from typing import Mapping, Sequence
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
+logger = logging.getLogger(__name__)
+logger.info("[LLM] Module loaded: mind.llm.process")
 
 class LlamaServerProcess:
     """Manage the lifecycle of a ``llama-server`` process."""
