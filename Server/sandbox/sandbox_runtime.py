@@ -24,23 +24,17 @@ from typing import Callable, Dict, Iterable, Optional, Tuple
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SERVER_ROOT = PROJECT_ROOT / "Server"
 
+if __package__ in {None, ""}:
+    __package__ = "Server.sandbox"
+
 logger = logging.getLogger(__name__)
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-if str(SERVER_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVER_ROOT))
 
-for relative in ("app", "core", "lib", "network"):
-    folder = SERVER_ROOT / relative
-    if folder.exists():
-        folder_str = str(folder)
-        if folder_str not in sys.path:
-            sys.path.insert(0, folder_str)
-
-from interface.sensor_controller import SensorController
-from interface.sensor_gateway import SensorGateway
-from mind.proprioception.body_model import BodyModel
+from ..interface.sensor_controller import SensorController
+from ..interface.sensor_gateway import SensorGateway
+from ..mind.proprioception.body_model import BodyModel
 
 
 def _install_sandbox_stubs() -> None:
@@ -49,17 +43,24 @@ def _install_sandbox_stubs() -> None:
     core_module = sys.modules.get("core")
     if core_module is None:
         try:  # pragma: no cover - import side effects depend on environment
-            import core as core_module  # type: ignore
+            import Server.core as server_core
         except Exception:
             core_module = types.ModuleType("core")
             sys.modules["core"] = core_module
         else:
+            core_module = server_core
             sys.modules.setdefault("core", core_module)
 
     interface_module = sys.modules.get("interface")
     if interface_module is None:
-        interface_module = types.ModuleType("interface")
-        sys.modules["interface"] = interface_module
+        try:
+            import Server.interface as server_interface
+        except Exception:
+            interface_module = types.ModuleType("interface")
+            sys.modules["interface"] = interface_module
+        else:
+            interface_module = server_interface
+            sys.modules.setdefault("interface", interface_module)
     else:
         sys.modules.setdefault("interface", interface_module)
 
@@ -245,17 +246,17 @@ def _install_sandbox_stubs() -> None:
 
 _install_sandbox_stubs()
 
-from app.application import AppRuntime  # type: ignore  # noqa: E402
-from app.builder import AppServices  # type: ignore  # noqa: E402
-from app.logging_utils.logging_config import setup_logging  # type: ignore  # noqa: E402
+from ..app.application import AppRuntime  # type: ignore  # noqa: E402
+from ..app.builder import AppServices  # type: ignore  # noqa: E402
+from ..app.logging_utils.logging_config import setup_logging  # type: ignore  # noqa: E402
 
-from sandbox.mocks import (  # noqa: E402
+from .mocks import (  # noqa: E402
     MockLedController,
     MockMovementService,
     MockVisionService,
     MockVoiceService,
 )
-from sandbox.mocks.mock_sensors import MockIMU, MockOdometry  # noqa: E402
+from .mocks.mock_sensors import MockIMU, MockOdometry  # noqa: E402
 
 
 class MockTracker:
@@ -635,7 +636,7 @@ class CognitiveConversationService:
     # ------------------------------------------------------------------ helpers
     def _resolve_conversation_class(self):
         try:
-            from app.services.conversation_service import ConversationService
+            from ..app.services.conversation_service import ConversationService
 
             return ConversationService
         except Exception as exc:  # pragma: no cover - import defensive
@@ -668,7 +669,7 @@ class CognitiveConversationService:
             return MockLLMClient()
 
         try:
-            from mind.llm.client import LlamaClient
+            from ..mind.llm.client import LlamaClient
 
             client = LlamaClient(base_url=base_url)
             self.logger.info("Using real LlamaClient for LLM interactions")
@@ -864,7 +865,7 @@ def build_services() -> tuple[AppServices, MockVisionService, MockMovementServic
     persona_logger = logging.getLogger("sandbox.cognitive")
     system_prompt: Optional[str] = None
     try:
-        from mind.persona import build_system
+        from ..mind.persona import build_system
 
         try:
             system_prompt = build_system()
