@@ -36,6 +36,9 @@ class MockMovementController(IMovementController):
     def start_loop(self):
         logger.debug("[MOCK] start_loop() called (simulated).")
 
+    def stop(self):
+        logger.debug("[MOCK] stop() called (simulated).")
+
 
 class MockMovementService(IMovementController):
     """
@@ -69,6 +72,9 @@ class MockMovementService(IMovementController):
 
     def start_loop(self):
         self.mc.start_loop()
+
+    def stop(self):
+        self.mc.stop()
 
     def start(self):
         """
