@@ -15,16 +15,14 @@ from typing import Any, Optional, Callable
 from .LedController import LedController
 from core.hearing.stt import SpeechToText
 from core.voice.tts import TextToSpeech
-from mind.llm.client import LlamaClient, build_default_client
+from mind.communication.builders import build_conversation_stack
+from mind.llm.client import LlamaClient
 from mind.llm.memory import ConversationMemory
 from mind.llm.settings import MAX_REPLY_CHARS
 from mind.persona import build_system
 
 logger = logging.getLogger("conversation.manager")
 logger.info("[MIND] VoiceInterface initialized — bridging core and cognition.")
-
-
-mem = ConversationMemory(last_n=3)
 
 
 WAKE_WORDS = ["humo", "lo humo", "alumno", "lune", "lomo"]
@@ -198,13 +196,17 @@ def contains_wake_word(text: str) -> bool:
     return any(w in lowered for w in WAKE_WORDS)
 
 
-def llm_ask(text: str, client: LlamaClient) -> str:
+def llm_ask(
+    text: str,
+    client: LlamaClient,
+    memory: ConversationMemory,
+    persona: str,
+) -> str:
     """Query the provided LLM client and return a brief Spanish reply."""
 
-    system = build_system()
-    msgs = mem.build_messages(system, text)
+    msgs = memory.build_messages(persona, text)
     reply = client.query(msgs, max_reply_chars=MAX_REPLY_CHARS)
-    mem.add_turn(text, reply)
+    memory.add_turn(text, reply)
     return reply
 
 
@@ -235,6 +237,8 @@ class ConversationManager:
         stt_poll_interval: float = 0.02,
         speak_cooldown: float = SPEAK_COOLDOWN_SEC,
         close_led_on_cleanup: bool = True,
+        memory: Optional[ConversationMemory] = None,
+        persona: Optional[str] = None,
     ) -> None:
         logger = logging.getLogger("conversation.manager")
         logger.info("ConversationManager.__init__ called with stt=%s, tts=%s, llm_client=%s, led_controller=%s",
@@ -251,6 +255,8 @@ class ConversationManager:
         self._llm_client = llm_client
         self._tts = tts
         self._led = led_controller
+        self._memory = memory or ConversationMemory()
+        self._persona = persona or build_system()
         self._stop_event = stop_event
         self._extra_stop_events = tuple(additional_stop_events or ())
         self._wait_until_ready = wait_until_ready
@@ -359,7 +365,7 @@ class ConversationManager:
             attempt += 1
             start = time.perf_counter()
             try:
-                reply = llm_ask(text, self._llm_client)
+                reply = llm_ask(text, self._llm_client, self._memory, self._persona)
             except Exception as exc:
                 logger.warning(
                     "LLM error attempt %d/%d: %s",
@@ -497,8 +503,7 @@ def build_default_conversation_manager(
 
     stt_engine = SpeechToText()
     stt_service = STTService(stt_engine)
-    tts_engine = TextToSpeech()
-    llm_client = build_default_client()
+    llm_client, memory, tts_engine, persona = build_conversation_stack()
 
     loop = asyncio.new_event_loop()
     loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
@@ -514,6 +519,8 @@ def build_default_conversation_manager(
         stop_event=stop,
         additional_stop_events=additional_stop_events,
         wait_until_ready=lambda: None,
+        memory=memory,
+        persona=persona,
     )
 
 
