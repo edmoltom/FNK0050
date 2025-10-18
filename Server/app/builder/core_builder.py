@@ -174,7 +174,7 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
 
     if services.enable_vision:
         if services.runtime_mode == "sandbox":
-            from ...sandbox.mocks import MockVisionService
+            from sandbox.mocks import MockVisionService
 
             services.vision = MockVisionService()
         else:
@@ -192,7 +192,7 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
 
     if services.enable_movement:
         if services.runtime_mode == "sandbox":
-            from ...sandbox.mocks import MockMovementService
+            from sandbox.mocks import MockMovementService
 
             services.movement = MockMovementService()
         else:
