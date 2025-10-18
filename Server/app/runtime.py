@@ -38,10 +38,10 @@ logger.info("[RUNTIME] Starting in %s mode", mode.upper())
 
 # Conditional imports depending on mode
 if mode == "sandbox":
-    from ..sandbox.mocks import mock_led
-    from ..sandbox.mocks import mock_movement as movement
-    from ..sandbox.mocks import mock_vision as vision
-    from ..sandbox.mocks import mock_voice
+    from sandbox.mocks import mock_led
+    from sandbox.mocks import mock_movement as movement
+    from sandbox.mocks import mock_vision as vision
+    from sandbox.mocks import mock_voice
 
     voice_backend = mock_voice
     led_backend = mock_led
