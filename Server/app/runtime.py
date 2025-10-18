@@ -38,8 +38,8 @@ logger.info("[RUNTIME] Starting in %s mode", mode.upper())
 
 # Conditional imports depending on mode
 if mode == "sandbox":
-    from Server.sandbox.mocks import mock_movement as movement
-    from Server.sandbox.mocks import mock_vision as vision
+    from ..sandbox.mocks import mock_movement as movement
+    from ..sandbox.mocks import mock_vision as vision
 else:
     from interface.MovementControl import MovementControl as movement
     from interface.VisionManager import VisionManager as vision
