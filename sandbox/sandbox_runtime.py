@@ -247,7 +247,7 @@ _install_sandbox_stubs()
 
 from app.application import AppRuntime  # type: ignore  # noqa: E402
 from app.builder import AppServices  # type: ignore  # noqa: E402
-from app.logging.logging_config import setup_logging  # type: ignore  # noqa: E402
+from app.logging_utils.logging_config import setup_logging  # type: ignore  # noqa: E402
 
 from sandbox.mocks import (  # noqa: E402
     MockLedController,
