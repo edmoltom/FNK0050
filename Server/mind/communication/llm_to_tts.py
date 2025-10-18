@@ -6,25 +6,20 @@ import argparse
 import logging
 from pathlib import Path
 
-from core.voice.tts import TextToSpeech
-
-from ..llm.client import LlamaClient
+from mind.communication.builders import build_conversation_stack
 from ..llm.settings import MAX_REPLY_CHARS
-from ..persona import build_system
 
 logger = logging.getLogger(__name__)
 logger.info("[LLM] Module loaded: mind.communication.llm_to_tts")
 
 THIS_DIR = Path(__file__).resolve().parent
-# Reuse the TTS engine as a library instead of spawning a subprocess
-_tts = TextToSpeech()
 
 
-def speak_text(text: str) -> None:
+def speak_text(text: str, tts) -> None:
     """Send text to the TTS engine and play audio."""
 
     try:
-        _tts.speak(text)
+        tts.speak(text)
     except Exception as exc:  # pragma: no cover - runtime errors only
         print(f"[ERROR] TTS failed: {exc}")
 
@@ -51,19 +46,21 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
-    client = LlamaClient(base_url=args.base_url, request_timeout=args.timeout)
-    system = build_system()
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": args.prompt},
-    ]
+    if args.timeout is None:
+        client, memory, tts, persona = build_conversation_stack(base_url=args.base_url)
+    else:
+        client, memory, tts, persona = build_conversation_stack(
+            base_url=args.base_url, timeout=args.timeout
+        )
+    messages = memory.build_messages(persona, args.prompt)
     reply = client.query(messages, max_reply_chars=MAX_REPLY_CHARS)
     if not reply:
         print("[WARN] No reply from LLM.")
         return
 
     print(f"[LLM] {reply}")
-    speak_text(reply)
+    memory.add_turn(args.prompt, reply)
+    speak_text(reply, tts)
 
 
 if __name__ == "__main__":
