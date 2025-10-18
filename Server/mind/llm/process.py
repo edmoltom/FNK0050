@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -34,7 +35,7 @@ class LlamaServerProcess:
         extra_args: Sequence[str] | None = None,
         env: Mapping[str, str] | None = None,
         logger: logging.Logger | None = None,
-        ready_text: str | None = "HTTP server listening",
+        ready_text: str | None = "listening",
         log_prefix: str = "llama-server",
     ) -> None:
         self.binary_path = self._validate_path(llama_binary, "llama_binary")
@@ -56,6 +57,7 @@ class LlamaServerProcess:
         self._process: subprocess.Popen[str] | None = None
         self._stdout_thread: threading.Thread | None = None
         self._stderr_thread: threading.Thread | None = None
+        self._uses_process_group = False
         self._ready_event = threading.Event()
         if ready_text is None:
             self._ready_event.set()
@@ -104,14 +106,23 @@ class LlamaServerProcess:
         popen_env = os.environ.copy()
         popen_env.update(self.env)
 
-        self._process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            env=popen_env,
-        )
+        popen_kwargs: dict[str, object] = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "bufsize": 1,
+            "env": popen_env,
+        }
+
+        if os.name == "nt":
+            creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+            popen_kwargs["creationflags"] = creationflags
+            self._uses_process_group = creationflags != 0
+        else:
+            popen_kwargs["start_new_session"] = True
+            self._uses_process_group = True
+
+        self._process = subprocess.Popen(command, **popen_kwargs)
 
         if not self._atexit_registered:
             atexit.register(self.terminate)
@@ -119,16 +130,11 @@ class LlamaServerProcess:
 
         self._stdout_thread = threading.Thread(
             target=self._stream_output,
-            args=(self._process.stdout, logging.INFO, f"{self.log_prefix} stdout"),
+            args=(self._process.stdout, logging.INFO, f"{self.log_prefix} output"),
             daemon=True,
         )
-        self._stderr_thread = threading.Thread(
-            target=self._stream_output,
-            args=(self._process.stderr, logging.ERROR, f"{self.log_prefix} stderr"),
-            daemon=True,
-        )
+        self._stderr_thread = None
         self._stdout_thread.start()
-        self._stderr_thread.start()
 
     def wait_ready(self, timeout: float | None = None) -> bool:
         process = self._ensure_process()
@@ -152,39 +158,109 @@ class LlamaServerProcess:
 
         return False
 
-    def terminate(self, timeout: float = 5.0) -> None:
+    def stop(self, graceful_timeout: float = 5.0, force_timeout: float = 5.0) -> None:
         process = self._process
         if not process:
             return
 
-        if process.poll() is None:
-            self.logger.info("Terminating llama-server process")
-            process.terminate()
-            try:
-                process.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                self.logger.warning("Force killing llama-server process")
-                process.kill()
-                process.wait()
+        try:
+            if process.poll() is None:
+                self.logger.info("[LLM] Stopping llama-server (graceful)...")
+                if os.name == "nt":
+                    sent_break = False
+                    if self._uses_process_group and hasattr(signal, "CTRL_BREAK_EVENT"):
+                        try:
+                            os.kill(process.pid, signal.CTRL_BREAK_EVENT)  # type: ignore[arg-type]
+                            sent_break = True
+                        except Exception:
+                            self.logger.debug(
+                                "Failed to send CTRL_BREAK_EVENT to llama-server",
+                                exc_info=True,
+                            )
+                    if not sent_break:
+                        process.terminate()
+                else:
+                    try:
+                        os.killpg(process.pid, signal.SIGINT)
+                    except ProcessLookupError:
+                        pass
+                    except Exception:
+                        self.logger.debug(
+                            "Failed to send SIGINT to llama-server group", exc_info=True
+                        )
+                        process.terminate()
 
-        if self._stdout_thread and self._stdout_thread.is_alive():
-            self._stdout_thread.join(timeout=timeout)
-        if self._stderr_thread and self._stderr_thread.is_alive():
-            self._stderr_thread.join(timeout=timeout)
+                deadline = time.time() + max(graceful_timeout, 0.0)
+                while process.poll() is None and time.time() < deadline:
+                    time.sleep(0.1)
 
-        self._process = None
-        self._stdout_thread = None
-        self._stderr_thread = None
-        self._ready_event.clear()
-        if self.ready_text is None:
-            self._ready_event.set()
+                if process.poll() is None:
+                    self.logger.warning("[LLM] Graceful stop timed out, sending TERM...")
+                    if os.name == "nt":
+                        process.terminate()
+                    else:
+                        try:
+                            os.killpg(process.pid, signal.SIGTERM)
+                        except ProcessLookupError:
+                            pass
+                        except Exception:
+                            self.logger.debug(
+                                "Failed to send SIGTERM to llama-server group",
+                                exc_info=True,
+                            )
+                            process.terminate()
+
+                    deadline = time.time() + max(force_timeout, 0.0)
+                    while process.poll() is None and time.time() < deadline:
+                        time.sleep(0.1)
+
+                if process.poll() is None:
+                    self.logger.error("[LLM] Forcing kill of llama-server...")
+                    if os.name == "nt":
+                        process.kill()
+                    else:
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        except Exception:
+                            self.logger.debug(
+                                "Failed to send SIGKILL to llama-server group",
+                                exc_info=True,
+                            )
+                            process.kill()
+                    process.wait()
+        finally:
+            if process.poll() is not None:
+                try:
+                    process.wait(timeout=0.1)
+                except Exception:
+                    pass
+
+            join_timeout = max(graceful_timeout + force_timeout, 1.0)
+            if self._stdout_thread and self._stdout_thread.is_alive():
+                self._stdout_thread.join(timeout=join_timeout)
+            if self._stderr_thread and self._stderr_thread.is_alive():
+                self._stderr_thread.join(timeout=join_timeout)
+
+            self._process = None
+            self._stdout_thread = None
+            self._stderr_thread = None
+            self._ready_event.clear()
+            if self.ready_text is None:
+                self._ready_event.set()
+
+            self.logger.info("[LLM] llama-server stopped.")
+
+    def terminate(self, timeout: float = 5.0) -> None:
+        self.stop(graceful_timeout=timeout)
 
     def __enter__(self) -> "LlamaServerProcess":
         self.start()
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:  # pragma: no cover - simple
-        self.terminate()
+        self.stop()
 
     # Internal helpers ---------------------------------------------------
     def _ensure_process(self) -> subprocess.Popen[str]:
@@ -196,8 +272,10 @@ class LlamaServerProcess:
         if stream is None:
             return
         ready_markers = (
-            "server is listening",
             "http server is listening",
+            "server is listening",
+            "listening on",
+            "starting http server",
             "starting the main loop",
             "all slots are idle",
         )
@@ -206,16 +284,18 @@ class LlamaServerProcess:
             text = line.rstrip()
             if text:
                 self.logger.log(level, "%s | %s", prefix, text)
+                line_lower = text.strip().lower()
                 ready = False
-                if self.ready_text and self.ready_text in text:
+                if self.ready_text and self.ready_text.lower() in line_lower:
                     ready = True
-                else:
-                    lowered = text.lower()
-                    ready = any(marker in lowered for marker in ready_markers)
+                elif any(marker in line_lower for marker in ready_markers):
+                    ready = True
 
                 if ready and not self._ready_event.is_set():
                     self._ready_event.set()
-                    self.logger.debug("Ready text matched on stderr: %s", line.strip())
+                    self.logger.debug(
+                        "Readiness marker detected in output: %s", text.strip()
+                    )
         stream.close()
 
     # ------------------------------------------------------------------
