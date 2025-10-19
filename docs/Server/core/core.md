@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Core layer (`Server/core`)
 
 *Part of the FNK0050 Lumo architecture.*
