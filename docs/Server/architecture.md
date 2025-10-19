@@ -1,81 +1,71 @@
-# Lumo System Architecture
+# Lumo system architecture
 
 *Part of the FNK0050 project.*
 
-**Updated:** 2025-10-10  
-**Hierarchy:** app → mind → interface → core
+**Hierarchy:** `app → mind → interface → core`
 
 ## Overview
 
-Lumo is a modular robotic–cognitive platform designed for experimentation in perception, interaction, and self-awareness.  
-The architecture is layered to separate cognition, behavior orchestration, and hardware access.  
-Each layer is self-contained yet interoperable, allowing simulations without physical hardware.
+The server side of the project is organised as a stack of layers that separate orchestration,
+cognition, hardware facades, and low-level drivers. The goal is to keep experiments easy to wire
+in (through mocks or the sandbox) while preserving a clear flow of data from the “brain” to the
+physical body.
 
-## Layered Model
+```
+AppRuntime ──► MindContext ──► Interface facades ──► Core drivers
+        ▲                ▲
+        │                └── SensorGateway feeds proprioception back to the mind
+        └────── configuration & service builders
+```
 
-### 1. App Layer (`Server/app`)
-- **Role:** Orchestrates high-level behavior, finite-state machines, and coordination between cognitive services.  
-- **Analogy:** Executive cortex – plans and prioritizes.  
-- **Key Components:** `BehaviorManager`, `SocialFSM`, `AppRuntime`.  
-- **Dependencies:** Uses `mind/` for cognition and `interface/` for external actions.
+- **App layer (`Server/app`)** bootstraps the runtime, loads configuration from JSON, and wires the
+  enabled services (vision, movement, conversation, WebSocket streaming).
+- **Mind layer (`Server/mind`)** hosts the persona, LLM client, memory, and the
+  `MindSupervisor` that decides how to react to the current context.
+- **Interface layer (`Server/interface`)** exposes high-level classes (`MovementControl`,
+  `VisionManager`, `VoiceInterface`, `SensorGateway`, etc.) that abstract hardware details.
+- **Core layer (`Server/core`)** contains the robot drivers: gait control, vision pipelines,
+  speech synthesis/recognition, LED animations, and sensor code.
 
-### 2. Mind Layer (`Server/mind`)
-- **Role:** Holds reasoning, language, memory, and persona.  
-- **Analogy:** Cognitive cortex – where “thought” happens.  
-- **Key Components:** `MindContext`, `persona.py`, `llm_client`, `proprioception/BodyModel`.  
-- **Interaction:** Sends intents to `interface/` (voice, vision, motion) and receives sensory feedback.  
-- **Goal:** Keep cognition pure, detached from physical hardware.
+## Runtime flow
 
-### 3. Interface Layer (`Server/interface`)
-- **Role:** Bridge between cognition and the physical world.  
-- **Analogy:** Peripheral nervous system – translates abstract commands into physical actions.  
-- **Modules:** `MovementControl`, `VisionManager`, `VoiceInterface`, `LedController`.  
-- **Responsibilities:**  
-  1. Translate high-level intents from `mind/` into safe, hardware-aware commands.  
-  2. Normalize sensory data before it reaches `mind/`.  
-  3. Preserve the one-way dependency flow: `app → mind → interface → core`.
+1. `AppRuntime` reads `app.json`, builds an `AppServices` container, and registers signal handlers.
+2. When `start()` is called it spins up:
+   - `SensorController` + `SensorGateway` to stream IMU/odometry packets into the mind’s
+     `BodyModel`.
+   - Optional movement/vision/conversation services depending on the configuration flags.
+   - An asynchronous WebSocket server if camera streaming is enabled.
+3. `initialize_mind()` constructs a `MindContext` with the configured LLM endpoint, persona, and a
+   `MindSupervisor`. The supervisor keeps a `SocialFSM` attached whenever vision and movement are
+   available.
+4. Video frames processed by the vision service are forwarded to the FSM, which aligns the body to
+   detected faces and emits meows when interaction rules are satisfied. The supervisor pauses the
+   FSM while the voice subsystem is speaking.
+5. Conversation support (when enabled) is handled by `ConversationService`: it starts/stops the
+   llama.cpp binary, wires Speech-to-Text/Text-to-Speech, synchronises LEDs, and exposes hooks for
+   the FSM to trigger speech.
 
-### 4. Core Layer (`Server/core`)
-- **Role:** Implements hardware drivers and low-level control.  
-- **Analogy:** Body and sensors – where electricity meets reality.  
-- **Modules:** `movement/`, `vision/`, `voice/`, `hearing/`, `sensing/`, `led/`, `llm/`.  
-- **Dependencies:** Exposed only through `interface/`; higher layers never import `core` directly.
+The stack is intentionally modular. Any layer can be mocked (the sandbox replaces the hardware
+facades) and the `MindContext` can be reused in tests or tooling.
 
-## Data Flow Summary
+## Key modules
 
+| Layer | Location | Highlights |
+| ----- | -------- | ---------- |
+| App | `Server/app/application.py`, `runtime.py`, `builder/` | Entry points, JSON configuration loader, service wiring, WebSocket loop. |
+| Mind | `Server/mind/context.py`, `supervisor.py`, `behavior/social_fsm.py` | Persona + LLM client creation, behaviour supervisor, social FSM reacting to vision detections. |
+| Interface | `Server/interface/MovementControl.py`, `VisionManager.py`, `VoiceInterface.py`, `sensor_gateway.py` | High-level facades that keep blocking loops and resource management out of the mind layer. |
+| Core | `Server/core/movement`, `vision`, `voice`, `hearing`, `sensing`, `led` | Low-level drivers and pipelines used by the interface facades. |
 
+## Extensibility notes
 
-User → App (behavior control)
-↓
-Mind (reasoning & decisions)
-↓
-Interface (translation & mediation)
-↓
-Core (hardware execution)
+- **Conversation**: the builder honours a rich set of options (`health_timeout`,
+  `health_check_backoff`, `max_parallel_inference`, etc.) so the llama.cpp server can be tuned for
+  different hosts.
+- **Sensors**: new sensors can publish into the `BodyModel` by extending `SensorController` and
+  calling `SensorGateway._publish_packet` with the appropriate schema.
+- **Sandbox**: `Server/sandbox/sandbox_runtime.py` injects mocks for every interface, making it easy
+  to test the mind without hardware.
 
-
-Each arrow represents a boundary where data changes form:
-- Commands become physical actions.
-- Sensory data becomes structured perception.
-- Context and confidence values propagate upward.
-
-## Design Principles
-
-1. **Layer Isolation** – Each layer knows only the one below it.  
-2. **Replaceability** – Any layer can be simulated or swapped.  
-3. **Transparency** – Logging at each boundary for observability.  
-4. **Scalability** – Future components (navigation, emotions, sandbox) can plug in without breaking contracts.
-
-## Future Extensions
-
-- **Sandbox Mode:** A virtual environment allowing the mind and interface to operate without hardware.  
-- **Navigation Layer:** Integration of spatial reasoning and SLAM for autonomous movement.  
-- **Emotion Engine:** Adds affective states influencing behavior and LED feedback.  
-- **Distributed Mind:** Running the cognitive layer remotely while maintaining real-time physical control.
-
----
-**See also:**
-- [App Layer](app/app.md)
-- [Mind Layer](mind/mind.md)
-- [Interface Layer](interface/interface.md)
-- [Core Layer](core/core.md)
+See the individual layer documents for deeper dives into the services, controllers, and behaviour
+logic.
