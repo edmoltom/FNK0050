@@ -1,18 +1,62 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import signal
 import threading
 import time
 from types import FrameType
 from typing import Any, Callable, Dict, Optional
 
+from mind import initialize_mind
+
 from .builder import AppServices
 from network import ws_server
+from interface.sensor_controller import SensorController
+from interface.sensor_gateway import SensorGateway
 
 
 logger = logging.getLogger(__name__)
+
+# Load application configuration
+APP_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "app.json")
+try:
+    with open(APP_CONFIG_PATH, "r", encoding="utf-8") as f:
+        app_config = json.load(f)
+except FileNotFoundError:
+    logger.warning("Application configuration not found at %s", APP_CONFIG_PATH)
+    app_config = {}
+
+mode = str(app_config.get("mode", "sandbox")).lower()
+if mode not in {"sandbox", "real"}:
+    logger.warning("[RUNTIME] Unknown mode '%s', defaulting to sandbox", mode)
+    mode = "sandbox"
+
+logger.info("[RUNTIME] Starting in %s mode", mode.upper())
+
+# Conditional imports depending on mode
+if mode == "sandbox":
+    from sandbox.mocks import mock_led
+    from sandbox.mocks import mock_movement as movement
+    from sandbox.mocks import mock_vision as vision
+    from sandbox.mocks import mock_voice
+
+    voice_backend = mock_voice
+    led_backend = mock_led
+else:
+    from interface.MovementControl import MovementControl as movement
+    from interface.VisionManager import VisionManager as vision
+
+    voice_backend = None
+    led_backend = None
+
+RUNTIME_MODE = mode
+MOVEMENT_BACKEND = movement
+VISION_BACKEND = vision
+VOICE_BACKEND = voice_backend
+LED_BACKEND = led_backend
 
 
 class AppRuntime:
@@ -20,6 +64,17 @@ class AppRuntime:
 
     def __init__(self, services: AppServices) -> None:
         self.svcs = services
+        logger.info("[BOOT] Initializing Lumo core systems...")
+        app_config = getattr(services, "cfg", {}) or {}
+        logger.info("[BOOT] Mind module detected — linking cognition.")
+        self.mind = initialize_mind(
+            app_config,
+            vision=services.vision,
+            voice=services.conversation,
+            movement=services.movement,
+            social=services.fsm,
+        )
+        logger.info("[READY] Lumo body and mind synchronized.")
         self._latest_detection: Dict[str, Any] = {}
         self._frame_handler: Optional[Callable[[Dict[str, Any] | None], None]] = None
         self._shutdown_event = threading.Event()
@@ -52,10 +107,12 @@ class AppRuntime:
             dt = now - prev_time
             prev_time = now
 
-            if self.svcs.fsm:
-                self.svcs.fsm.on_frame(result or {}, dt)
+            fsm = self.mind.supervisor.social or self.svcs.fsm
+            if fsm:
+                fsm.on_frame(result or {}, dt)
 
             self._store_latest_detection(result)
+            self.mind.supervisor.update()
 
         self._frame_handler = _handle
 
@@ -95,9 +152,28 @@ class AppRuntime:
             self._stop_completed = False
         self._running = True
 
+        if not hasattr(self, "sensor_controller"):
+            self.sensor_controller = SensorController()
+        if not hasattr(self, "sensor_gateway"):
+            self.sensor_gateway = SensorGateway(
+                controller=self.sensor_controller,
+                body_model=self.mind.body,
+                poll_rate_hz=10.0,
+            )
+        self.sensor_gateway.start()
+
         vision = self.svcs.vision if self.svcs.vision else None
         movement = self.svcs.movement if self.svcs.movement else None
         conversation = self.svcs.conversation if self.svcs.conversation else None
+        social_fsm = self.svcs.fsm if self.svcs.fsm else None
+
+        self.mind.attach_interfaces(
+            vision=vision,
+            voice=conversation,
+            movement=movement,
+            social=social_fsm,
+        )
+        self.mind.supervisor.update()
 
         led = None
         if conversation and hasattr(conversation, "_led_controller"):
@@ -148,13 +224,13 @@ class AppRuntime:
                 self._start_ws_server(vision, host=host, port=port)
                 try:
                     while not self._shutdown_event.wait(timeout=0.5):
-                        pass
+                        self.mind.supervisor.update()
                 except KeyboardInterrupt:
                     pass
             elif vision_started:
                 try:
                     while not self._shutdown_event.wait(timeout=1.0):
-                        pass
+                        self.mind.supervisor.update()
                 except KeyboardInterrupt:
                     pass
         finally:
@@ -186,6 +262,12 @@ class AppRuntime:
 
             try:
                 conversation.join()
+            except Exception:
+                pass
+
+        if hasattr(self, "sensor_gateway"):
+            try:
+                self.sensor_gateway.stop()
             except Exception:
                 pass
 

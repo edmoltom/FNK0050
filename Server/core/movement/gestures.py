@@ -14,7 +14,7 @@ class Keyframe:
 
     @param t_ms Absolute time within the sequence in milliseconds.
     @param legs List of 4 triples [x, y, z] in millimetres (absolute foot positions).
-    @param servo_overrides Optional raw servo channel → angle degrees for one-off effects.
+    @param servo_overrides Optional raw servo channel -> angle degrees for one-off effects.
     """
     t_ms: int
     legs: List[List[float]]

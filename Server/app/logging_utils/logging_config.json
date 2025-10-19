@@ -1,0 +1,17 @@
+{
+  "root": {
+    "level": "INFO",
+    "file": "robot.log",
+    "max_bytes": 1048576,
+    "backup_count": 3,
+    "echo_to_console": false,
+    "format": "%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
+  },
+  "modules": {
+    "core": "NONE",
+    "mind": "NONE",
+    "interface": "NONE",
+    "app": "NONE",
+    "sandbox": "NONE"
+  }
+}

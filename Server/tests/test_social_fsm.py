@@ -21,6 +21,10 @@ core_stub = types.ModuleType("core")
 core_stub.__path__ = []  # pragma: no cover - namespace stub
 sys.modules.setdefault("core", core_stub)
 
+interface_stub = types.ModuleType("interface")
+interface_stub.__path__ = []  # pragma: no cover - namespace stub
+sys.modules.setdefault("interface", interface_stub)
+
 vision_package = types.ModuleType("core.vision")
 vision_package.__path__ = []  # pragma: no cover - namespace stub
 sys.modules.setdefault("core.vision", vision_package)
@@ -33,7 +37,7 @@ voice_sfx_module = types.ModuleType("core.voice.sfx")
 voice_sfx_module.play_sound = lambda *args, **kwargs: None
 sys.modules.setdefault("core.voice.sfx", voice_sfx_module)
 
-movement_control_module = types.ModuleType("core.MovementControl")
+movement_control_module = types.ModuleType("interface.MovementControl")
 
 
 class _StubMovementControl:  # pragma: no cover - test stub
@@ -62,9 +66,10 @@ class _StubMovementControl:  # pragma: no cover - test stub
 
 
 movement_control_module.MovementControl = _StubMovementControl
+sys.modules.setdefault("interface.MovementControl", movement_control_module)
 sys.modules.setdefault("core.MovementControl", movement_control_module)
 
-vision_manager_module = types.ModuleType("core.VisionManager")
+vision_manager_module = types.ModuleType("interface.VisionManager")
 
 
 class _StubVisionManager:  # pragma: no cover - test stub
@@ -91,6 +96,7 @@ class _StubVisionManager:  # pragma: no cover - test stub
 
 
 vision_manager_module.VisionManager = _StubVisionManager
+sys.modules.setdefault("interface.VisionManager", vision_manager_module)
 sys.modules.setdefault("core.VisionManager", vision_manager_module)
 
 profile_manager_module = types.ModuleType("core.vision.profile_manager")
@@ -126,7 +132,7 @@ class _StubPID:  # pragma: no cover - test stub
 control_pid_module.Incremental_PID = _StubPID
 sys.modules.setdefault("control.pid", control_pid_module)
 
-from app.controllers import social_fsm
+from mind.behavior import social_fsm
 
 
 class _DummyTracker:

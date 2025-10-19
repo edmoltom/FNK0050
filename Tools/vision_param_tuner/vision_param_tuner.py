@@ -10,7 +10,7 @@ Allows adjusting blur, morphological kernel size, scale, and minimum contour are
 This is meant for exploration and learning, NOT for production use.
 
 Hotkeys:
-  - 'm' : switch mode (CANNY → ADAPTIVE → FIXED → ...)
+  - 'm' : switch mode (CANNY -> ADAPTIVE -> FIXED -> ...)
   - 's' : save resulting image + parameters (in ./results_tuner)
   - 'q' or 'ESC' : quit
 """

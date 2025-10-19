@@ -248,7 +248,7 @@ def test_conversation_client_uses_configured_url_and_timeout(
     assert stubs["llm_client"].base_url == "http://configured:8080"
     assert stubs["llm_client"].request_timeout == 12.5
     assert stubs["registered_stop_event"] is services.conversation.stop_event
-    assert stubs["manager_factory_kwargs"]["close_led_on_cleanup"] is False
+    assert services.conversation._extra_manager_kwargs["close_led_on_cleanup"] is False
 
 
 def test_conversation_client_falls_back_to_env_base(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -283,7 +283,7 @@ def test_conversation_client_falls_back_to_env_base(monkeypatch: pytest.MonkeyPa
     assert stubs["llm_client"].base_url == "http://env-base:9000"
     assert stubs["llm_client"].request_timeout == 30.0
     assert stubs["registered_stop_event"] is services.conversation.stop_event
-    assert stubs["manager_factory_kwargs"]["close_led_on_cleanup"] is False
+    assert services.conversation._extra_manager_kwargs["close_led_on_cleanup"] is False
 
 
 def test_social_fsm_registers_conversation_callbacks(
@@ -315,9 +315,9 @@ def test_social_fsm_registers_conversation_callbacks(
     movement_module.MovementService = DummyMovement
     monkeypatch.setitem(sys.modules, "app.services.movement_service", movement_module)
 
-    social_module = types.ModuleType("app.controllers.social_fsm")
+    social_module = types.ModuleType("mind.behavior.social_fsm")
     social_module.SocialFSM = DummyFSM
-    monkeypatch.setitem(sys.modules, "app.controllers.social_fsm", social_module)
+    monkeypatch.setitem(sys.modules, "mind.behavior.social_fsm", social_module)
 
     llama_path = tmp_path / "llama"
     model_path = tmp_path / "model.gguf"

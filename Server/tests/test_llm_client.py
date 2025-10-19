@@ -10,10 +10,6 @@ SERVER_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVER_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVER_ROOT))
 
-core_stub = types.ModuleType("core")
-core_stub.__path__ = [str(SERVER_ROOT / "core")]
-sys.modules["core"] = core_stub
-
 requests_stub = types.ModuleType("requests")
 
 
@@ -24,7 +20,7 @@ def _fail_post(*_args, **_kwargs):  # pragma: no cover - guardrail
 requests_stub.post = _fail_post
 sys.modules["requests"] = requests_stub
 
-from core.llm.llm_client import CHAT_ENDPOINT, LlamaClient
+from mind.llm.client import CHAT_ENDPOINT, LlamaClient
 
 
 def test_llama_client_uses_env_base_when_not_provided(monkeypatch: pytest.MonkeyPatch) -> None:

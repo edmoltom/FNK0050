@@ -1,6 +1,4 @@
 """Core subsystem exports."""
 
-from .VisionManager import VisionManager
-
-__all__ = ["VisionManager"]
+__all__: list[str] = []
 

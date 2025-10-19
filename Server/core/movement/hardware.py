@@ -1,32 +1,18 @@
-"""Hardware abstraction for robot movement.
-
-This module centralises access to low level devices such as the PCA9685
-servo controller, IMU and odometry.  It also encapsulates the mapping
-between logical leg joints and physical servo channels as well as the
-calibration offsets for each joint.
-
-The :class:`Hardware` class exposes two public methods used by the higher
-level movement controller:
-
-``apply_angles``
-    Apply a list of joint angles to the servos taking calibration into
-    account.
-
-``relax``
-    Disable all servo outputs, allowing the robot to relax.
-"""
+"""Hardware abstraction for movement actuators.
+Handles servos and gait generation. No sensors or logging."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List
 
 from .kinematics import coordinate_to_angle, clamp
 from .data import load_points
 from .servo import Servo
 from .gait_cpg import CPG
-from sensing.IMU import IMU
-from sensing.odometry import Odometry
-from control.pid import Incremental_PID
+
+
+logger = logging.getLogger(__name__)
 
 
 class Hardware:
@@ -40,28 +26,16 @@ class Hardware:
         (11, 12, 13) # Front-right
     )
 
-    def __init__(self, *, imu: Optional[IMU] = None, odom: Optional[Odometry] = None) -> None:
-        """Create a new hardware bundle.
-
-        Parameters
-        ----------
-        imu:
-            Optional IMU instance.  If ``None`` a default :class:`IMU` will be
-            constructed.
-        odom:
-            Optional odometry instance.  If ``None`` a default
-            :class:`Odometry` will be constructed.
-        """
-        self.setup_hardware(imu=imu, odom=odom)
+    def __init__(self) -> None:
+        """Create a new hardware bundle focused on actuation."""
+        self.setup_hardware()
         self.load_calibration()
+        logger.info("[MOVEMENT] Hardware ready (actuation only).")
 
     # ------------------------------------------------------------------
-    def setup_hardware(self, *, imu: Optional[IMU] = None, odom: Optional[Odometry] = None) -> None:
-        """Initialise the individual hardware components."""
-        self.imu = imu or IMU()
+    def setup_hardware(self) -> None:
+        """Initialise the individual hardware components used for actuation."""
         self.servo = Servo()
-        self.pid = Incremental_PID(0.5, 0.0, 0.0025)
-        self.odom = odom or Odometry(stride_gain=0.55)
         self.cpg = CPG("walk")
 
     # ------------------------------------------------------------------

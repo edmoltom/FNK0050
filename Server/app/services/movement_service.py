@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 from typing import Any, Optional
 
-from core.MovementControl import MovementControl
+from interface.MovementControl import MovementControl
 
 
 class MovementService:

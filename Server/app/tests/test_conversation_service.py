@@ -14,15 +14,16 @@ SERVER_ROOT = Path(__file__).resolve().parents[2]
 if str(SERVER_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVER_ROOT))
 
-core_stub = types.ModuleType("core")
-core_stub.__path__ = []  # type: ignore[attr-defined]
-sys.modules.setdefault("core", core_stub)
+mind_stub = types.ModuleType("mind")
+mind_stub.__path__ = []  # type: ignore[attr-defined]
+sys.modules.setdefault("mind", mind_stub)
 
-llm_stub = types.ModuleType("core.llm")
-llm_stub.__path__ = []  # type: ignore[attr-defined]
-sys.modules.setdefault("core.llm", llm_stub)
+llm_pkg_stub = types.ModuleType("mind.llm")
+llm_pkg_stub.__path__ = []  # type: ignore[attr-defined]
+sys.modules.setdefault("mind.llm", llm_pkg_stub)
+setattr(mind_stub, "llm", llm_pkg_stub)
 
-llama_stub = types.ModuleType("core.llm.llama_server_process")
+llama_stub = types.ModuleType("mind.llm.process")
 
 
 class _StubLlamaServerProcess:  # pragma: no cover - test scaffolding
@@ -30,9 +31,10 @@ class _StubLlamaServerProcess:  # pragma: no cover - test scaffolding
 
 
 llama_stub.LlamaServerProcess = _StubLlamaServerProcess
-sys.modules.setdefault("core.llm.llama_server_process", llama_stub)
+sys.modules.setdefault("mind.llm.process", llama_stub)
+setattr(llm_pkg_stub, "process", llama_stub)
 
-llm_client_stub = types.ModuleType("core.llm.llm_client")
+llm_client_stub = types.ModuleType("mind.llm.client")
 
 
 class _StubLlamaClient:  # pragma: no cover - test scaffolding
@@ -44,15 +46,15 @@ class _StubLlamaClient:  # pragma: no cover - test scaffolding
 
 
 llm_client_stub.LlamaClient = _StubLlamaClient
-sys.modules.setdefault("core.llm.llm_client", llm_client_stub)
-
+sys.modules.setdefault("mind.llm.client", llm_client_stub)
+setattr(llm_pkg_stub, "client", llm_client_stub)
 from app.services.conversation_service import ConversationService
 
 for name in [
-    "core.llm.llama_server_process",
-    "core.llm.llm_client",
-    "core.llm",
-    "core",
+    "mind.llm.process",
+    "mind.llm.client",
+    "mind.llm",
+    "mind",
 ]:
     sys.modules.pop(name, None)
 
@@ -64,6 +66,8 @@ class ProcessMock:
         self.wait_ready = mock.Mock(return_value=True)
         self.terminate = mock.Mock(side_effect=self._terminate)
         self.is_running = mock.Mock(side_effect=self._is_running)
+        self.poll = mock.Mock(return_value=None)
+        self.poll_health = mock.Mock(side_effect=self._poll_health)
 
     def _start(self) -> None:
         self._running = True
@@ -73,6 +77,10 @@ class ProcessMock:
 
     def _is_running(self) -> bool:
         return self._running
+
+    def _poll_health(self, *_args: Any, **_kwargs: Any) -> bool:
+        self.terminate()
+        return True
 
 
 def _build_service(

@@ -10,5 +10,5 @@ Proporciona `play_sound`, que detecta el primer reproductor disponible y reprodu
 
 ## Integración superior
 
-`VoiceInterface` combina `SpeechToText`, `TextToSpeech`, `LedController` y memoria de conversación para gestionar estados `WAKE → ATTENTIVE_LISTEN → THINK → SPEAK`, pausando el STT durante la generación de respuestas y controlando LEDs según el estado.​:codex-file-citation[codex-file-citation]{line_range_start=7 line_range_end=232 path=Server/core/VoiceInterface.py git_url="https://github.com/edmoltom/FNK0050/blob/dev/Server/core/VoiceInterface.py#L7-L232"}​
+`interface/VoiceInterface` combina `SpeechToText`, `TextToSpeech`, `LedController` y memoria de conversación para gestionar estados `WAKE → ATTENTIVE_LISTEN → THINK → SPEAK`, pausando el STT durante la generación de respuestas y controlando LEDs según el estado.​:codex-file-citation[codex-file-citation]{line_range_start=7 line_range_end=232 path=Server/interface/VoiceInterface.py git_url="https://github.com/edmoltom/FNK0050/blob/dev/Server/interface/VoiceInterface.py#L7-L232"}​
 

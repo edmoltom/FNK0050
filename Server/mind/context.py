@@ -1,0 +1,93 @@
+import logging
+
+from mind.persona import build_system
+from mind.llm.client import DEFAULT_BASE_URL, LlamaClient
+from mind.llm.memory import MemoryManager
+from mind.llm.settings import DEFAULT_TIMEOUT
+from mind.supervisor import MindSupervisor
+
+logger = logging.getLogger(__name__)
+
+
+class MindContext:
+    def __init__(
+        self,
+        config,
+        *,
+        vision=None,
+        voice=None,
+        movement=None,
+        social=None,
+    ):
+        self.persona = build_system()
+
+        llm_cfg = {}
+        if isinstance(config, dict):
+            candidate = config.get("llm")
+            if isinstance(candidate, dict):
+                llm_cfg = candidate
+            else:
+                conversation_cfg = config.get("conversation")
+                if isinstance(conversation_cfg, dict):
+                    nested_candidate = conversation_cfg.get("llm")
+                    if isinstance(nested_candidate, dict):
+                        llm_cfg = nested_candidate
+
+        self.llm = LlamaClient(
+            base_url=llm_cfg.get("base_url", DEFAULT_BASE_URL),
+            request_timeout=llm_cfg.get("timeout", DEFAULT_TIMEOUT),
+            model=llm_cfg.get("model", "local-llm"),
+        )
+        self.memory = MemoryManager()
+        self.vision = vision
+        self.voice = voice
+        self.movement = movement
+        self.social = social
+        self.supervisor = MindSupervisor(
+            vision=self.vision,
+            voice=self.voice,
+            movement=self.movement,
+            social=self.social,
+        )
+        self.body = self.supervisor.body
+        logger.info("[COGNITIVE] Persona loaded successfully.")
+        logger.info(
+            "[MIND] LlamaClient initialized for %s (model=%s)",
+            self.llm.base_url,
+            getattr(self.llm, "model", "unknown"),
+        )
+        logger.info("[MIND] MindSupervisor attached.")
+
+    def summary(self):
+        return {
+            "persona": type(self.persona).__name__,
+            "llm": type(self.llm).__name__,
+            "memory": type(self.memory).__name__,
+            "body": self.body.summary(),
+        }
+
+    def attach_interfaces(
+        self,
+        *,
+        vision=None,
+        voice=None,
+        movement=None,
+        social=None,
+    ) -> None:
+        """Update runtime interfaces and refresh the supervisor wiring."""
+
+        if vision is not None:
+            self.vision = vision
+        if voice is not None:
+            self.voice = voice
+        if movement is not None:
+            self.movement = movement
+        if social is not None:
+            self.social = social
+
+        self.supervisor.attach_interfaces(
+            vision=self.vision,
+            voice=self.voice,
+            movement=self.movement,
+            social=self.social,
+        )
