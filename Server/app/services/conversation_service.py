@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 import weakref
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, NamedTuple, Optional
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
@@ -14,6 +14,13 @@ from mind.llm.process import LlamaServerProcess
 
 
 ConversationManagerFactory = Callable[..., Any]
+
+
+class _ReadinessResult(NamedTuple):
+    event_ready: bool
+    health_ready: bool
+    elapsed: float
+    base_url: str
 
 
 class ConversationService:
@@ -104,67 +111,59 @@ class ConversationService:
             self._led_shutdown = True
 
     # ------------------------------------------------------------------
-    def start(self) -> None:
-        """Start the service if it is not already running."""
+    def _prepare_process(self) -> bool:
+        try:
+            if not self._process.is_running():
+                self._logger.info("Starting llama-server process")
+                self._process.start()
+        except Exception as exc:  # pragma: no cover - defensive
+            self._logger.exception("Failed to start llama-server: %s", exc)
+            return False
+        return True
 
-        with self._lock:
-            if self._thread and self._thread.is_alive():
-                self._logger.info("Conversation thread already running")
-                return
+    def _wait_for_readiness(self) -> Optional[_ReadinessResult]:
+        wait_start = time.monotonic()
+        readiness_deadline = wait_start + self._readiness_timeout
+        timeout_partial = min(5.0, self._readiness_timeout)
+        event_stop = threading.Event()
+        event_state: Dict[str, Any] = {"ready": False, "error": None}
 
-            self._stop_event.clear()
-
-            self._logger.info("Bootstrapping conversation service")
-
+        def _wait_ready_event() -> None:
+            deadline = readiness_deadline
+            remaining = self._readiness_timeout
             try:
-                if not self._process.is_running():
-                    self._logger.info("Starting llama-server process")
-                    self._process.start()
+                while remaining > 0 and not event_stop.is_set():
+                    wait_for = min(timeout_partial, remaining)
+                    if wait_for <= 0:
+                        break
+                    if self._process.wait_ready(timeout=wait_for):
+                        event_state["ready"] = True
+                        break
+                    if event_stop.is_set():
+                        break
+                    remaining = deadline - time.monotonic()
             except Exception as exc:  # pragma: no cover - defensive
-                self._logger.exception("Failed to start llama-server: %s", exc)
-                return
+                event_state["error"] = exc
 
-            wait_start = time.monotonic()
-            readiness_deadline = wait_start + self._readiness_timeout
-            timeout_partial = min(5.0, self._readiness_timeout)
-            event_stop = threading.Event()
-            event_state: Dict[str, Any] = {"ready": False, "error": None}
+        event_thread = threading.Thread(
+            target=_wait_ready_event,
+            name="llama-ready-wait",
+            daemon=True,
+        )
+        event_thread.start()
 
-            def _wait_ready_event() -> None:
-                deadline = readiness_deadline
-                remaining = self._readiness_timeout
-                try:
-                    while remaining > 0 and not event_stop.is_set():
-                        wait_for = min(timeout_partial, remaining)
-                        if wait_for <= 0:
-                            break
-                        if self._process.wait_ready(timeout=wait_for):
-                            event_state["ready"] = True
-                            break
-                        if event_stop.is_set():
-                            break
-                        remaining = deadline - time.monotonic()
-                except Exception as exc:  # pragma: no cover - defensive
-                    event_state["error"] = exc
+        base_url = self._resolve_health_base_url()
+        health_url = f"{base_url.rstrip('/')}/health"
+        health_method = "GET"
+        max_attempts = max(0, self._health_check_max_retries) + 1
+        attempts = 0
+        next_attempt = wait_start
+        sleep_for = self._health_check_interval
+        backoff = self._health_check_backoff
+        health_ready = False
+        process_died = False
 
-            event_thread = threading.Thread(
-                target=_wait_ready_event,
-                name="llama-ready-wait",
-                daemon=True,
-            )
-            event_thread.start()
-
-            base_url = self._resolve_health_base_url()
-            health_url = f"{base_url.rstrip('/')}/health"
-            health_method = "GET"
-            max_attempts = max(0, self._health_check_max_retries) + 1
-            attempts = 0
-            next_attempt = wait_start
-            sleep_for = self._health_check_interval
-            backoff = self._health_check_backoff
-            health_ready = False
-            process_died = False
-
+        try:
             while True:
                 now = time.monotonic()
                 if now >= readiness_deadline:
@@ -247,53 +246,82 @@ class ConversationService:
                     )
                 next_attempt = now + sleep_window
                 sleep_for *= backoff
-
+        finally:
             event_stop.set()
             event_thread.join()
 
-            if event_state["error"] is not None:
-                self._logger.error("Llama server readiness failed: %s", event_state["error"])
-                self._process.terminate()
-                return
+        if event_state["error"] is not None:
+            self._logger.error("Llama server readiness failed: %s", event_state["error"])
+            return None
 
-            if process_died:
-                self._logger.error("Llama server exited before readiness confirmation")
-                self._process.terminate()
-                return
+        if process_died:
+            self._logger.error("Llama server exited before readiness confirmation")
+            return None
 
-            event_ready = bool(event_state.get("ready"))
+        event_ready = bool(event_state.get("ready"))
 
-            if not event_ready and not health_ready:
-                self._logger.error("Timeout waiting for llama server readiness")
-                self._process.terminate()
-                return
+        if not event_ready and not health_ready:
+            self._logger.error("Timeout waiting for llama server readiness")
+            return None
 
-            elapsed = time.monotonic() - wait_start
-            self._logger.info(
-                "Llama server ready (event=%s, health=%s) in %.2fs",
-                event_ready,
-                health_ready,
-                elapsed,
+        elapsed = time.monotonic() - wait_start
+        self._logger.info(
+            "Llama server ready (event=%s, health=%s) in %.2fs",
+            event_ready,
+            health_ready,
+            elapsed,
+        )
+
+        return _ReadinessResult(
+            event_ready=event_ready,
+            health_ready=health_ready,
+            elapsed=elapsed,
+            base_url=base_url,
+        )
+
+    def _verify_process_health(self, readiness: _ReadinessResult) -> bool:
+        if readiness.health_ready:
+            return True
+        try:
+            healthy = self._process.poll_health(
+                readiness.base_url,
+                interval=self._health_check_interval,
+                max_retries=self._health_check_max_retries,
+                backoff=self._health_check_backoff,
+                timeout=self._health_check_timeout,
             )
+        except Exception as exc:  # pragma: no cover - defensive
+            self._logger.error("Health check invocation failed: %s", exc)
+            return False
 
-            try:
-                if health_ready:
-                    healthy = True
-                else:
-                    healthy = self._process.poll_health(
-                        base_url,
-                        interval=self._health_check_interval,
-                        max_retries=self._health_check_max_retries,
-                        backoff=self._health_check_backoff,
-                        timeout=self._health_check_timeout,
-                    )
-            except Exception as exc:  # pragma: no cover - defensive
-                self._logger.error("Health check invocation failed: %s", exc)
+        if not healthy:
+            self._logger.error("Llama server health check did not succeed")
+            return False
+
+        return True
+
+    # ------------------------------------------------------------------
+    def start(self) -> None:
+        """Start the service if it is not already running."""
+
+        with self._lock:
+            if self._thread and self._thread.is_alive():
+                self._logger.info("Conversation thread already running")
+                return
+
+            self._stop_event.clear()
+
+            self._logger.info("Bootstrapping conversation service")
+
+            if not self._prepare_process():
+                return
+
+            readiness = self._wait_for_readiness()
+            if readiness is None:
                 self._process.terminate()
                 return
 
-            if not healthy:
-                self._logger.error("Llama server health check did not succeed")
+            if not self._verify_process_health(readiness):
                 self._process.terminate()
                 return
 
