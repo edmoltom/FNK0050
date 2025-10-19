@@ -1,9 +1,9 @@
 from __future__ import annotations
+from __future__ import annotations
 
-import threading
 import sys
+import threading
 import types
-from pathlib import Path
 
 cv2_stub = types.ModuleType("cv2")
 numpy_stub = types.ModuleType("numpy")
@@ -19,10 +19,6 @@ sys.modules.setdefault("numpy", numpy_stub)
 
 numpy_stub.ndarray = type("ndarray", (), {})  # type: ignore[attr-defined]
 
-SERVER_ROOT = Path(__file__).resolve().parents[1]
-if str(SERVER_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVER_ROOT))
-
 vision_service_stub = types.ModuleType("app.services.vision_service")
 
 
@@ -33,8 +29,8 @@ class _StubVisionService:  # pragma: no cover - minimal shim
 vision_service_stub.VisionService = _StubVisionService
 sys.modules.setdefault("app.services.vision_service", vision_service_stub)
 
-from app.builder import AppServices
-from app.runtime import AppRuntime
+from Server.app.builder import AppServices
+from Server.app.runtime import AppRuntime
 
 
 class _Recorder:

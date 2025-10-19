@@ -8,9 +8,7 @@ import types
 from pathlib import Path
 from typing import Dict, Iterable, Optional
 
-SERVER_ROOT = Path(__file__).resolve().parents[1]
-if str(SERVER_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVER_ROOT))
+SERVER_ROOT = Path(__file__).resolve().parents[3]
 
 cv2_stub = types.ModuleType("cv2")
 numpy_stub = types.ModuleType("numpy")
@@ -19,18 +17,11 @@ led_controller_stub = types.ModuleType("LedController")
 sounddevice_stub = types.ModuleType("sounddevice")
 vosk_stub = types.ModuleType("vosk")
 
-core_stub = types.ModuleType("core")
-core_stub.__path__ = [str(SERVER_ROOT / "core")]
-sys.modules["core"] = core_stub
-
-mind_stub = types.ModuleType("mind")
-mind_stub.__path__ = [str(SERVER_ROOT / "mind")]
-sys.modules["mind"] = mind_stub
+sys.modules.setdefault("core", importlib.import_module("Server.core"))
+sys.modules.setdefault("mind", importlib.import_module("Server.mind"))
 importlib.import_module("mind.llm.process")
 
-interface_stub = types.ModuleType("interface")
-interface_stub.__path__ = [str(SERVER_ROOT / "interface")]
-sys.modules["interface"] = interface_stub
+sys.modules.setdefault("interface", importlib.import_module("Server.interface"))
 
 requests_stub = types.ModuleType("requests")
 
@@ -132,9 +123,9 @@ sounddevice_stub.RawInputStream = _StubRawInputStream
 vosk_stub.Model = _StubModel
 vosk_stub.KaldiRecognizer = _StubKaldiRecognizer
 
-from app.builder import AppServices
-from app.runtime import AppRuntime
-from app.services.conversation_service import ConversationService
+from Server.app.builder import AppServices
+from Server.app.runtime import AppRuntime
+from Server.app.services.conversation_service import ConversationService
 
 
 

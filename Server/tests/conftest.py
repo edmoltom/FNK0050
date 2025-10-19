@@ -1,9 +1,24 @@
 from __future__ import annotations
 
+import importlib
 import stat
+import sys
 from pathlib import Path
 
 import pytest
+
+
+SERVER_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = SERVER_ROOT.parent
+
+for path in (PROJECT_ROOT, SERVER_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+sys.modules.setdefault("app", importlib.import_module("Server.app"))
+sys.modules.setdefault("core", importlib.import_module("Server.core"))
+sys.modules.setdefault("interface", importlib.import_module("Server.interface"))
+sys.modules.setdefault("mind", importlib.import_module("Server.mind"))
 
 
 @pytest.fixture()

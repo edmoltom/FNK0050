@@ -8,10 +8,6 @@ from unittest import mock
 
 import pytest
 
-SERVER_ROOT = Path(__file__).resolve().parents[2]
-if str(SERVER_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVER_ROOT))
-
 cv2_stub = types.ModuleType("cv2")
 cv2_stub.COLOR_RGB2BGR = 4
 cv2_stub.COLOR_BGR2RGB = 2
@@ -35,9 +31,9 @@ numpy_typing_stub = types.ModuleType("numpy.typing")
 numpy_typing_stub.NDArray = object
 sys.modules.setdefault("numpy.typing", numpy_typing_stub)
 
-from app.services.conversation_service import ConversationService
+from Server.app.services.conversation_service import ConversationService
 
-from app.builder import build
+from Server.app.builder import build
 
 
 def write_config(tmp_path: Path, data: dict) -> Path:

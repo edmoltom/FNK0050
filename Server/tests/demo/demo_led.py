@@ -1,6 +1,18 @@
 # test_codes/test_led.py
+from __future__ import annotations
+
+import sys
 import time
-from led.led import Led   # core/led/__init__.py must exist
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+SERVER_ROOT = PROJECT_ROOT / "Server"
+
+for path in (PROJECT_ROOT, SERVER_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+from Server.core.led.led import Led
 
 def main():
     print("LED test: SPI (PCB v2)")

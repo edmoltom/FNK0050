@@ -1,15 +1,10 @@
 import math
 import sys
-from pathlib import Path
+import math
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SERVER_ROOT = PROJECT_ROOT / "Server"
-if str(SERVER_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVER_ROOT))
-
-from mind.proprioception.body_model import BodyModel
+from Server.mind.proprioception.body_model import BodyModel
 
 
 def test_body_model_relative_odometry_update():

@@ -1,9 +1,17 @@
-import asyncio
-import os
-import sys
+from __future__ import annotations
 
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from interface.LedController import LedController
+import asyncio
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+SERVER_ROOT = PROJECT_ROOT / "Server"
+
+for path in (PROJECT_ROOT, SERVER_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+from Server.interface.LedController import LedController
 
 async def test_led_no_block():
     ctrl = LedController(brightness=30)
