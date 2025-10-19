@@ -242,11 +242,9 @@ class VisualTracker:
     _locked: bool = field(default=False, init=False)
     _face_count: int = field(default=0, init=False)
     _miss_count: int = field(default=0, init=False)
-<<<<<<< HEAD:Server/interface/tracker/visual_tracker.py
+
     _lost_target: bool = field(default=False, init=False, repr=False)
     _horizontal_error: float = field(default=0.0, init=False, repr=False)
-=======
->>>>>>> dev:Server/app/controllers/tracker.py
     _lock_frames_needed: int = field(default=3, init=False, repr=False)
     _miss_release: int = field(default=5, init=False, repr=False)
     _recenter_after: int = field(default=40, init=False, repr=False)
