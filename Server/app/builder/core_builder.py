@@ -227,6 +227,8 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
             health_retries = services.conversation_cfg.get("health_check_max_retries", 3)
             health_backoff = services.conversation_cfg.get("health_check_backoff", 2.0)
             health_base_url = services.conversation_cfg.get("llm_base_url") or None
+            min_on_time = float(services.conversation_cfg.get("min_on_time", 3.0))
+            min_off_time = float(services.conversation_cfg.get("min_off_time", 2.0))
 
             manager_kwargs = dict(manager_kwargs)
             manager_kwargs.setdefault("close_led_on_cleanup", False)
@@ -247,6 +249,8 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
                 health_check_timeout=readiness_timeout,
                 led_cleanup=led_cleanup,
             )
+            conversation_service._min_on_time = min_on_time
+            conversation_service._min_off_time = min_off_time
             logger.info("ConversationService instance created successfully")
         except Exception:
             logger.exception("Failed to build ConversationService")
