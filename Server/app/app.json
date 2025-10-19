@@ -40,6 +40,7 @@
     "health_check_interval": 0.5,
     "health_check_max_retries": 3,
     "health_check_backoff": 2.0,
+    "health_warmup_delay": 10.0,
     "llm_base_url": "http://127.0.0.1:8080",
     "llm_request_timeout": 30.0,
     "max_parallel_inference": 1

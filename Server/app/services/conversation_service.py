@@ -159,20 +159,18 @@ class ConversationService:
         base_url = self._resolve_health_base_url()
         health_url = f"{base_url.rstrip('/')}/health"
         health_method = "GET"
-        max_attempts = max(0, self._health_check_max_retries) + 1
-        attempts = 0
-        next_attempt = wait_start
         sleep_for = self._health_check_interval
         backoff = self._health_check_backoff
         health_ready = False
         process_died = False
 
-        try:
-            while True:
-                now = time.monotonic()
-                if now >= readiness_deadline:
-                    break
+        warmup_delay = getattr(self, "_health_warmup_delay", 10.0)
+        if warmup_delay > 0:
+            self._logger.info("Waiting %.1fs before first health check...", warmup_delay)
+            time.sleep(warmup_delay)
 
+        try:
+            while time.monotonic() < readiness_deadline:
                 if event_state["error"] is not None:
                     break
 
@@ -183,21 +181,7 @@ class ConversationService:
                     process_died = True
                     break
 
-                if attempts >= max_attempts:
-                    sleep_window = min(0.1, max(0.0, readiness_deadline - now))
-                    if sleep_window > 0:
-                        time.sleep(sleep_window)
-                    continue
-
-                if now < next_attempt:
-                    sleep_window = min(next_attempt - now, readiness_deadline - now, 0.1)
-                    if sleep_window > 0:
-                        time.sleep(sleep_window)
-                    continue
-
-                attempts += 1
-
-                warmup_retry = False
+                now = time.monotonic()
                 try:
                     req = urllib_request.Request(health_url, method=health_method)
                     remaining = max(0.0, readiness_deadline - now)
@@ -205,16 +189,11 @@ class ConversationService:
                     with urllib_request.urlopen(req, timeout=timeout) as response:
                         status = getattr(response, "status", 200)
                         if 200 <= status < 300:
-                            self._logger.info(
-                                "Health check succeeded on attempt %d", attempts
-                            )
+                            self._logger.info("Health check succeeded (status %s)", status)
                             health_ready = True
                             break
                         if status == 503:
-                            self._logger.info(
-                                "Health check: model warming up (503)"
-                            )
-                            warmup_retry = True
+                            self._logger.info("Health check: model warming up (503)")
                         else:
                             self._logger.warning(
                                 "Health check HTTP %s %s returned status %s",
@@ -228,27 +207,14 @@ class ConversationService:
                 if health_ready:
                     break
 
-                if warmup_retry:
-                    sleep_window = min(
-                        self._health_check_interval,
-                        max(0.0, readiness_deadline - time.monotonic()),
-                    )
-                    if sleep_window > 0:
-                        time.sleep(sleep_window)
-                    next_attempt = time.monotonic()
-                    continue
-
-                if attempts >= max_attempts:
-                    continue
-
-                sleep_window = min(sleep_for, max(0.0, readiness_deadline - now))
+                sleep_window = min(
+                    sleep_for, max(0.0, readiness_deadline - time.monotonic())
+                )
                 if sleep_window > 0:
-                    self._logger.info(
-                        "Health check backoff sleeping %.2fs before retry %d",
-                        sleep_window,
-                        attempts + 1,
+                    self._logger.debug(
+                        "Health check sleeping %.2fs before retry", sleep_window
                     )
-                next_attempt = now + sleep_window
+                    time.sleep(sleep_window)
                 sleep_for *= backoff
         finally:
             event_stop.set()

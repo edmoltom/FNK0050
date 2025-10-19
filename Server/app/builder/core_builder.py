@@ -93,6 +93,7 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
         "health_check_interval": 0.5,
         "health_check_max_retries": 3,
         "health_check_backoff": 2.0,
+        "health_warmup_delay": 10.0,
         "llm_base_url": "",
         "llm_request_timeout": 30.0,
         "max_parallel_inference": 1,
@@ -120,6 +121,11 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
     merged_conversation_cfg["health_check_backoff"] = float(
         merged_conversation_cfg.get(
             "health_check_backoff", conversation_defaults["health_check_backoff"]
+        )
+    )
+    merged_conversation_cfg["health_warmup_delay"] = float(
+        merged_conversation_cfg.get(
+            "health_warmup_delay", conversation_defaults["health_warmup_delay"]
         )
     )
     merged_conversation_cfg["llm_base_url"] = str(merged_conversation_cfg.get("llm_base_url", ""))
@@ -226,6 +232,9 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
             health_interval = services.conversation_cfg.get("health_check_interval", 0.5)
             health_retries = services.conversation_cfg.get("health_check_max_retries", 3)
             health_backoff = services.conversation_cfg.get("health_check_backoff", 2.0)
+            health_warmup_delay = float(
+                services.conversation_cfg.get("health_warmup_delay", 10.0)
+            )
             health_base_url = services.conversation_cfg.get("llm_base_url") or None
             min_on_time = float(services.conversation_cfg.get("min_on_time", 3.0))
             min_off_time = float(services.conversation_cfg.get("min_off_time", 2.0))
@@ -251,6 +260,7 @@ def build(config_path: str = CONFIG_PATH) -> AppServices:
             )
             conversation_service._min_on_time = min_on_time
             conversation_service._min_off_time = min_off_time
+            conversation_service._health_warmup_delay = health_warmup_delay
             logger.info("ConversationService instance created successfully")
         except Exception:
             logger.exception("Failed to build ConversationService")
