@@ -137,11 +137,11 @@ class AppRuntime:
             raise KeyboardInterrupt()
 
     def start(self) -> None:
-        """Start the application services and, if enabled, the WS server.
+        """Start application services and, when available, the WS server.
 
-        El apagado fino llegará en la segunda iteración; por ahora replicamos
-        el comportamiento bloqueante del script original y confiamos en
-        ``CTRL+C`` para detener la ejecución.
+        A graceful shutdown flow will arrive in a later iteration; for now we
+        mimic the blocking behaviour of the original script and rely on
+        ``CTRL+C`` to stop execution.
         """
 
         if self._running:
