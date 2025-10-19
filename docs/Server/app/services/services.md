@@ -1,24 +1,32 @@
-# Servicios de la aplicación
+# Application services (`Server/app/services`)
 
-Los servicios actúan como adaptadores entre la lógica de alto nivel y las implementaciones de `core`.
+Services wrap the interface layer so the runtime can start/stop hardware loops without duplicating
+boilerplate. Each service owns the lifecycle of a specific subsystem and exposes convenience
+methods to the rest of the application.
 
 ## MovementService
 
-- Instancia `MovementControl` y arranca su bucle bloqueante (`start_loop`) en un hilo en segundo plano mediante `threading.Thread`.
-- Expone métodos de conveniencia como `turn_left`, `turn_right`, `relax` y `stop`, delegando directamente en `MovementControl`.
-- Implementa `__getattr__` para reenviar cualquier otra llamada al objeto interno, permitiendo acceder a comandos avanzados (p. ej. `walk`, `gesture`, límites de la cabeza).
-
-Este servicio es el responsable de mantener activo el control de movimiento mientras la aplicación esté en ejecución.
+- Wraps `interface.MovementControl` and starts its blocking loop in a background thread.
+- Provides helpers such as `turn_left`, `turn_right`, `relax`, and delegates any other attribute
+  access to the underlying controller through `__getattr__`.
+- Used by the social FSM and mind supervisor to keep the robot steady or initiate gestures.
 
 ## VisionService
 
-- Crea un `VisionManager`, conserva el modo de operación (`object`, `face`, etc.) y los parámetros de cámara (`camera_fps`).
-- `register_face_pipeline()` permite registrar dinámicamente un pipeline facial y seleccionarlo si la configuración lo requiere.
-- `set_frame_callback()` guarda una función para recibir resultados procesados.
-- `start()` inicializa la captura: fija el número de hilos de OpenCV, selecciona el pipeline adecuado, arranca el `VisionManager` y comienza el streaming periódico con el intervalo especificado.
-- `stop()` detiene la captura y libera recursos; `last_b64()` y `snapshot_b64()` facilitan recuperar imágenes codificadas para exponerlas por WebSocket u otros canales.
+- Owns a `interface.VisionManager` instance and tracks the active pipeline (`object`, `face`, …).
+- `register_face_pipeline()` installs a `FacePipeline` with the configuration provided in `app.json`.
+- `start()` selects the desired pipeline, limits OpenCV threads to avoid contention, starts the
+  camera stream, and registers a frame callback.
+- `last_b64()` / `snapshot_b64()` expose encoded frames for WebSocket streaming or debugging.
 
-## Integración con el servidor WebSocket
+## ConversationService
 
-Cuando `enable_ws` está activo, `AppRuntime` invoca `start_ws_server`, que a su vez crea un `websockets.serve` asociado al `VisionService`. Los comandos admitidos (`ping`, `start`, `stop`, `capture`) permiten controlar la captura remota y solicitar la última imagen en base64.
+- Manages the lifecycle of the llama.cpp process (`mind.llm.process.LlamaServerProcess`).
+- Wires Speech-to-Text, Text-to-Speech, LED controller, LLM client, and the conversation manager in
+  a dedicated thread.
+- Performs readiness checks with configurable timeouts/backoff and exposes a `stop_event` so the
+  builder can signal termination from the FSM callbacks.
+- Keeps logging metrics about listen time, LLM retries, and LED state transitions.
 
+These services are instantiated by `builder.core_builder.build()` based on the configuration flags
+and injected into `AppRuntime` through the `AppServices` container.

@@ -1,36 +1,37 @@
-# Mind Layer
+# Mind layer (`Server/mind`)
 
 *Part of the FNK0050 Lumo architecture.*
 
-**Purpose:**  
-The cognition stack that shapes persona, memory, and reasoning while delegating hardware mediation to the dedicated interface layer.
+The mind layer concentrates the cognitive pieces of the system: persona definition, LLM access,
+short-term memory, and the supervisor that coordinates social behaviour. It is intentionally kept
+independent from hardware so it can be reused in tests or the sandbox.
 
-**Hierarchy:**  
-app → mind → interface → core
+## Entry points
 
-**Updated:** 2025-10-10
+- `context.py` – defines `MindContext`, a façade that wires persona, LLM client, memory, and the
+  supervisor. It exposes helpers to attach runtime interfaces (`vision`, `voice`, `movement`,
+  `social`).
+- `supervisor.py` – implements `MindSupervisor`, responsible for pausing/resuming the social FSM
+  while the voice subsystem is speaking and for keeping the body relaxed when idle.
+- `__init__.py` – provides `initialize_mind()` and lazy imports so higher layers can access the mind
+  components without circular dependencies.
 
-The `Server/mind` package encapsulates the cognition stack that powers Lumo's reasoning and language capabilities. It sits above the physical `core/` layer, below the orchestration logic in `app/`, and collaborates with `interface/` components that execute hardware-facing actions.
+## Sub-packages
 
-## Architecture Overview
+- `behavior/` – home of `social_fsm.py`, a face-tracking driven finite state machine that reacts to
+  detections by aligning the robot and triggering simple interactions (meows, callbacks).
+- `communication/` – builders for bridging the LLM with Text-to-Speech and Speech-to-Text stacks.
+- `llm/` – HTTP client, llama.cpp process wrapper, conversation memory, and configuration defaults.
+- `perception/` – perception helpers such as the reusable `FaceTracker` used by the FSM.
+- `proprioception/` – the `BodyModel` that fuses IMU and odometry data streamed through the
+  `SensorGateway`.
 
-* **mind/context.py** defines the `MindContext`, a unified entry point that wires persona, language models, and memory for consumers such as the application runtime.
-* **mind/llm_*** modules provide the LLM client, in-memory conversation state, speech hand-off helpers, and llama server lifecycle management.
-* **mind/persona.py** implements persona construction and system prompts that give Lumo its identity.
-* **Collaboration with `interface/`**: the mind layer now calls into `Server/interface/VoiceInterface.py`, `MovementControl.py`, `VisionManager.py`, and `LedController.py` to affect the body, ensuring cognition never touches hardware drivers directly.
+## Typical usage
 
-## Flow Between Layers
+`AppRuntime` calls `initialize_mind(cfg, vision=..., voice=..., movement=..., social=...)` once the
+services have been built. The returned `MindContext` offers a `summary()` for quick diagnostics and a
+`supervisor` attribute with the orchestration logic. As the runtime starts or stops services it can
+call `attach_interfaces()` to keep the mind wired to the latest instances.
 
-1. **Core** exposes physical IO—microphones, speakers, LEDs, cameras—without any cognition attached.
-2. **Interface** mediates between cognition and hardware, translating high-level intents coming from mind into actionable commands that respect hardware constraints.
-3. **Mind** consumes those mediated capabilities to run perception-to-language loops, persisting short-term context and persona traits.
-4. **App** orchestrates behaviours, instantiates `MindContext` during startup, and delegates conversation handling to mind-level components.
-
-This separation keeps hardware concerns isolated in `core/`, mediation in `interface/`, reasoning and language in `mind/`, and coordination logic in `app/`, enabling modular experimentation and future distributed cognition deployments.
-
----
-**See also:**
-- [App Layer](../app/app.md)
-- [Mind Layer](../mind/mind.md)
-- [Interface Layer](../interface/interface.md)
-- [Core Layer](../core/core.md)
+The separation between mind and interface layers makes it straightforward to swap physical hardware
+for mocks, or to run the mind remotely while streaming detections over the network.

@@ -1,38 +1,32 @@
-# Interface Layer
+# Interface layer (`Server/interface`)
 
 *Part of the FNK0050 Lumo architecture.*
 
-**Purpose:**  
-Bridge cognition and hardware by mediating between mind-level intentions and the core subsystems that drive motion, vision, and voice.
+The interface layer provides high-level facades that shield the mind from hardware-specific
+details. Each facade owns the lifecycle of the underlying driver (threads, async loops, device
+handles) and exposes a Pythonic API to the application layer.
 
-**Hierarchy:**  
-app → mind → interface → core
+## Main modules
 
-**Updated:** 2025-10-10
+- `MovementControl.py` – wraps the gait controller from `core.movement`, offering commands such as
+  `walk`, `turn`, `relax`, `gesture`, and head positioning with built-in safety limits.
+- `VisionManager.py` – manages camera access, pipeline registration, and frame streaming. It exposes
+  base64 snapshots used by the WebSocket server and face tracking.
+- `VoiceInterface.py` – bridges Speech-to-Text, the LLM client, Text-to-Speech, and LED feedback.
+  Implements the wake/think/speak loop, wake-word detection, and LED state transitions.
+- `LedController.py` – asynchronous helper around the SPI LED strip driver, enabling non-blocking
+  animations and simple colour presets.
+- `sensor_controller.py` / `sensor_gateway.py` – read IMU & odometry data and publish it to the
+  mind’s `BodyModel` at a configurable frequency.
 
-The `Server/interface` package hosts the façade classes that connect Lumo's cognitive services to the physical world. It ensures that data and commands always flow outward from the application runtime through `mind/` into `interface/`, finally reaching the low-level drivers in `core/`.
+## Responsibilities
 
-## Modules
+1. Translate high-level intents from the mind into hardware-aware commands.
+2. Normalise sensor data before it reaches `mind.proprioception`.
+3. Provide mock-friendly APIs so the sandbox can replace them without touching application logic.
+4. Keep the dependency chain one-directional: `app` imports `mind`, `mind` imports `interface`, and
+   only the interface layer talks to `core`.
 
-* **MovementControl.py** – Coordinates locomotion requests from the mind layer, translating them into `core/movement` commands while applying safety guards and smoothing.
-* **VisionManager.py** – Manages camera streaming and detection pipelines, exposing snapshots and telemetry to mind and app consumers without leaking hardware details.
-* **VoiceInterface.py** – Orchestrates the speech pipeline by combining speech-to-text, LLM querying, and text-to-speech while synchronising LED feedback.
-* **LedController.py** – Provides asynchronous LED animations triggered by higher layers, delegating raw SPI access to `core/led`.
-
-## Role in the Architecture
-
-The interface layer mediates between cognition and hardware, ensuring that:
-
-1. High-level intents from `mind/` are translated into safe, hardware-aware commands.
-2. Sensor data from `core/` is normalised before reaching cognitive components.
-3. The dependency chain remains one-directional: **app → mind → interface → core**.
-4. Modules such as `LedController`, `MovementControl`, `VisionManager`, and `VoiceInterface` remain cohesive entry points for the higher layers, consolidating asynchronous loops and resource management in one place.
-
-By centralising these façades, the interface layer makes it straightforward to swap or mock hardware drivers and keeps `mind/` focused purely on reasoning logic.
-
----
-**See also:**
-- [App Layer](../app/app.md)
-- [Mind Layer](../mind/mind.md)
-- [Interface Layer](../interface/interface.md)
-- [Core Layer](../core/core.md)
+Most modules can be imported independently for manual experiments (`Server/interface/test_codes/`
+contains several examples). When running in sandbox mode, replacements under `Server/sandbox/mocks`
+implement the same interfaces so the rest of the stack keeps working.

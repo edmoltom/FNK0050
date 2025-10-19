@@ -1,106 +1,71 @@
-# Aplicación del servidor
+# Server application layer (`Server/app`)
 
 *Part of the FNK0050 Lumo architecture.*
 
-**Purpose:**  
-Coordinar el runtime y los servicios cognitivos, garantizando que las órdenes fluyan hacia las capas de `mind/`, `interface/` y `core/` en ese orden.
+The application layer glues together configuration, runtime services, and the mind stack. It is
+responsible for reading `app.json`, instantiating hardware facades or mocks, and keeping the main
+loop responsive to shutdown signals.
 
-**Hierarchy:**  
-app → mind → interface → core
+## Key files
 
-**Updated:** 2025-10-10
+- `application.py` – CLI entry point that sets up logging and launches `AppRuntime`.
+- `runtime.py` – Coordinates services during execution (vision, movement, conversation, WebSocket,
+  sensors) and maintains the link with the mind.
+- `builder/` – Functions that read JSON configuration and return an `AppServices` container with the
+  requested services already instantiated.
+- `services/` – Lightweight wrappers around the interface layer that provide lifecycle helpers for
+  vision, movement, and conversation.
+- `tests/` – Unit tests covering the runtime behaviour, WebSocket handler, and conversation wiring.
 
-La carpeta `Server/app` orquesta la ejecución del runtime que combina visión artificial, control de movimiento y difusión opcional por WebSocket. Los archivos principales son:
+## `AppServices`
 
-* `application.py`: punto de entrada que prepara el registro, construye los servicios y arranca el runtime principal.
-* `builder.py`: fabrica un contenedor `AppServices` a partir de la configuración JSON y crea instancias de visión, movimiento y la lógica social.
-* `runtime.py`: coordina el ciclo de vida de los servicios, gestiona la captura de frames, despacha la lógica de interacción y, cuando está habilitado, expone un servidor WebSocket.
-* `logging_config.py`: define la política de rotación del fichero `robot.log`.
-* `app.json`: valores predeterminados de los servicios, el modo de ejecución y la lógica social.
+`builder/core_builder.py` defines a dataclass that collects every configurable aspect of the
+runtime. After calling `build()` you get a ready-to-use container with these notable attributes:
 
-## Flujo de arranque típico
+| Attribute | Description |
+| --------- | ----------- |
+| `cfg` | Raw JSON configuration. |
+| `runtime_mode` | `"sandbox"` or `"real"`; selects real hardware or mocks. |
+| `enable_vision`, `enable_movement`, `enable_ws`, `enable_conversation` | Feature flags toggled from the config file. |
+| `vision_cfg` | Mode, FPS, and face detector profile for the camera pipeline. |
+| `ws_cfg` | Host/port for the optional WebSocket server. |
+| `conversation_cfg` | Llama binary/model paths, health checks, and concurrency limits. |
+| `vision`, `movement`, `conversation`, `fsm` | Instantiated services ready to attach to the runtime (may be `None` if disabled). |
 
-1. `setup_logging()` aplica la configuración de logging y crea (si no existe) el archivo `robot.log`.
-2. `build()` lee el JSON de configuración y construye `AppServices` con las banderas `enable_vision`, `enable_movement` y `enable_ws`, además de las opciones específicas para visión y WebSocket.
-3. `AppRuntime` recibe las dependencias ya configuradas, registra manejadores de señales y prepara la función que procesará cada frame de vídeo.
-4. Al iniciarse, el runtime arranca los servicios habilitados: activa el bucle de movimiento, inicializa la visión y registra un callback para recibir detecciones.
-5. Si se habilita WebSocket, se publica un servidor que atiende comandos de control y entrega frames codificados. Si no, el runtime mantiene un bucle de espera hasta que se solicite la parada (por señal o por el propio código).
-6. `stop()` detiene con seguridad los servicios, relaja la postura del robot y libera recursos.
+When conversation support is enabled the builder also wires callbacks so the `SocialFSM` can trigger
+`ConversationService.start()`/`stop()` during interactions.
 
-## `AppServices` y su configuración
+## Runtime lifecycle
 
-`AppServices` agrupa todo lo que el runtime necesita para ejecutarse. Los atributos más relevantes son:
+`AppRuntime.start()` performs the following steps:
 
-| Atributo                                        | Descripción                                                                                      | Valor por defecto                   |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------- |
-| `cfg`                                           | Configuración completa leída del JSON.                                                           | `{}`                                |
-| `enable_vision`, `enable_movement`, `enable_ws` | Banderas para activar o desactivar cada subsistema.                                              | `True`                              |
-| `vision_cfg`                                    | Parámetros del pipeline de visión (modo, FPS, perfil de rostro).                                 | `{}`                                |
-| `mode`                                          | Pipeline seleccionado (`object`, `face`, etc.).                                                  | `"object"`                          |
-| `camera_fps`                                    | FPS objetivo para la cámara.                                                                     | `15.0`                              |
-| `face_cfg`                                      | Opciones del detector facial; si está presente se registra un pipeline dedicado.                 | `{}`                                |
-| `interval_sec`                                  | Intervalo entre capturas consecutivas al hacer `start_stream`.                                   | `1.0`                               |
-| `ws_cfg`                                        | Diccionario con `host` y `port` para el servidor WebSocket.                                      | `{"host": "0.0.0.0", "port": 8765}` |
-| `vision`, `movement`, `fsm`                     | Instancias concretas de `VisionService`, `MovementService` y `SocialFSM` (si se han habilitado). | `None`                              |
+1. Create (if needed) a `SensorController` and `SensorGateway` so IMU/odometry updates reach the
+   mind’s `BodyModel`.
+2. Attach the configured vision, voice, movement, and social FSM instances to the `MindContext` via
+   `mind.initialize_mind()`.
+3. Start the movement thread (if enabled) and relax the robot.
+4. Register a frame handler with the vision service so detections update the FSM and the supervisor.
+5. Launch the conversation service, including llama.cpp readiness checks and LED state management.
+6. Optionally start the WebSocket server that streams frames and receives simple commands.
+7. Keep calling `MindSupervisor.update()` until a shutdown event or signal is received.
 
-El fichero `app.json` ofrece un ejemplo completo: activa todos los subsistemas, selecciona el modo `face`, ajusta el detector con `resize_ratio`, `min_size`, `scale_factor` y `min_neighbors`, define el modo global (`"sandbox"` o `"real"`) y especifica el comportamiento social (`deadband_x`, `lock_frames_needed`, `miss_release`, `interact_ms`, `relax_timeout`, `meow_cooldown_*`). Puedes copiarlo y adaptarlo a tu entorno.
+`stop()` gracefully tears down services in reverse order and joins any background threads.
 
-## Logging y salidas
+## Configuration tips
 
-`setup_logging()` añade un `RotatingFileHandler` con hasta tres archivos de 1 MB cada uno en la raíz del repositorio (`robot.log`). Si vuelves a llamar a la función no se duplicarán manejadores, por lo que es seguro invocarla desde scripts o tests adicionales.
+- Set `conversation.enable` to `false` when the llama binary or GGUF file is not available; the
+  builder automatically records the reason in `conversation_disabled_reason`.
+- Tune `vision.interval_sec` to control how often frames are processed when streaming.
+- Face tracking behaviour is configured under `behavior.social_fsm` (deadband, interact timings,
+  cooldowns); these values are passed to the FSM by the builder.
 
-## Relación con controladores y servicios
+## Tests
 
-El runtime delega las decisiones de seguimiento y socialización al módulo `controllers` y utiliza los adaptadores de `services` para hablar con la capa `interface/` (por ejemplo, `MovementControl`, `VisionManager`, `VoiceInterface` y `LedController`), que es la responsable de mediar con `core`. La documentación detallada de ambos se encuentra en archivos separados dentro de esta misma carpeta.
+The application layer ships with focused tests under `Server/tests/`:
 
----
+- `test_app_runtime.py` ensures the runtime starts/stops services and invokes callbacks.
+- `test_app_runtime_conversation_integration.py` checks the conversation lifecycle with mocks.
+- `test_llm_client.py` and `test_llama_server_process.py` cover the LLM client and process wrapper
+  used by the builder.
 
-### Capa de comportamiento global (`BehaviorManager`)
-
-A partir de las versiones recientes, la aplicación incorpora un **gestor de comportamiento** (`BehaviorManager`) que actúa como capa de coordinación entre los distintos controladores.
-Su función no es reemplazar la lógica interna de los servicios, sino **observarlos y decidir qué subsistema tiene prioridad** en cada momento.
-
-#### Jerarquía funcional
-
-```
-AppRuntime
- ├─ VisionService
- ├─ MovementService
- ├─ ConversationService
- ├─ SocialFSM
- └─ BehaviorManager  ← coordina los anteriores
-```
-
-* **AppRuntime** sigue siendo quien enciende y apaga los servicios.
-* **BehaviorManager** no crea ni destruye procesos; solo supervisa los estados y envía órdenes suaves (pausar, relajar, reactivar).
-* **Los servicios** (por ejemplo, el modelo LLM o la cámara) permanecen activos durante toda la ejecución para evitar sobrecargas innecesarias.
-
-#### Lógica de coordinación
-
-El método interno `_coordinate_behavior()` ejecuta un bucle periódico (por defecto, cada 0.5 s) y toma decisiones simples basadas en el estado actual de la conversación:
-
-| Estado de conversación     | Modo global  | Acción                                               |
-| -------------------------- | ------------ | ---------------------------------------------------- |
-| `THINK`, `SPEAK`           | **CONVERSE** | Detiene movimiento y pausa el rastreo facial.        |
-| `ATTENTIVE_LISTEN`, `WAKE` | **SOCIAL**   | Activa el rastreo facial y libera el movimiento.     |
-| Cualquier otro estado      | **IDLE**     | Relaja la postura y mantiene el rastreo desactivado. |
-
-Cada cambio de modo se registra en el log como una transición legible, por ejemplo:
-
-```
-Behavior mode: IDLE → SOCIAL
-```
-
-#### Propósito
-
-Esta capa permite separar la **lógica global del comportamiento** de la **lógica interna de cada módulo**.
-El resultado es un sistema más comprensible: basta con leer `_coordinate_behavior()` para entender qué está haciendo el robot a nivel general, sin sumergirse en los detalles del movimiento, la visión o el flujo conversacional.
-
-A largo plazo, esta arquitectura facilita añadir nuevas “máquinas de estado” o comportamientos (exploración, emociones, aprendizaje) sin romper los subsistemas existentes.
-
----
-**See also:**
-- [App Layer](../app/app.md)
-- [Mind Layer](../mind/mind.md)
-- [Interface Layer](../interface/interface.md)
-- [Core Layer](../core/core.md)
+Run them with `pytest Server/tests` from the repository root.
