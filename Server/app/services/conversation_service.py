@@ -17,12 +17,11 @@ ConversationManagerFactory = Callable[..., Any]
 
 
 class ConversationService:
-    """Administra el ciclo de vida de la conversación y del *llama-server*.
+    """Manage the conversation and *llama-server* lifecycle.
 
-    La instancia recibe todas sus dependencias de manera explícita para
-    facilitar las pruebas y el *wiring* desde el ``builder`` de la aplicación.
-    El bucle de conversación se ejecuta en un hilo ``daemon`` y puede
-    iniciarse/detenerse múltiples veces.
+    The instance receives its dependencies explicitly to simplify testing and
+    the wiring performed by the application ``builder``. The conversation loop
+    runs on a ``daemon`` thread and can be started or stopped multiple times.
     """
 
     def __init__(
@@ -77,7 +76,7 @@ class ConversationService:
 
     @property
     def stop_event(self) -> threading.Event:
-        """Expose the internal stop event for dependency wiring."""
+        """Expose the internal stop event so dependencies can be wired."""
 
         return self._stop_event
 
@@ -106,7 +105,7 @@ class ConversationService:
 
     # ------------------------------------------------------------------
     def start(self) -> None:
-        """Inicia el servicio si no se encuentra en ejecución."""
+        """Start the service if it is not already running."""
 
         with self._lock:
             if self._thread and self._thread.is_alive():
@@ -352,7 +351,7 @@ class ConversationService:
         terminate_process: bool = False,
         shutdown_resources: Optional[bool] = None,
     ) -> None:
-        """Detiene el servicio y asegura el cierre cooperativo."""
+        """Stop the service and ensure a cooperative shutdown."""
 
         thread: Optional[threading.Thread]
         with self._lock:
@@ -388,7 +387,7 @@ class ConversationService:
         self._logger.info("Conversation service shutdown sequence finished")
 
     def join(self, timeout: Optional[float] = None) -> bool:
-        """Bloquea hasta que el hilo de conversación termine."""
+        """Block until the conversation thread finishes."""
 
         timeout = self._shutdown_timeout if timeout is None else timeout
         thread: Optional[threading.Thread]
@@ -464,7 +463,7 @@ class ConversationService:
                 )
 
     def close(self) -> None:
-        """Detiene y espera el cierre del servicio."""
+        """Stop the service and wait for shutdown to complete."""
 
         self._logger.info("Closing conversation service")
         self.stop(terminate_process=True, shutdown_resources=True)
