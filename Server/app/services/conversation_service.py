@@ -78,6 +78,10 @@ class ConversationService:
         self._led_cleanup = led_cleanup
         self._led_shutdown = False
         self._atexit_callback: Optional[Callable[[], None]] = None
+        self._last_start_ts: float | None = None
+        self._last_stop_ts: float | None = None
+        self._min_on_time = float(getattr(self, "_min_on_time", 3.0))
+        self._min_off_time = float(getattr(self, "_min_off_time", 2.0))
 
         self._register_atexit_hook()
 
@@ -301,12 +305,31 @@ class ConversationService:
         return True
 
     # ------------------------------------------------------------------
+    def _since(self, ts: float | None) -> float:
+        import time
+
+        return float("inf") if ts is None else (time.monotonic() - ts)
+
+    def _can_start(self) -> bool:
+        return self._since(self._last_stop_ts) >= self._min_off_time
+
+    def _can_stop(self) -> bool:
+        return self._since(self._last_start_ts) >= self._min_on_time
+
+    # ------------------------------------------------------------------
     def start(self) -> None:
         """Start the service if it is not already running."""
 
         with self._lock:
             if self._thread and self._thread.is_alive():
                 self._logger.info("Conversation thread already running")
+                return
+
+            if not self._can_start():
+                self._logger.info(
+                    "Start suppressed by cooldown (off-time %.2fs not reached)",
+                    self._min_off_time,
+                )
                 return
 
             self._stop_event.clear()
@@ -372,6 +395,7 @@ class ConversationService:
             )
             self._thread.start()
             self._logger.info("Conversation loop thread started")
+            self._last_start_ts = time.monotonic()
 
     def stop(
         self,
@@ -390,6 +414,13 @@ class ConversationService:
                     self._process.terminate()
                     if shutdown_resources or (shutdown_resources is None and terminate_process):
                         self._shutdown_led()
+                return
+
+            if not self._can_stop():
+                self._logger.info(
+                    "Stop suppressed by cooldown (on-time %.2fs not reached)",
+                    self._min_on_time,
+                )
                 return
 
             self._logger.info("Stopping conversation service")
@@ -412,6 +443,7 @@ class ConversationService:
         if shutdown_resources or (shutdown_resources is None and terminate_process):
             self._shutdown_led()
 
+        self._last_stop_ts = time.monotonic()
         self._logger.info("Conversation service shutdown sequence finished")
 
     def join(self, timeout: Optional[float] = None) -> bool:
