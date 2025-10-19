@@ -1,5 +1,5 @@
 {
-  "mode": "sandbox",
+  "mode": "real",
   "enable_vision": true,
   "enable_ws": true,
   "enable_movement": true,
