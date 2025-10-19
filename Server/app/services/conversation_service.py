@@ -410,10 +410,13 @@ class ConversationService:
             thread = self._thread
             if not thread:
                 self._logger.info("Stop requested with no active conversation thread")
-                if terminate_process:
+                if terminate_process is True:
+                    self._logger.info("Terminating Llama process by explicit request")
                     self._process.terminate()
-                    if shutdown_resources or (shutdown_resources is None and terminate_process):
+                    if shutdown_resources or shutdown_resources is None:
                         self._shutdown_led()
+                else:
+                    self._logger.debug("Preserving Llama process (FSM or transient stop)")
                 return
 
             if not self._can_stop():
@@ -437,10 +440,19 @@ class ConversationService:
                 self._shutdown_timeout,
             )
 
-        if terminate_process:
-            self._process.terminate()
+        # --- Controlled process termination policy ---
+        # The Llama process should only be terminated on explicit shutdown requests
+        # from the main runtime (AppRuntime / SandboxRuntime). FSM-triggered stops
+        # must *not* kill the process; they only pause conversation activity.
 
-        if shutdown_resources or (shutdown_resources is None and terminate_process):
+        if terminate_process is True:
+            self._logger.info("Terminating Llama process by explicit request")
+            self._process.terminate()
+        else:
+            self._logger.debug("Preserving Llama process (FSM or transient stop)")
+
+        # Only shut down LED resources when performing a full termination
+        if terminate_process and (shutdown_resources or shutdown_resources is None):
             self._shutdown_led()
 
         self._last_stop_ts = time.monotonic()
