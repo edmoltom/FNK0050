@@ -310,7 +310,7 @@ class AppRuntime:
             return
 
         addr = ws_server._get_local_ip() if hasattr(ws_server, "_get_local_ip") else host
-        print(f"WebSocket listening at ws://{addr}:{port} ...")
+        logger.info("WebSocket listening at ws://%s:%s ...", addr, port)
 
         async with websockets.serve(handler, host, port):
             loop = asyncio.get_running_loop()
