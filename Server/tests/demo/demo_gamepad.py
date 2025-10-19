@@ -1,14 +1,19 @@
-from pathlib import Path
+from __future__ import annotations
+
 import sys
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.extend([str(ROOT / "lib"), str(ROOT / "core")])
-
-import time
 import threading
+import time
+from pathlib import Path
 
-from peripherals.Gamepad import Xbox360
-from MovementControl import MovementControl
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+SERVER_ROOT = PROJECT_ROOT / "Server"
+
+for path in (PROJECT_ROOT, SERVER_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+from Server.lib.peripherals.Gamepad import Xbox360
+from Server.interface.MovementControl import MovementControl
 
 
 DEADZONE = 0.2

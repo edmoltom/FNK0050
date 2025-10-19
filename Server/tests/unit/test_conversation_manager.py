@@ -1,24 +1,36 @@
+import importlib
 import sys
 import threading
 import time
 import types
 from pathlib import Path
 
-SERVER_ROOT = Path(__file__).resolve().parents[1]
-if str(SERVER_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVER_ROOT))
+SERVER_ROOT = Path(__file__).resolve().parents[3]
 
-core_stub = types.ModuleType("core")
-core_stub.__path__ = [str(SERVER_ROOT / "core")]
-sys.modules["core"] = core_stub
+sys.modules.setdefault("core", importlib.import_module("Server.core"))
+sys.modules.setdefault("mind", importlib.import_module("Server.mind"))
+sys.modules.setdefault("interface", importlib.import_module("Server.interface"))
 
-mind_stub = types.ModuleType("mind")
-mind_stub.__path__ = [str(SERVER_ROOT / "mind")]
-sys.modules["mind"] = mind_stub
+led_package = types.ModuleType("core.led")
+led_module = types.ModuleType("core.led.led")
 
-interface_stub = types.ModuleType("interface")
-interface_stub.__path__ = [str(SERVER_ROOT / "interface")]
-sys.modules["interface"] = interface_stub
+
+class _StubLed:
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    def close(self) -> None:  # pragma: no cover - defensive shim
+        pass
+
+    def off(self) -> None:  # pragma: no cover - defensive shim
+        pass
+
+
+led_module.Led = _StubLed
+led_package.led = led_module
+sys.modules["core.led"] = led_package
+sys.modules["core.led.led"] = led_module
+sys.modules.setdefault("core.led.spi_ledpixel", types.ModuleType("core.led.spi_ledpixel"))
 
 led_stub = types.ModuleType("LedController")
 
@@ -88,7 +100,7 @@ def _fail_post(*_args, **_kwargs):  # pragma: no cover - guardrail
 requests_stub.post = _fail_post
 sys.modules["requests"] = requests_stub
 
-from interface.VoiceInterface import ConversationManager
+from Server.interface.VoiceInterface import ConversationManager
 
 
 class FakeSTT:

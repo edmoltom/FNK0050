@@ -4,15 +4,10 @@ import os
 import sys
 import threading
 import types
-from pathlib import Path
 from typing import Any, Dict
 from unittest import mock
 
 import pytest
-
-SERVER_ROOT = Path(__file__).resolve().parents[2]
-if str(SERVER_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVER_ROOT))
 
 mind_stub = types.ModuleType("mind")
 mind_stub.__path__ = []  # type: ignore[attr-defined]
@@ -48,7 +43,7 @@ class _StubLlamaClient:  # pragma: no cover - test scaffolding
 llm_client_stub.LlamaClient = _StubLlamaClient
 sys.modules.setdefault("mind.llm.client", llm_client_stub)
 setattr(llm_pkg_stub, "client", llm_client_stub)
-from app.services.conversation_service import ConversationService
+from Server.app.services.conversation_service import ConversationService
 
 for name in [
     "mind.llm.process",

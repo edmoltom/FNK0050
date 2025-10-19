@@ -1,11 +1,20 @@
+from __future__ import annotations
+
+import base64
+import datetime
 import os
 import sys
-import base64, datetime, time
+import time
+from pathlib import Path
 
-# Ensure the Server package is on the Python path when run directly
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+SERVER_ROOT = PROJECT_ROOT / "Server"
 
-from interface.VisionManager import VisionManager
+for path in (PROJECT_ROOT, SERVER_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+from Server.interface.VisionManager import VisionManager
 
 def main():
     cam = VisionManager()

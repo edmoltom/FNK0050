@@ -1,17 +1,13 @@
 from __future__ import annotations
 
+import importlib
 import logging
 import sys
-from pathlib import Path
 from types import SimpleNamespace
 import types
 from unittest.mock import Mock
 
 import pytest
-
-SERVER_ROOT = Path(__file__).resolve().parents[1]
-if str(SERVER_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVER_ROOT))
 
 cv2_stub = types.ModuleType("cv2")
 cv2_stub.setNumThreads = lambda *args, **kwargs: None  # pragma: no cover - test stub
@@ -19,7 +15,30 @@ sys.modules.setdefault("cv2", cv2_stub)
 
 core_stub = types.ModuleType("core")
 core_stub.__path__ = []  # pragma: no cover - namespace stub
-sys.modules.setdefault("core", core_stub)
+sys.modules["core"] = core_stub
+
+sys.modules.setdefault("mind", importlib.import_module("Server.mind"))
+
+perception_package = types.ModuleType("mind.perception")
+perception_package.__path__ = []
+face_tracker_module = types.ModuleType("mind.perception.face_tracker")
+
+
+class _StubFaceTracker:  # pragma: no cover - minimal shim
+    pass
+
+
+face_tracker_module.FaceTracker = _StubFaceTracker
+sys.modules.setdefault("mind.perception", perception_package)
+sys.modules.setdefault("mind.perception.face_tracker", face_tracker_module)
+
+tracker_package = types.ModuleType("interface.tracker")
+tracker_package.__path__ = []
+visual_tracker_module = types.ModuleType("interface.tracker.visual_tracker")
+visual_tracker_module.VisualTracker = object  # pragma: no cover - minimal shim
+tracker_package.visual_tracker = visual_tracker_module
+sys.modules.setdefault("interface.tracker", tracker_package)
+sys.modules.setdefault("interface.tracker.visual_tracker", visual_tracker_module)
 
 interface_stub = types.ModuleType("interface")
 interface_stub.__path__ = []  # pragma: no cover - namespace stub
@@ -132,7 +151,7 @@ class _StubPID:  # pragma: no cover - test stub
 control_pid_module.Incremental_PID = _StubPID
 sys.modules.setdefault("control.pid", control_pid_module)
 
-from mind.behavior import social_fsm
+from Server.mind.behavior import social_fsm
 
 
 class _DummyTracker:
@@ -197,3 +216,13 @@ def test_interact_callback_exception_logged(monkeypatch: pytest.MonkeyPatch, cap
     assert fsm.state == "INTERACT"
     assert fsm._on_interact.call_count == 0
     assert any(record.exc_info for record in caplog.records)
+vision_service_module = types.ModuleType("app.services.vision_service")
+
+
+class _StubVisionService:  # pragma: no cover - minimal shim
+    pass
+
+
+vision_service_module.VisionService = _StubVisionService
+sys.modules.setdefault("app.services", types.ModuleType("app.services"))
+sys.modules["app.services.vision_service"] = vision_service_module

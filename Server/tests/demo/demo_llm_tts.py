@@ -1,7 +1,7 @@
 from pathlib import Path
 import subprocess, sys, os, argparse
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]     # /home/user/FNK0050
+PROJECT_ROOT = Path(__file__).resolve().parents[4]     # /home/user/FNK0050
 
 CANDIDATES = [
     PROJECT_ROOT / "Server" / "core" / "llm" / "llm_to_tts.py",
